@@ -6,16 +6,16 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>962</width>
+    <width>1018</width>
     <height>820</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Bidsificator</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="gridLayout_2">
-    <item row="0" column="0" rowspan="2">
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="0" rowspan="3">
      <widget class="QTreeView" name="fileTreeView">
       <property name="minimumSize">
        <size>
@@ -32,60 +32,64 @@
      </widget>
     </item>
     <item row="0" column="1">
-     <widget class="QGroupBox" name="BidsDatasetGroupBox">
-      <property name="title">
-       <string>Bids Dataset</string>
+     <layout class="QHBoxLayout" name="RootInfoLayout">
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="minimumSize">
+         <size>
+          <width>120</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>120</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Root folder</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="DatasetPathLabel">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>28</height>
+         </size>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item row="1" column="1">
+     <spacer name="verticalSpacer_3">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
       </property>
-      <layout class="QGridLayout" name="gridLayout">
-       <item row="0" column="0">
-        <spacer name="horizontalSpacer_5">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="0" column="1">
-        <widget class="QLabel" name="DatasetPathLabel">
-         <property name="maximumSize">
-          <size>
-           <width>16777215</width>
-           <height>28</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>Path to my root bids dataset folder</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="2">
-        <spacer name="horizontalSpacer_6">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="1" column="0" colspan="3">
-        <layout class="QHBoxLayout" name="horizontalLayout_3">
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>20</width>
+        <height>6</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item row="2" column="1">
+     <widget class="QGroupBox" name="ImportFilesGroupBox">
+      <property name="title">
+       <string>BIDS Datasets</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <layout class="QHBoxLayout" name="CreateDatasetLayout">
          <item>
-          <widget class="QTextEdit" name="DatasetTextEdit">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
+          <widget class="QLineEdit" name="DatasetLineEdit">
            <property name="minimumSize">
             <size>
              <width>0</width>
@@ -121,16 +125,43 @@
          </item>
         </layout>
        </item>
-       <item row="2" column="0" colspan="3">
-        <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <item>
+        <layout class="QHBoxLayout" name="DatasetLayout">
          <item>
-          <widget class="QTextEdit" name="SubjectTextEdit">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
+          <widget class="QLabel" name="Datasetlabel">
+           <property name="minimumSize">
+            <size>
+             <width>120</width>
+             <height>0</height>
+            </size>
            </property>
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Dataset</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="DatasetComboBox">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="CreateSubjectLayout">
+         <item>
+          <widget class="QLineEdit" name="SubjectLineEdit">
            <property name="minimumSize">
             <size>
              <width>0</width>
@@ -166,15 +197,6 @@
          </item>
         </layout>
        </item>
-      </layout>
-     </widget>
-    </item>
-    <item row="1" column="1">
-     <widget class="QGroupBox" name="ImportFilesGroupBox">
-      <property name="title">
-       <string>Import Files</string>
-      </property>
-      <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
         <layout class="QHBoxLayout" name="SubjectLayout">
          <item>
@@ -209,6 +231,33 @@
         </layout>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="BrowseLayout">
+         <item>
+          <widget class="QLineEdit" name="BrowseLineEdit">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>28</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>28</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="BrowsePushButton">
+           <property name="text">
+            <string>Browse File</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="ModalityLayout">
          <item>
           <widget class="QLabel" name="ModalityLabel">
@@ -237,6 +286,46 @@
              <height>0</height>
             </size>
            </property>
+           <item>
+            <property name="text">
+             <string>T1w (anat)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>T2w (anat)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>T1rho (anat)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>T2start (anat)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>FLAIR (anat)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>ieeg (ieeg)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>photo (ieeg)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>ct (ct)</string>
+            </property>
+           </item>
           </widget>
          </item>
         </layout>
@@ -263,7 +352,54 @@
           </widget>
          </item>
          <item>
-          <widget class="QTextEdit" name="sessionTextEdit">
+          <widget class="QLineEdit" name="sessionLineEdit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>28</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>28</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="taskLabel">
+           <property name="minimumSize">
+            <size>
+             <width>120</width>
+             <height>28</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>28</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Task</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="taskLineEdit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="minimumSize">
             <size>
              <width>0</width>
@@ -298,7 +434,13 @@
           </widget>
          </item>
          <item>
-          <widget class="QTextEdit" name="contrastAgentTextEdit">
+          <widget class="QLineEdit" name="contrastAgentLineEdit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="minimumSize">
             <size>
              <width>0</width>
@@ -337,7 +479,13 @@
           </widget>
          </item>
          <item>
-          <widget class="QTextEdit" name="acquisitionTextEdit">
+          <widget class="QLineEdit" name="acquisitionLineEdit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="minimumSize">
             <size>
              <width>0</width>
@@ -372,27 +520,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QTextEdit" name="reconstructionTextEdit">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>28</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>28</height>
-            </size>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="BrowseLayout">
-         <item>
-          <widget class="QTextEdit" name="BrowseTextEdit">
+          <widget class="QLineEdit" name="reconstructionLineEdit">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -410,13 +538,6 @@
              <width>16777215</width>
              <height>28</height>
             </size>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="BrowsePushButton">
-           <property name="text">
-            <string>Browse File</string>
            </property>
           </widget>
          </item>
@@ -501,36 +622,118 @@
            </item>
            <item>
             <widget class="QLabel" name="SessionLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
               <string>Session : &lt;value &gt;</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="AcquisitionLabel">
+            <widget class="QLabel" name="TaskLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
-              <string>Acquisition : &lt;value &gt;</string>
+              <string>Task : &lt;value&gt;</string>
              </property>
             </widget>
            </item>
            <item>
             <widget class="QLabel" name="ContrastAgentLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
               <string>Contrast Agent : &lt;value &gt;</string>
              </property>
             </widget>
            </item>
            <item>
+            <widget class="QLabel" name="AcquisitionLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Acquisition : &lt;value &gt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QLabel" name="ReconstructionLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
               <string>Reconstruction : &lt;value &gt;</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="FilePath">
+            <widget class="QLabel" name="FilePathLabel">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
               <string>File path : &lt;value &gt;</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
              </property>
             </widget>
            </item>
@@ -605,7 +808,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>962</width>
+     <width>1018</width>
      <height>37</height>
     </rect>
    </property>
