@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1018</width>
-    <height>820</height>
+    <height>833</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,40 +32,45 @@
      </widget>
     </item>
     <item row="0" column="1">
-     <layout class="QHBoxLayout" name="RootInfoLayout">
-      <item>
-       <widget class="QLabel" name="label">
-        <property name="minimumSize">
-         <size>
-          <width>120</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>120</width>
-          <height>16777215</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Root folder</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="DatasetPathLabel">
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>28</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <widget class="QGroupBox" name="RootFolderGroupBox">
+      <property name="title">
+       <string>Root Folder</string>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QLabel" name="DatasetPathLabel">
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="BrowseDatasetPathPushButton">
+         <property name="minimumSize">
+          <size>
+           <width>150</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>150</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Browse Root Folder</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </item>
     <item row="1" column="1">
      <spacer name="verticalSpacer_3">
@@ -635,7 +640,7 @@
               </size>
              </property>
              <property name="text">
-              <string>Session : &lt;value &gt;</string>
+              <string>Session :</string>
              </property>
             </widget>
            </item>
@@ -654,7 +659,7 @@
               </size>
              </property>
              <property name="text">
-              <string>Task : &lt;value&gt;</string>
+              <string>Task :</string>
              </property>
             </widget>
            </item>
@@ -673,7 +678,7 @@
               </size>
              </property>
              <property name="text">
-              <string>Contrast Agent : &lt;value &gt;</string>
+              <string>Contrast Agent :</string>
              </property>
             </widget>
            </item>
@@ -692,7 +697,7 @@
               </size>
              </property>
              <property name="text">
-              <string>Acquisition : &lt;value &gt;</string>
+              <string>Acquisition :</string>
              </property>
             </widget>
            </item>
@@ -711,7 +716,7 @@
               </size>
              </property>
              <property name="text">
-              <string>Reconstruction : &lt;value &gt;</string>
+              <string>Reconstruction :</string>
              </property>
             </widget>
            </item>
@@ -730,7 +735,7 @@
               </size>
              </property>
              <property name="text">
-              <string>File path : &lt;value &gt;</string>
+              <string>File path :</string>
              </property>
              <property name="wordWrap">
               <bool>true</bool>
@@ -812,13 +817,6 @@
      <height>37</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuFile">
-    <property name="title">
-     <string>File</string>
-    </property>
-    <addaction name="actionLoad_Bids_Dataset_Folder"/>
-   </widget>
-   <addaction name="menuFile"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionLoad_Bids_Dataset_Folder">
