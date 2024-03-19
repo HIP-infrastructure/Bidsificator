@@ -1,9 +1,20 @@
+import re
 import csv
 import json
-from pathlib import Path
-from core.PyEEGFormat import wrapper
 import shutil
-import re
+import platform
+from pathlib import Path
+
+# Deal with the dependency from PyEEGFormat according to os
+os_name= platform.system()
+if os_name == "Darwin":
+    from core.PyEEGFormat import wrappermacarm as wrapper
+elif os_name == "Windows":
+    from core.PyEEGFormat import wrapperwin as wrapper
+elif os_name == "Linux":
+    from core.PyEEGFormat import wrapperlinux as wrapper
+else:
+    raise Exception(f"Unsupported operating system: {os_name}")
 
 class BidsSubject:
     def __init__(self, parent_path, subject_id):
