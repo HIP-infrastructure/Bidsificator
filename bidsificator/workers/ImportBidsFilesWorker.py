@@ -3,6 +3,8 @@ from datetime import datetime
 from core.BidsFolder import BidsFolder
 
 import os
+import shutil
+import dicom2nifti
 
 class ImportBidsFilesWorker(QObject):
     update_progressbar_signal = pyqtSignal(int)
@@ -27,6 +29,10 @@ class ImportBidsFilesWorker(QObject):
             print("Subject not found")
             return
         
+        # Create a temporary directory to store converted files
+        temp_dir = '/tmp/mri_conversion'
+        os.makedirs(temp_dir, exist_ok=True)    
+
         percentage = 0
         current_file = 1
         self.update_progressbar_signal.emit(percentage)
@@ -45,7 +51,8 @@ class ImportBidsFilesWorker(QObject):
                 "ses": file.get("session", ""),
                 "task": file.get("task", ""),
                 "acq": file.get("acquisition", ""),
-                "rec": file.get("reconstruction", "")
+                "rec": file.get("reconstruction", ""),
+                "ce": file.get("contrast_agent", "")
             }
 
             # Process file based on its modality
@@ -56,7 +63,17 @@ class ImportBidsFilesWorker(QObject):
                 bids_subject.generate_channels_file(new_file_path, entities)
                 bids_subject.generate_task_file(new_file_path, entities)
             elif modality in self.__anatomical_modalities:
-                #bids_subject.add_anatomical_file(file_path, file)
+                #If it's an anat folder, probably need to convert 
+                if os.path.isdir(file_path):
+                    dicom2nifti.convert_directory(file_path, temp_dir, compression=False)
+                    file_names = [f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f))]
+                    #if one element in folder
+                    if len(file_names) == 1:
+                        file_path = temp_dir + os.sep + file_names[0]
+                        bids_subject.add_anatomical_file(file_path, entities, str(modality).replace(" (anat)", ""))
+                        os.remove(file_path)
+                else:
+                    bids_subject.add_anatomical_file(file_path, file)
                 print("adding anatomical file")
             else:
                 print("modality not recognized : ", modality)
@@ -65,4 +82,7 @@ class ImportBidsFilesWorker(QObject):
             current_file += 1
             self.update_progressbar_signal.emit(percentage)
         
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir)
+
         self.finished.emit()

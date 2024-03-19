@@ -2,7 +2,6 @@ import csv
 import json
 from pathlib import Path
 from core.PyEEGFormat import wrapper
-#import PyEEGFormat
 import shutil
 import re
 
@@ -43,12 +42,12 @@ class BidsSubject:
     
     @staticmethod
     def define_bids_functionnal_string(subject_entities):
-        bids_name = "sub-" + subject_entities["sub"]
-        if "ses" in subject_entities:
+        bids_name = subject_entities["sub"]
+        if "ses" in subject_entities and subject_entities["ses"]:
             bids_name += "_ses-" + subject_entities["ses"]
-        if "task" in subject_entities:
+        if "task" in subject_entities and subject_entities["task"]:
             bids_name += "_task-" + subject_entities["task"]
-        if "acq" in subject_entities:
+        if "acq" in subject_entities and subject_entities["acq"]:
             bids_name += "_acq-" + subject_entities["acq"]
         return bids_name
 
@@ -163,40 +162,39 @@ class BidsSubject:
     
     @staticmethod
     def define_bids_string_nonparametric_structural_mri(subject_entities):
-        bids_name = "sub-" + subject_entities["sub"]
-        if "ses" in subject_entities:
+        bids_name = subject_entities["sub"]
+        if "ses" in subject_entities and subject_entities["ses"]:
             bids_name += "_ses-" + subject_entities["ses"]
-        if "task" in subject_entities:
+        if "task" in subject_entities and subject_entities["task"]:
             bids_name += "_task-" + subject_entities["task"]
-        if "acq" in subject_entities:
+        if "acq" in subject_entities and subject_entities["acq"]:
             bids_name += "_acq-" + subject_entities["acq"]
-        if "ce" in subject_entities:
+        if "ce" in subject_entities and subject_entities["ce"]:
             bids_name += "_ce-" + subject_entities["ce"]
-        if "rec" in subject_entities:
+        if "rec" in subject_entities and subject_entities["rec"]:
             bids_name += "_rec-" + subject_entities["rec"]
-        if "run" in subject_entities:
+        if "run" in subject_entities and subject_entities["run"]:
             bids_name += "_run-" + subject_entities["run"]        
         
         return bids_name
 
-    def add_anatomical_file(self, file_path, file_struct):
+    def add_anatomical_file(self, file_path, file_struct, modality):
+        if not isinstance(file_path, Path):
+            file_path = Path(file_path)
         file_suffix = file_path.suffix
-        bids_name = BidsSubject.define_bids_string_nonparametric_structural_mri(file_struct["entities"]) + "_" + file_struct["modality"] + file_suffix
-        if file_suffix == ".dcm":
-            #dicom2nifti.convert_directory(file_path, anat_post_path / bids_name)
-            print("Should convert file", file_path, "to", self.get_anat_post_path() + bids_name)
-            #TODO : generate coordinates files for mri 
-        else:
-            if file_struct["entities"]["ses"] == "pre": 
+        bids_name = BidsSubject.define_bids_string_nonparametric_structural_mri(file_struct) + "_" + modality + file_suffix
+        if file_suffix == ".nii" or file_suffix == ".nii.gz":
+            if file_struct["ses"] == "pre": 
                 print("Should copy file", file_path, "to", self.get_anat_pre_path() + bids_name)
                 shutil.copy(file_path, self.get_anat_pre_path() + bids_name)
-            elif file_struct["entities"]["ses"] == "post":
+            elif file_struct["ses"] == "post":
                 print("Should copy file", file_path, "to", self.get_anat_post_path() + bids_name)
                 shutil.copy(file_path, self.get_anat_post_path() + bids_name)
             else:
-                print("Session not recognized : ", file_struct["entities"]["ses"])
-            #TODO : generate coordinates files for mri 
-                
+                print("Session not recognized : ", file_struct["ses"])
+        else:    
+            print("File extension not supported for bids anatomical files : ", file_suffix)
+
     def delete_bids_file(self, file_full_path):
         if not isinstance(file_full_path, Path):
             file_full_path = Path(file_full_path)

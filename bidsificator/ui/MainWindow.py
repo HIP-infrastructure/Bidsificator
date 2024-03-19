@@ -24,9 +24,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.CreateSubjectPushButton.clicked.connect(self.__CreateSubject)
         self.ModlalityComboBox.currentIndexChanged.connect(self.__UpdateModalityUI)
         self.BrowsePushButton.clicked.connect(self.__BrowseForFileToAdd)
-        self.AddFilePushButton.clicked.connect(self.__AddFileToList)
-        self.RemoveFilePushButton.clicked.connect(self.__RemoveFileFromList)
-        self.StartFileImportPushButton.clicked.connect(self.__StartFileImport)
+        self.IsDicomFolderCheckBox.stateChanged.connect(self.__UpdateBrowseFileUI)
+        self.AddPushButton.clicked.connect(self.__AddFileToList)
+        self.RemovePushButton.clicked.connect(self.__RemoveFileFromList)
+        self.StartImportPushButton.clicked.connect(self.__StartFileImport)
 
         # Trigger UI for the first time
         self.progressBar.setValue(0)
@@ -132,6 +133,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             #reconstruction
             self.reconstructionLabel.show()
             self.reconstructionLineEdit.show()
+            #deal with folder/file import
+            self.IsDicomFolderCheckBox.setEnabled(True)
         elif "(ieeg)" in self.ModlalityComboBox.currentText():
             #session
             self.sessionLabel.show()
@@ -148,13 +151,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             #reconstruction
             self.reconstructionLabel.hide()
             self.reconstructionLineEdit.hide()
+            #deal with folder/file import
+            self.IsDicomFolderCheckBox.setChecked(False)
+            self.IsDicomFolderCheckBox.setEnabled(False)
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
+    def __UpdateBrowseFileUI(self, state):
+        if state == 0: #unchecked
+            self.BrowsePushButton.setText("Browse File")
+        elif state == 2: #checked
+            self.BrowsePushButton.setText("Browse Folder")
+        else:
+            print("Error : [__UpdateBrowseFileUI] State not recognized")
+
     def __BrowseForFileToAdd(self):
-        file_path = QFileDialog.getOpenFileName(self, "Select a file", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
-        if file_path:
-            self.BrowseLineEdit.setText(file_path[0])
+        if "(anat)" in self.ModlalityComboBox.currentText() and self.IsDicomFolderCheckBox.isChecked():
+            folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+            if folderPath:
+                self.BrowseLineEdit.setText(folderPath)
+        else:
+            file_path = QFileDialog.getOpenFileName(self, "Select a file", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+            if file_path:
+                self.BrowseLineEdit.setText(file_path[0])
     
     def __AddFileToList(self):
         #Get file name
@@ -208,21 +227,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.ContrastAgentLabel.setText("Contrast Agent : " + file["contrast_agent"])
                 self.AcquisitionLabel.setText("Acquisition : " + file["acquisition"])
                 self.ReconstructionLabel.setText("Reconstruction : " + file["reconstruction"])
-                self.FilePathLabel.setText("File path : " + file["file_path"])
+                self.FilePathLabel.setText("Path : " + file["file_path"])
             elif "(ieeg)" in file["modality"]:
                 self.SessionLabel.setText("Session : " + file["session"])
                 self.TaskLabel.setText("Task : " + file["task"])
                 self.ContrastAgentLabel.setText("Contrast Agent :")
                 self.AcquisitionLabel.setText("Acquisition : " + file["acquisition"])
                 self.ReconstructionLabel.setText("Reconstruction :")
-                self.FilePathLabel.setText("File path : " + file["file_path"])
+                self.FilePathLabel.setText("Path : " + file["file_path"])
         else:
             self.SessionLabel.setText("Session :")
             self.TaskLabel.setText("Task :")
             self.ContrastAgentLabel.setText("Contrast Agent :")
             self.AcquisitionLabel.setText("Acquisition :")
             self.ReconstructionLabel.setText("Reconstruction :")
-            self.FilePathLabel.setText("File path :")
+            self.FilePathLabel.setText("Path :")
 
     def __RemoveFileFromList(self):
         #Get clicked item
