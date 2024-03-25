@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QFileDialog
+from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox
 from PyQt6.QtCore import QDir, QObject, QStandardPaths, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QFileSystemModel
 
@@ -67,6 +67,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def __CreateDataset(self):
         dataset_name = self.DatasetLineEdit.text()
+        if dataset_name == "":
+            QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
+            return
+
         dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
 
         participant_file_path = str(dataset_path) + os.sep +  "participants.tsv"
@@ -81,7 +85,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def __CreateSubject(self):
         subject_name = self.SubjectLineEdit.text()
+        if subject_name == "":
+            QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
+            return
+    
         dataset_name = self.DatasetComboBox.currentText()
+        if dataset_name == "":
+            QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
+            return
+    
         dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
 
         participant_file_path = str(dataset_path) + "/participants.tsv"
@@ -89,7 +101,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         bids_folder = BidsFolder(dataset_path)
         bids_folder.create_folders()
-        bids_folder.generate_empty_dataset_description_file("Dataset name", dataset_description_file_path)
+        bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
 
         subject_id = "sub-" + subject_name
         #TODO : add UI for extra keys for subjects
@@ -162,8 +174,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __UpdateBrowseFileUI(self, state):
         if state == 0: #unchecked
             self.BrowsePushButton.setText("Browse File")
+            self.BrowseLineEdit.setText("")
         elif state == 2: #checked
             self.BrowsePushButton.setText("Browse Folder")
+            self.BrowseLineEdit.setText("")
         else:
             print("Error : [__UpdateBrowseFileUI] State not recognized")
 
