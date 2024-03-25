@@ -5,3 +5,9 @@ pyqt6-tools == 6.4.2.3.3
 #Bids dependencies
 numpy >= 1.26.4
 dicom2nifti >= 2.4.10
+
+#Api dependencies
+gunicorn
+flask-httpauth
+flask
+flask-cors

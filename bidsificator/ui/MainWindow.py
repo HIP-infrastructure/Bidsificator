@@ -92,7 +92,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         bids_folder.generate_empty_dataset_description_file("Dataset name", dataset_description_file_path)
 
         subject_id = "sub-" + subject_name
-        bids_subject = bids_folder.add_bids_subject(subject_id)
+        #TODO : add UI for extra keys for subjects
+        subject_description = {'age' : '123', 'sex' : 'X'}
+        bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
 
         bids_folder.generate_participants_tsv(participant_file_path)
 

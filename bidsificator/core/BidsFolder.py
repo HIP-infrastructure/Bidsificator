@@ -12,9 +12,16 @@ class BidsFolder:
         self.__path = root_path
         self.__path.mkdir(parents=True, exist_ok=True)
         self.__bids_subjects = []
-        for subject in self.__path.iterdir():
-            if subject.is_dir() and subject.name.startswith("sub-"):
-                self.__bids_subjects.append(BidsSubject(self.__path, subject.name))
+
+        #read participants.tsv if it exists and return a list of subject_id and their optional keys
+        participants_tsv_path = self.__path / "participants.tsv"
+        if participants_tsv_path.exists():
+            with open(participants_tsv_path, 'r') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                for row in reader:
+                    subject_id = row["participant_id"]
+                    subject_optional_keys = {k: v for k, v in row.items() if k != "participant_id"}
+                    self.__bids_subjects.append(BidsSubject(self.__path, subject_id, subject_optional_keys))
 
     def create_folders(self):
         code_path = self.__path / "code"
@@ -57,8 +64,8 @@ class BidsFolder:
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description_dict, f, indent=4)
 
-    def add_bids_subject(self, subject_id):
-        new_subject = BidsSubject(self.__path, subject_id)
+    def add_bids_subject(self, subject_id, subject_description):
+        new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)
         return new_subject
     
@@ -73,10 +80,18 @@ class BidsFolder:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
     
     def generate_participants_tsv(self, participants_tsv_path):
-        print(self.__path)
-        subjects = [x for x in self.__path.iterdir() if x.is_dir() and x.name.startswith("sub-")]
+        #get all subjects and make a dict of all their optional keys and remove duplicate
+        all_optional_keys = set()
+        for subject in self.__bids_subjects:
+            all_optional_keys.update(subject.get_optional_keys().keys())
+        all_optional_keys = list(all_optional_keys)
+
+        #open participants_tsv file and write the header
         with open(participants_tsv_path, 'w', newline='') as f:
             writer = csv.writer(f, delimiter='\t')
-            writer.writerow(["participant_id"])
-            for subject in subjects:
-                writer.writerow([subject.name])
+            writer.writerow(["participant_id"] + all_optional_keys)
+            for subject in self.__bids_subjects:
+                row = [subject.get_subject_id()]
+                for key in all_optional_keys:
+                    row.append(subject.get_optional_keys().get(key, ""))
+                writer.writerow(row)

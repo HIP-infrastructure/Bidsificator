@@ -7,21 +7,30 @@ from pathlib import Path
 
 # Deal with the dependency from PyEEGFormat according to os
 os_name= platform.system()
+machine = platform.machine()
+
 if os_name == "Darwin":
-    from core.PyEEGFormat import wrappermacarm as wrapper
+    if 'x86_64' in machine.lower():
+        raise Exception(f"Lib not build at the moment: {os_name}")
+    elif 'arm' in machine.lower():
+        from core.PyEEGFormat import wrappermacarm as wrapper
 elif os_name == "Windows":
     from core.PyEEGFormat import wrapperwin as wrapper
 elif os_name == "Linux":
-    from core.PyEEGFormat import wrapperlinux as wrapper
+    if 'x86_64' in machine.lower():
+        from core.PyEEGFormat import wrapperlinux as wrapper
+    elif 'arm' in machine.lower():
+        from core.PyEEGFormat import wrapperlinuxarm64 as wrapper
 else:
     raise Exception(f"Unsupported operating system: {os_name}")
 
 class BidsSubject:
-    def __init__(self, parent_path, subject_id):
+    def __init__(self, parent_path, subject_id, optional_keys=None):
         if not isinstance(parent_path, Path):
             parent_path = Path(parent_path)
         self.__parent_path = parent_path
         self.__subject_id = subject_id
+        self.__optional_keys_dict = optional_keys
 
         self.__subject_path = self.__parent_path / self.__subject_id
         self.__subject_path.mkdir(parents=True, exist_ok=True)
@@ -51,6 +60,9 @@ class BidsSubject:
     def get_func_pre_path(self):
         return str(self.__func_pre_path) + "/"
     
+    def get_optional_keys(self):
+        return self.__optional_keys_dict if self.__optional_keys_dict is not None else {}
+
     @staticmethod
     def define_bids_functionnal_string(subject_entities):
         bids_name = subject_entities["sub"]
