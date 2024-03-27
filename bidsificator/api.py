@@ -10,11 +10,22 @@ from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
 from core.BidsFolder import BidsFolder
 from core.BidsUtilityFunctions import BidsUtilityFunctions
+from flasgger import Swagger
+from textwrap import dedent
+
 
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
 
 app = Flask(__name__)
+swagger = Swagger(app, template={
+    "info": {
+        "title": "BIDS Toolbox API",
+        "description": "An API to interact with BIDS datasets.",
+        "version": "1.0.0"
+    }
+})
+
 CORS(app) 
 auth = HTTPBasicAuth()
 
@@ -22,36 +33,48 @@ auth = HTTPBasicAuth()
 #TODO Add name sanitization to handle possible spaces in dataset name
 
 @app.route('/')
-#@auth.login_required
 def index():
-  return "Hello, %s!" % auth.username()
+  return dedent("""
+        <!doctype HTML>
+        <meta charset=utf-8>
+        <title>BIDS Toolbox API</title>
+        <ul>
+            <li><a href="/apidocs">Swagger UI</a>
+        </ul>
+        """)
 
 @app.route('/ok')
 #@auth.login_required
 def health_check():
   return "Bids Backend currently running on localhost"
 
-""" Retrieve all datasets.
-Endpoint: GET /datasets
-
-Parameters:
-    - None
-
-Returns:
-    - list: A list of dictionaries, each representing a dataset and its description.
-
-Description: This endpoint allows users to retrieve all datasets.
-    - The function lists all directories in the '/data' directory.
-    - For each directory, it constructs the path to the dataset_description.json file and checks if it exists.
-    - If the file exists, it opens the file, reads its content, and adds the dataset description to a list.
-    - Finally, it returns the list of dataset descriptions.
-
-Example Usage:
-'''http
-GET /datasets
-"""
 @app.route('/datasets', methods=['GET'])
 def get_all_datasets():
+    """
+        Retrieve all datasets
+        ---
+        tags:
+            - BIDS
+        description: Returns a list of datasets.
+        responses:
+            200:
+                description: A successful response
+                examples:
+                    application/json:
+                        [
+                            {
+                                "Name": "Example Dataset",
+                                "BIDSVersion": "1.0.2",
+                                "License": "CC0",
+                                "Authors": ["John Doe", "Jane Doe"],
+                                "Acknowledgements": "",
+                                "HowToAcknowledge": "",
+                                "Funding": ["Grant 1234"],
+                                "ReferencesAndLinks": ["https://example.com"],
+                                "DatasetDOI": "10.0.2.3/abcd1234"
+                            }
+                        ]
+        """
     datasets = []
     for dataset in os.listdir('/data'):
         dataset_description_file_path = "/data/" + dataset + "/dataset_description.json"
@@ -62,34 +85,78 @@ def get_all_datasets():
 
     return jsonify(datasets), 200
 
-""" Create a new BIDS dataset.
-Endpoint: POST /datasets
-
-Parameters:
-    - JSON Request Body (dict): A JSON object containing dataset information:
-    - 'dataset_dirname' (str): The directory name of the new dataset.
-    - 'DatasetDescJSON' (str): The description of the new dataset.
-
-Returns:
-    - str: The description of the created dataset.
-
-Description: This endpoint allows users to create a new BIDS dataset. The provided dataset information is used to create the dataset.
-    - The function retrieves dataset information from the JSON request body.
-    - It then constructs the paths to the dataset, the participants.tsv file, and the dataset_description.json file.
-    - A BidsFolder object is created for the dataset, and the necessary folders are created within the dataset.
-    - The dataset_description.json file and the participants.tsv file are generated.
-    - Finally, it returns the description of the created dataset.
-
-Example Usage:
-'''http
-POST /datasets
-{
-    "dataset_dirname": "my_dataset",
-    "DatasetDescJSON": {...}
-}
-"""
 @app.route('/datasets', methods=['POST'])
 def create_bids_dataset():
+    """
+    Create a new BIDS dataset
+    ---
+    tags:
+        - BIDS
+    description: Returns the description of the created dataset.
+    parameters:
+    - name: dataset_dirname
+      in: query
+      type: string
+      required: true
+      description: The directory name of the new dataset
+    - name: DatasetDescJSON
+      in: query
+      type: object
+      required: true
+      description: The description of the new dataset
+      schema:
+        type: object
+        properties:
+          Name:
+            type: string
+            description: The name of the dataset
+          BIDSVersion:
+            type: string
+            description: The BIDS version of the dataset
+          License:
+            type: string
+            description: The license of the dataset
+          Authors:
+            type: array
+            items:
+              type: string
+            description: The authors of the dataset
+          Acknowledgements:
+            type: string
+            description: The acknowledgements for the dataset
+          HowToAcknowledge:
+            type: string
+            description: How to acknowledge the dataset
+          Funding:
+            type: array
+            items:
+              type: string
+            description: The funding sources for the dataset
+          ReferencesAndLinks:
+            type: array
+            items:
+              type: string
+            description: The references and links for the dataset
+          DatasetDOI:
+            type: string
+            description: The DOI of the dataset
+    responses:
+        200:
+            description: A successful response
+            examples:
+                application/json: 
+                    {
+                        "Name": "Example Dataset",
+                        "BIDSVersion": "1.0.2",
+                        "License": "CC0",
+                        "Authors": ["John Doe", "Jane Doe"],
+                        "Acknowledgements": "",
+                        "HowToAcknowledge": "",
+                        "Funding": ["Grant 1234"],
+                        "ReferencesAndLinks": ["https://example.com"],
+                        "DatasetDOI": "10.0.2.3/abcd1234"
+                    }
+    """
     # Retrieve user information from the JSON request
     content = request.get_json()
     dataset_path = "/data/" + content.get('dataset_dirname', '')
@@ -105,39 +172,37 @@ def create_bids_dataset():
 
     return jsonify(dataset_description), 200
 
-""" Create a new BIDS subject within a specified dataset.
-Endpoint: POST /datasets/string:dataset_name/participants
-
-Parameters:
-    - dataset_name (str): The name of the dataset where the subject will be created.
-    - JSON Request Body (dict): A JSON object containing subject information:
-    - 'subjects' (list): A list of subjects, each represented as a dictionary with a 'sub' key indicating the subject ID.
-
-Returns:
-    - str: A success message indicating that the subject was created.
-
-Description: This endpoint allows users to create a new BIDS subject within a specified dataset. The provided subject information is used to create the subject in the dataset.
-    - The 'dataset_name' parameter in the URL specifies the dataset in which the subject should be created.
-    - The function retrieves subject information from the JSON request body.
-    - It then constructs the paths to the dataset, the participants.tsv file, and the dataset_description.json file.
-    - A BidsFolder object is created for the dataset, and the necessary folders are created within the dataset.
-    - An empty dataset_description.json file is generated.
-    - The subject is added to the BidsFolder, and a participants.tsv file is generated.
-
-Example Usage:
-```http
-POST /datasets/my_dataset/participants
-{
-    "subjects": [
-        {
-            "sub": "001"
-            "sex": "M"
-        }
-    ]
-}
-"""
 @app.route('/datasets/<string:dataset_name>/participants', methods=['POST'])
 def create_empty_bids_subject(dataset_name):
+    """
+        Create a new BIDS subject within a specified dataset.
+        ---
+        tags:
+            - BIDS
+        description: A success message indicating that the subject was created.
+        parameters:
+        - name: dataset_name
+          in: query
+          type: string
+          required: true
+          description: The name of the dataset
+        - name: subjects
+          in: query
+          type: object
+          required: true
+          description: A list of subjects to create, each represented as a dictionary with a 'sub' key indicating the subject ID, and a list of key-value pairs for additional subject information.
+          schema:
+            type: object
+            properties:
+            participant_id:
+                type: string
+                description: The ID of the participant
+        responses:
+            200:
+                description: A successful response
+                examples:
+                    application/json: ""
+    """
     #Get information from request
     dataset_path = "/data/" + dataset_name + "/"
     subject_description = request.get_json()
@@ -158,45 +223,36 @@ def create_empty_bids_subject(dataset_name):
 
     return jsonify({ 'data': 'Success' }), 200
 
-""" Add files to a BIDS subject within a specified dataset.
-Endpoint: POST /datasets/string:dataset_name/participants/string:subject_id/files
-
-Parameters:
-    - dataset_name (str): The name of the dataset where the subject is located.
-    - subject_id (str): The ID of the subject to which the files will be added.
-    - JSON Request Body (dict): A JSON object containing file information:
-    - 'files' (list): A list of files, each represented as a dictionary with keys 'path', 'modality', and 'entities'.
-
-Returns:
-    - str: A success message indicating that the files were added.
-    - tuple (str, int): An error message and HTTP status code (404 for not found) if the subject is not found.
-
-Description: This endpoint allows users to add files to a BIDS subject within a specified dataset. The provided file information is used to add the files to the subject in the dataset.
-    - The 'dataset_name' and 'subject_id' parameters in the URL specify the dataset and subject to which the files should be added.
-    - The function retrieves file information from the JSON request body.
-    - It then constructs the path to the dataset and retrieves the BIDS subject from the BIDS folder.
-    - For each file in the list, it checks the modality of the file and adds it to the subject accordingly. If the modality is not recognized, it prints a message and continues to the next file.
-
-Example Usage:
-```http
-POST /datasets/my_dataset/participants/sub-001/files
-{
-    "files": [
-        {
-            "path": "/path/to/file",
-            "modality": "ieeg",
-            "entities": {...}
-        },
-        {
-            "path": "/path/to/another/file",
-            "modality": "T1w",
-            "entities": {...}
-        }
-    ]
-}
-"""
 @app.route('/datasets/<string:dataset_name>/files', methods=['POST'])
 def add_files_to_bids_subject(dataset_name):
+    """
+    Add files to a BIDS subject within a specified dataset.
+    ---
+    tags: 
+        - BIDS
+    description: Return a success message indicating that the files were added.
+    parameters:
+        - name: files
+          in: body
+          required: true
+          description: An array of file objects to be added to the BIDS subject
+          schema:
+            type: array
+            items:
+                type: object
+                properties:
+                    path:
+                        type: string
+                        description: The path to the file
+                    modality:
+                        type: string
+                        description: The modality of the file
+    responses:
+        200:
+            description: A successful response
+            examples:
+                application/json: ""
+    """
     dataset_path = "/data/" + dataset_name + "/"
     files_description = request.get_json()
 
@@ -247,6 +303,14 @@ GET /datasets/my_dataset
 """
 @app.route('/datasets/<string:dataset_name>', methods=['GET'])
 def get_dataset_description_and_participants(dataset_name):
+    """
+    Retrieve the description and participants of a specified dataset.
+    ---
+    tags:
+        - BIDS
+    description: Returns the description and participants of a specified dataset.
+    
+    """
     dataset_path = "/data/" + dataset_name
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
@@ -283,6 +347,9 @@ GET /files?path=/path/to/directory
 """
 @app.route('/files', methods=['GET'])
 def get_files_from_absolute_path():
+    """
+    Retrieve the files from a specified absolute path.
+    """
     absolute_path_to_check = request.args.get('path')
     if os.path.exists(absolute_path_to_check):
         files = []
