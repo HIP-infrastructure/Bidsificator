@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox
-from PyQt6.QtCore import QDir, QObject, QStandardPaths, QThread, pyqtSignal
-from PyQt6.QtGui import QAction, QFileSystemModel
+from PyQt6.QtCore import QStandardPaths
+from PyQt6.QtGui import QFileSystemModel
 
 from core.BidsFolder import BidsFolder
 from forms.MainWindow_ui import Ui_MainWindow
@@ -10,8 +10,6 @@ import os
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     __file_list = []
-    __isAlreadyRunning = False
-    __thread = None
     __worker = None
 
     def __init__(self):
@@ -19,29 +17,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
 
         # Connect UI
-        self.BrowseDatasetPathPushButton.clicked.connect(self.__BrowseForFolder)
-        self.CreateDatasetPushButton.clicked.connect(self.__CreateDataset)
-        self.CreateSubjectPushButton.clicked.connect(self.__CreateSubject)
-        self.ModlalityComboBox.currentIndexChanged.connect(self.__UpdateModalityUI)
-        self.BrowsePushButton.clicked.connect(self.__BrowseForFileToAdd)
-        self.IsDicomFolderCheckBox.stateChanged.connect(self.__UpdateBrowseFileUI)
-        self.AddPushButton.clicked.connect(self.__AddFileToList)
-        self.RemovePushButton.clicked.connect(self.__RemoveFileFromList)
-        self.StartImportPushButton.clicked.connect(self.__StartFileImport)
+        self.BrowseDatasetPathPushButton.clicked.connect(self.__browseForFolder)
+        self.CreateDatasetPushButton.clicked.connect(self.__createDataset)
+        self.CreateSubjectPushButton.clicked.connect(self.__createSubject)
+        self.ModlalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
+        self.BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
+        self.IsDicomFolderCheckBox.stateChanged.connect(self.__updateBrowseFileUI)
+        self.AddPushButton.clicked.connect(self.__addFileToList)
+        self.RemovePushButton.clicked.connect(self.__removeFileFromList)
+        self.StartImportPushButton.clicked.connect(self.__startFileImport)
 
         # Trigger UI for the first time
         self.progressBar.setValue(0)
-        self.__UpdateModalityUI()
+        self.__updateModalityUI()
 
-    def __BrowseForFolder(self):
+    def __browseForFolder(self):
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if folderPath:
-            self.__LoadTreeViewUI(folderPath)
+            self.__loadTreeViewUI(folderPath)
             self.DatasetPathLabel.setText(folderPath)
-            self.__UpdateDatasetNamesDropDown()
-            self.__UpdateSubjectNamesDropDown()
+            self.__updateDatasetNamesDropDown()
+            self.__updateSubjectNamesDropDown()
 
-    def __LoadTreeViewUI(self, initial_folder):
+    def __loadTreeViewUI(self, initial_folder):
         # Define file system model at the root folder chosen by the user
         m_localFileSystemModel = QFileSystemModel()
         m_localFileSystemModel.setReadOnly(True)
@@ -65,7 +63,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fileTreeView.hideColumn(3)
         self.fileTreeView.header().hide()
 
-    def __CreateDataset(self):
+    def __createDataset(self):
         dataset_name = self.DatasetLineEdit.text()
         if dataset_name == "":
             QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
@@ -81,9 +79,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
         bids_folder.generate_participants_tsv(participant_file_path)
 
-        self.__UpdateDatasetNamesDropDown()
+        self.__updateDatasetNamesDropDown()
 
-    def __CreateSubject(self):
+    def __createSubject(self):
         subject_name = self.SubjectLineEdit.text()
         if subject_name == "":
             QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
@@ -110,9 +108,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         bids_folder.generate_participants_tsv(participant_file_path)
 
-        self.__UpdateSubjectNamesDropDown()
+        self.__updateSubjectNamesDropDown()
 
-    def __UpdateDatasetNamesDropDown(self):
+    def __updateDatasetNamesDropDown(self):
         root_folder = self.DatasetPathLabel.text()
         # Get all the dir names from root_folder, remove those that starts with . or ..
         dataset_names = [f for f in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, f)) and not f.startswith(".")]
@@ -120,9 +118,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Add them to DatasetComboBox
         self.DatasetComboBox.clear()
         self.DatasetComboBox.addItems(dataset_names)
-        self.DatasetComboBox.currentIndexChanged.connect(self.__UpdateSubjectNamesDropDown)
+        self.DatasetComboBox.currentIndexChanged.connect(self.__updateSubjectNamesDropDown)
 
-    def __UpdateSubjectNamesDropDown(self):
+    def __updateSubjectNamesDropDown(self):
         dataset_name = self.DatasetComboBox.currentText()
         dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
@@ -130,7 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.SubjectComboBox.clear()
         self.SubjectComboBox.addItems(subject_names)
 
-    def __UpdateModalityUI(self):
+    def __updateModalityUI(self):
         if "(anat)" in self.ModlalityComboBox.currentText():
             #session
             self.sessionLabel.show()
@@ -171,7 +169,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
-    def __UpdateBrowseFileUI(self, state):
+    def __updateBrowseFileUI(self, state):
         if state == 0: #unchecked
             self.BrowsePushButton.setText("Browse File")
             self.BrowseLineEdit.setText("")
@@ -181,7 +179,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             print("Error : [__UpdateBrowseFileUI] State not recognized")
 
-    def __BrowseForFileToAdd(self):
+    def __browseForFileToAdd(self):
         if "(anat)" in self.ModlalityComboBox.currentText() and self.IsDicomFolderCheckBox.isChecked():
             folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
             if folderPath:
@@ -191,7 +189,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if file_path:
                 self.BrowseLineEdit.setText(file_path[0])
     
-    def __AddFileToList(self):
+    def __addFileToList(self):
         #Get file name
         file_path = self.BrowseLineEdit.text()
         #Get only the filename
@@ -213,7 +211,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             reconstruction = None
         else:
             print("Error : [__AddFileToList] Modality not recognized")
-
+            
         file = {
             "file_name": file_name,
             "file_path": file_path,
@@ -227,10 +225,36 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.__file_list.append(file)
         self.fileListWidget.addItem(file["file_name"])
 
-        #When click on element in fileListWidget , print the relevant elements in the ui
-        self.fileListWidget.itemClicked.connect(self.__ShowUiElementDetails)
+        # file = {
+        #     "file_name": 'LYONNEURO_2019_LUIv_LEC1.TRC',
+        #     "file_path": '/Users/florian/Documents/Arbeit/CRNL/Data/Database/LOCA_DB/2019/LYONNEURO_2019_LUIv/LYONNEURO_2019_LUIv_LEC1/LYONNEURO_2019_LUIv_LEC1.TRC',
+        #     "modality": 'ieeg (ieeg)',
+        #     "task": 'LEC1',
+        #     "session": 'post',
+        #     "contrast_agent": '',
+        #     "acquisition": '01',
+        #     "reconstruction": ''
+        # }
+        # self.__file_list.append(file)
+        # self.fileListWidget.addItem(file["file_name"])
 
-    def __ShowUiElementDetails(self):
+        # file = {
+        #     "file_name": 'LYONNEURO_2019_LUIv_LEC2.TRC',
+        #     "file_path": '/Users/florian/Documents/Arbeit/CRNL/Data/Database/LOCA_DB/2019/LYONNEURO_2019_LUIv/LYONNEURO_2019_LUIv_LEC2/LYONNEURO_2019_LUIv_LEC2.TRC',
+        #     "modality": 'ieeg (ieeg)',
+        #     "task": 'LEC2',
+        #     "session": 'post',
+        #     "contrast_agent": '',
+        #     "acquisition": '01',
+        #     "reconstruction": ''
+        # }
+        # self.__file_list.append(file)
+        # self.fileListWidget.addItem(file["file_name"])
+
+        #When click on element in fileListWidget , print the relevant elements in the ui
+        self.fileListWidget.itemClicked.connect(self.__showUiElementDetails)
+
+    def __showUiElementDetails(self):
         item = self.fileListWidget.currentItem()
         #Check if item is not None and is in __file_list with key file_name
         if item and item.text() in [file["file_name"] for file in self.__file_list]:
@@ -259,7 +283,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.ReconstructionLabel.setText("Reconstruction :")
             self.FilePathLabel.setText("Path :")
 
-    def __RemoveFileFromList(self):
+    def __removeFileFromList(self):
         #Get clicked item
         item = self.fileListWidget.currentItem()
         #Check if item is not None and is in __file_list with key file_name
@@ -271,33 +295,37 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             #Remove the item from fileListWidget
             self.fileListWidget.takeItem(self.fileListWidget.currentRow())
             #Update UI 
-            self.__ShowUiElementDetails()
+            self.__showUiElementDetails()
         else:
             print("Error : [__RemoveFileFromList] Item not found in __file_list")
 
-    def __StartFileImport(self):
-        #Get root folder
+    def __startFileImport(self):
+        # Get root folder
         root_folder = self.DatasetPathLabel.text()
-        #Get dataset name
+        # Get dataset name
         dataset_name = self.DatasetComboBox.currentText()
-        #Get dataset path
-        dataset_path = root_folder + os.sep + dataset_name
-        #Get subject name
+        # Get dataset path
+        dataset_path = os.path.join(root_folder, dataset_name)
+        # Get subject name
         subject_name = self.SubjectComboBox.currentText()
 
-        #Create worker and thread
+        # Check if a process is already running
+        if hasattr(self, '__worker') and self.__worker.isRunning():
+            print("Import is already in progress")
+            return
+
+        # Create worker
         self.__worker = ImportBidsFilesWorker(dataset_path, subject_name, self.__file_list)
-        self.__thread = QThread()
 
-        # Event From worker and thread
+        # Connect signals
         self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
-        self.__worker.finished.connect(self.__thread.quit)
-        self.__worker.finished.connect(self.__worker.deleteLater)
-        self.__thread.finished.connect(self.__thread.deleteLater)
-        self.__thread.started.connect(self.__worker.Process)
-        self.__worker.finished.connect(lambda: setattr(self, '__isAlreadyRunning', False))
+        self.__worker.finished.connect(self.__onWorkerFinished)
 
-        # Launch Thread and lock possible second launch
-        self.__worker.moveToThread(self.__thread)
-        self.__thread.start()
-        self.__isAlreadyRunning = True
+        # Start the worker thread
+        self.__worker.start()
+
+    def __onWorkerFinished(self):
+        """Display a completion message and handle cleanup after the worker thread finishess"""
+
+        print("File import finished")
+        self.__worker.deleteLater()  # Clean up the worker thread
