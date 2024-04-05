@@ -4,6 +4,7 @@ import json
 import shutil
 import platform
 from pathlib import Path
+from typing import Optional
 
 # Deal with the dependency from PyEEGFormat according to os
 os_name= platform.system()
@@ -25,7 +26,7 @@ else:
     raise Exception(f"Unsupported operating system: {os_name}")
 
 class BidsSubject:
-    def __init__(self, parent_path, subject_id, optional_keys=None):
+    def __init__(self, parent_path: str, subject_id: str, optional_keys:dict = None):
         if not isinstance(parent_path, Path):
             parent_path = Path(parent_path)
         self.__parent_path = parent_path
@@ -45,26 +46,26 @@ class BidsSubject:
         self.__anat_pre_path.mkdir(parents=True, exist_ok=True)
         self.__func_pre_path.mkdir(parents=True, exist_ok=True)
 
-    def get_subject_id(self):
-        return self.__subject_id
+    def get_subject_id(self) -> str:
+        return str(self.__subject_id)
 
-    def get_anat_post_path(self):
+    def get_anat_post_path(self) -> str:
         return str(self.__anat_post_path) + "/"
 
-    def get_func_post_path(self):
+    def get_func_post_path(self) -> str:
         return str(self.__func_post_path) + "/"
 
-    def get_anat_pre_path(self):
+    def get_anat_pre_path(self) -> str:
         return str(self.__anat_pre_path) + "/"
 
-    def get_func_pre_path(self):
+    def get_func_pre_path(self) -> str:
         return str(self.__func_pre_path) + "/"
     
-    def get_optional_keys(self):
+    def get_optional_keys(self) -> dict:
         return self.__optional_keys_dict if self.__optional_keys_dict is not None else {}
 
     @staticmethod
-    def define_bids_functionnal_string(subject_entities):
+    def define_bids_functionnal_string(subject_entities: dict) -> str:
         bids_name = subject_entities["sub"]
         if "ses" in subject_entities and subject_entities["ses"]:
             bids_name += "_ses-" + subject_entities["ses"]
@@ -74,7 +75,7 @@ class BidsSubject:
             bids_name += "_acq-" + subject_entities["acq"]
         return bids_name
 
-    def add_functionnal_file(self, file_path, file_entities):
+    def add_functionnal_file(self, file_path: str, file_entities: dict) -> Optional[str]:
         # Convert file_path to a Path object and get the suffix
         file_path = Path(file_path)
         file_suffix = file_path.suffix.lower()
@@ -83,9 +84,9 @@ class BidsSubject:
 
         # Create new_file_name based on the file_suffix
         if file_suffix == ".trc":
-            new_file_name = str(bids_name_nosuffix) + ".vhdr"
+            new_file_name = bids_name_nosuffix + ".vhdr"
         else:
-            new_file_name = str(bids_name_nosuffix) + file_suffix
+            new_file_name = bids_name_nosuffix + file_suffix
 
         new_file_path = Path(self.get_func_post_path()) / new_file_name
 
@@ -101,8 +102,8 @@ class BidsSubject:
             print("File extension not recognized : ", file_suffix)
             return None
     
-    def generate_events_file(self, eeg_file_path, file_entities):
-        base_file_path = str(self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities))
+    def generate_events_file(self, eeg_file_path: str, file_entities: dict):
+        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
         tsv_file_path = base_file_path + "_events.tsv"
     
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
@@ -116,8 +117,8 @@ class BidsSubject:
                 onset = trigger.Sample() / sampling_frequency
                 writer.writerow([onset, "n/a", trigger.Sample(), trigger.Code(), "n/a", "n/a"])
     
-    def generate_channels_file(self, eeg_file_path, file_entities):
-        base_file_path = str(self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities))
+    def generate_channels_file(self, eeg_file_path: str, file_entities: dict):
+        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
         tsv_file_path = base_file_path + "_channels.tsv"
 
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
@@ -136,8 +137,8 @@ class BidsSubject:
                     electrode_name = re.sub(r'\d+', '', site_name)
                     writer.writerow([site_name, "SEEG", site_unit, lowpass_limit, highpass_limit, "intracranial", electrode_name, sampling_frequency, "n/a", 0, "good", "n/a"])
 
-    def generate_task_file(self, eeg_file_path, file_entities):
-        base_file_path = str(self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities))
+    def generate_task_file(self, eeg_file_path: str, file_entities: dict):
+        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
         json_file_path = base_file_path + "_ieeg.json"
 
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
@@ -184,7 +185,7 @@ class BidsSubject:
             json.dump(data, f, indent=4)
     
     @staticmethod
-    def define_bids_string_nonparametric_structural_mri(subject_entities):
+    def define_bids_string_nonparametric_structural_mri(subject_entities: dict) -> str:
         bids_name = subject_entities["sub"]
         if "ses" in subject_entities and subject_entities["ses"]:
             bids_name += "_ses-" + subject_entities["ses"]
@@ -201,7 +202,7 @@ class BidsSubject:
         
         return bids_name
 
-    def add_anatomical_file(self, file_path, file_struct, modality):
+    def add_anatomical_file(self, file_path: str, file_struct: dict, modality: str):
         if not isinstance(file_path, Path):
             file_path = Path(file_path)
         file_suffix = file_path.suffix
@@ -218,7 +219,7 @@ class BidsSubject:
         else:    
             print("File extension not supported for bids anatomical files : ", file_suffix)
 
-    def delete_bids_file(self, file_full_path):
+    def delete_bids_file(self, file_full_path: str):
         if not isinstance(file_full_path, Path):
             file_full_path = Path(file_full_path)
         if file_full_path.exists():

@@ -1,12 +1,13 @@
 import csv
 import json
-from pathlib import Path
 import shutil
+from pathlib import Path
+from typing import Optional
 
 from core.BidsSubject import BidsSubject
 
 class BidsFolder:
-    def __init__(self, root_path):
+    def __init__(self, root_path: str):
         if not isinstance(root_path, Path):
             root_path = Path(root_path)
         self.__path = root_path
@@ -29,7 +30,7 @@ class BidsFolder:
         derivatives_path = self.__path / "derivatives"
         derivatives_path.mkdir(parents=True, exist_ok=True)
 
-    def generate_empty_dataset_description_file(self, dataset_name, json_file_path):
+    def generate_empty_dataset_description_file(self, dataset_name: str, json_file_path: str):
         dataset_description = {
             "Name": dataset_name,
             "BIDSVersion": "1.2.0",
@@ -45,7 +46,7 @@ class BidsFolder:
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description, f, indent=4)
 
-    def generate_dataset_description_file(self, dataset_description_dict, json_file_path):
+    def generate_dataset_description_file(self, dataset_description_dict: dict, json_file_path: str):
         # Extract values from the received dictionary
         #dataset_desc_json = dataset_description_dict["DatasetDescJSON"]
         dataset_description_dict = {
@@ -64,22 +65,22 @@ class BidsFolder:
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description_dict, f, indent=4)
 
-    def add_bids_subject(self, subject_id, subject_description):
+    def add_bids_subject(self, subject_id: str, subject_description: dict):
         new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)
         return new_subject
     
-    def delete_bids_subject(self, subject_id):
+    def delete_bids_subject(self, subject_id: str):
         subject_to_delete = self.__path / subject_id
         if subject_to_delete.exists():
             shutil.rmtree(subject_to_delete)
         else:
             print("Subject not found")
 
-    def get_bids_subject(self, subject_id):
+    def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
     
-    def generate_participants_tsv(self, participants_tsv_path):
+    def generate_participants_tsv(self, participants_tsv_path: str):
         #get all subjects and make a dict of all their optional keys and remove duplicate
         all_optional_keys = set()
         for subject in self.__bids_subjects:

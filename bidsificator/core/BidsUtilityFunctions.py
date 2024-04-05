@@ -4,7 +4,7 @@ import json
 
 class BidsUtilityFunctions:
     @staticmethod
-    def read_tsv_safely(filename):
+    def read_tsv_safely(filename: str) -> list:
         data = []
         if os.path.exists(filename):
             with open(filename, 'r', newline='') as file:
@@ -18,7 +18,7 @@ class BidsUtilityFunctions:
         return data
     
     @staticmethod
-    def read_json_safely(filename):
+    def read_json_safely(filename: str) -> str:
         json_raw_content = ""
         if os.path.exists(filename):
             with open(filename, 'r') as f:

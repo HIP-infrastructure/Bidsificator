@@ -6,7 +6,7 @@ class ImportBidsFilesWorker(QThread):
     update_progressbar_signal = pyqtSignal(int)
     finished = pyqtSignal()
 
-    def __init__(self, dataset_path, subject_name, file_list):
+    def __init__(self, dataset_path: str, subject_name: str, file_list: list):
         super().__init__()
         self.dataset_path = dataset_path
         self.subject_name = subject_name
