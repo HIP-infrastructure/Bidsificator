@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox
-from PyQt6.QtCore import QStandardPaths
-from PyQt6.QtGui import QFileSystemModel
+from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox, QInputDialog, QTableWidgetItem, QMenu
+from PyQt6.QtCore import QStandardPaths, Qt, QModelIndex
+from PyQt6.QtGui import QFileSystemModel, QAction, QCursor
 
 from core.BidsFolder import BidsFolder
 from forms.MainWindow_ui import Ui_MainWindow
@@ -11,15 +11,22 @@ import os
 class MainWindow(QMainWindow, Ui_MainWindow):
     __file_list = []
     __worker = None
+    __selected_item = None
 
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
+        self.actionNew_Bids_Dataset.triggered.connect(self.__createDataset)
+        self.actionOpen_Bids_Dataset.triggered.connect(self.__openDataset)
+
         # Connect UI
-        self.BrowseDatasetPathPushButton.clicked.connect(self.__browseForFolder)
-        self.CreateDatasetPushButton.clicked.connect(self.__createDataset)
+        #    First tab
         self.CreateSubjectPushButton.clicked.connect(self.__createSubject)
+        self.tableWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tableWidget.customContextMenuRequested.connect(self.ShowSubjectListContextMenu)
+
+        #    Second tab
         self.ModlalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
         self.BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
         self.IsDicomFolderCheckBox.stateChanged.connect(self.__updateBrowseFileUI)
@@ -31,12 +38,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.progressBar.setValue(0)
         self.__updateModalityUI()
 
-    def __browseForFolder(self):
+    def __openDataset(self):
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if folderPath:
             self.__loadTreeViewUI(folderPath)
-            self.DatasetPathLabel.setText(folderPath)
-            self.__updateDatasetNamesDropDown()
+            self.__loadSubjectsInTableWidget()
             self.__updateSubjectNamesDropDown()
 
     def __loadTreeViewUI(self, initial_folder):
@@ -63,23 +69,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fileTreeView.hideColumn(3)
         self.fileTreeView.header().hide()
 
-    def __createDataset(self):
-        dataset_name = self.DatasetLineEdit.text()
-        if dataset_name == "":
-            QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
-            return
+    def __createDataset(self):        
+        folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+        if folderPath:
+            dataset_name = QInputDialog.getText(self, "Dataset Name", "Enter a name for the dataset")[0]
+            if dataset_name == "":
+                QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
+                return
+        
+            dataset_path = folderPath + os.sep + dataset_name
 
-        dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
+            participant_file_path = str(dataset_path) + os.sep +  "participants.tsv"
+            dataset_description_file_path = str(dataset_path) + os.sep +  "dataset_description.json"
 
-        participant_file_path = str(dataset_path) + os.sep +  "participants.tsv"
-        dataset_description_file_path = str(dataset_path) + os.sep +  "dataset_description.json"
+            bids_folder = BidsFolder(dataset_path)
+            bids_folder.create_folders()
+            bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
+            bids_folder.generate_participants_tsv(participant_file_path)
 
-        bids_folder = BidsFolder(dataset_path)
-        bids_folder.create_folders()
-        bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
-        bids_folder.generate_participants_tsv(participant_file_path)
-
-        self.__updateDatasetNamesDropDown()
+            self.__loadTreeViewUI(dataset_path)
+            self.__updateSubjectNamesDropDown()
 
     def __createSubject(self):
         subject_name = self.SubjectLineEdit.text()
@@ -87,12 +96,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
             return
     
-        dataset_name = self.DatasetComboBox.currentText()
+        dataset_name = self.fileTreeView.model().rootDirectory().dirName()
         if dataset_name == "":
             QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
             return
-    
-        dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
+        
+        dataset_path = self.fileTreeView.model().rootDirectory().path()
 
         participant_file_path = str(dataset_path) + "/participants.tsv"
         dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
@@ -102,29 +111,156 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
 
         subject_id = "sub-" + subject_name
-        #TODO : add UI for extra keys for subjects
-        subject_description = {'age' : '123', 'sex' : 'X'}
-        bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
-
+        bids_subject = bids_folder.add_bids_subject(subject_id, subject_description={'age' : '123', 'sex' : 'M/F'})
         bids_folder.generate_participants_tsv(participant_file_path)
 
+        self.__loadSubjectInTableWidget(bids_subject)
         self.__updateSubjectNamesDropDown()
 
-    def __updateDatasetNamesDropDown(self):
-        root_folder = self.DatasetPathLabel.text()
-        # Get all the dir names from root_folder, remove those that starts with . or ..
-        dataset_names = [f for f in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, f)) and not f.startswith(".")]
+    def ShowSubjectListContextMenu(self, event):
+        index = self.tableWidget.indexAt(event)
+        if not index.isValid():
+            return
+        self.__selected_item = self.tableWidget.indexAt(event)
+        print(self.__selected_item.row())
+        print(self.__selected_item.column())
+        canAddKeyBefore = self.__selected_item.column() > 0
 
-        # Add them to DatasetComboBox
-        self.DatasetComboBox.clear()
-        self.DatasetComboBox.addItems(dataset_names)
-        self.DatasetComboBox.currentIndexChanged.connect(self.__updateSubjectNamesDropDown)
+        self.customMenu = QMenu(self)
+        addSubjectUnderAction = self.customMenu.addAction("Add Subject Under Selected")
+        addSubjectAboveAction = self.customMenu.addAction("Add Subject Above Selected")
+        deleteSelectedSubjectAction = self.customMenu.addAction("Remove Selected Subject")
+        self.customMenu.addSeparator()
+        addSelectedKeyAfterAction = self.customMenu.addAction("Add key after Selected")
+        addSelectedKeyAfterAction.triggered.connect(self.addKeyAfterSelected)
+        addKeyBeforeSelectedAction = self.customMenu.addAction("Add key before Selected")
+        addKeyBeforeSelectedAction.setEnabled(canAddKeyBefore)
+        addKeyBeforeSelectedAction.triggered.connect(self.addKeyBeforeSelected)
+        removeSelectedKeyAction = self.customMenu.addAction("Remove Selected key")
+        removeSelectedKeyAction.triggered.connect(self.removeSelectedKey)
+
+        self.customMenu.popup(QCursor.pos())
+
+    def addKeyBeforeSelected(self):        
+        key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
+        if ok and key:
+            self.tableWidget.insertColumn(self.__selected_item.column())
+            keyItem = QTableWidgetItem(key)
+            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tableWidget.setHorizontalHeaderItem(self.__selected_item.column(), keyItem)
+
+            dataset_path = self.fileTreeView.model().rootDirectory().path()
+            bids_folder = BidsFolder(dataset_path)
+            subjects = bids_folder.get_bids_subects()
+            for i, subject in enumerate(subjects):
+                if key not in subject.get_optional_keys():
+                    keyItem = QTableWidgetItem("n/a")
+                    keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.tableWidget.setItem(i, self.__selected_item.column(), keyItem)    
+                    #
+                    subject.add_optional_key(key, keyItem.text())      
+
+            participant_file_path = str(dataset_path) + "/participants.tsv"
+            bids_folder.generate_participants_tsv(participant_file_path)
+
+    def addKeyAfterSelected(self):        
+        key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
+        if ok and key:
+            self.tableWidget.insertColumn(self.__selected_item.column() + 1)
+            keyItem = QTableWidgetItem(key)
+            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tableWidget.setHorizontalHeaderItem(self.__selected_item.column() + 1, keyItem)
+
+            dataset_path = self.fileTreeView.model().rootDirectory().path()
+            bids_folder = BidsFolder(dataset_path)
+            subjects = bids_folder.get_bids_subects()
+            for i, subject in enumerate(subjects):
+                if key not in subject.get_optional_keys():
+                    keyItem = QTableWidgetItem("n/a")
+                    keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.tableWidget.setItem(i, self.__selected_item.column() + 1, keyItem)    
+                    #
+                    subject.add_optional_key(key, keyItem.text())
+            
+            participant_file_path = str(dataset_path) + "/participants.tsv"
+            bids_folder.generate_participants_tsv(participant_file_path)
+    
+    def removeSelectedKey(self):
+        column_to_delete = self.__selected_item.column()
+
+        #remove the key from the subject
+        dataset_path = self.fileTreeView.model().rootDirectory().path()
+        bids_folder = BidsFolder(dataset_path)
+        subjects = bids_folder.get_bids_subects()
+        for i, subject in enumerate(subjects):
+            subject.remove_optional_key(self.tableWidget.horizontalHeaderItem(column_to_delete).text())
+
+        #remove the column corresponding to the selected item
+        self.tableWidget.removeColumn(column_to_delete)
+
+        participant_file_path = str(dataset_path) + "/participants.tsv"
+        bids_folder.generate_participants_tsv(participant_file_path)
+    
+    def __loadSubjectsInTableWidget(self):
+        #cleanup
+        self.tableWidget.setRowCount(0)
+
+        dataset_path = self.fileTreeView.model().rootDirectory().path()
+        bids_folder = BidsFolder(dataset_path)
+        subjects = bids_folder.get_bids_subects()
+
+        #We use a dict in order to keep the order of the elements + uniqueness
+        all_optional_keys = {key: None for subject in subjects for key in subject.get_optional_keys().keys()}
+
+        #Set horizontal header data
+        all_optional_keys = list(all_optional_keys)
+        self.tableWidget.setColumnCount(len(all_optional_keys) + 1)
+        if all_optional_keys:
+            self.tableWidget.setHorizontalHeaderLabels(["Subject ID"] + all_optional_keys)
+        else:
+            self.tableWidget.setHorizontalHeaderLabels(["Subject ID"])
+
+        #Then fill the cells with participants data
+        for subject in subjects:
+            optional_keys = subject.get_optional_keys()
+            rowPosition = self.tableWidget.rowCount()
+            self.tableWidget.insertRow(rowPosition)
+            subjectItem = QTableWidgetItem(subject.get_subject_id())
+            subjectItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tableWidget.setItem(rowPosition, 0, subjectItem)
+            for i, key in enumerate(all_optional_keys):
+                keyItem = QTableWidgetItem(optional_keys.get(key, "n/a"))
+                keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tableWidget.setItem(rowPosition, i + 1, keyItem)
+
+    def __loadSubjectInTableWidget(self, bids_subject):
+        rowPosition = self.tableWidget.rowCount()
+        self.tableWidget.insertRow(rowPosition)
+
+        # We use a dict in order to keep the order of the elements + uniqueness
+        all_optional_keys = {self.tableWidget.horizontalHeaderItem(i).text(): None for i in range(1, self.tableWidget.columnCount())}
+        if not all_optional_keys:
+            all_optional_keys = {key: None for key in bids_subject.get_optional_keys()}
+
+        #Set horizontal header data
+        self.tableWidget.setColumnCount(len(all_optional_keys) + 1)
+        self.tableWidget.setHorizontalHeaderLabels(["Subject ID"] + list(all_optional_keys))
+
+        #Add subject id
+        subjectItem = QTableWidgetItem(bids_subject.get_subject_id())
+        subjectItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tableWidget.setItem(rowPosition, 0, subjectItem)
+        #Add subject optional keys
+        optional_keys = bids_subject.get_optional_keys()
+        for i, key in enumerate(all_optional_keys):
+            keyItem = QTableWidgetItem(optional_keys.get(key, "n/a"))
+            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tableWidget.setItem(rowPosition, i + 1, keyItem)
 
     def __updateSubjectNamesDropDown(self):
-        dataset_name = self.DatasetComboBox.currentText()
-        dataset_path = self.DatasetPathLabel.text() + os.sep + dataset_name
+        dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
-
+        
         self.SubjectComboBox.clear()
         self.SubjectComboBox.addItems(subject_names)
 
@@ -300,12 +436,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             print("Error : [__RemoveFileFromList] Item not found in __file_list")
 
     def __startFileImport(self):
-        # Get root folder
-        root_folder = self.DatasetPathLabel.text()
-        # Get dataset name
-        dataset_name = self.DatasetComboBox.currentText()
         # Get dataset path
-        dataset_path = os.path.join(root_folder, dataset_name)
+        dataset_path =  self.fileTreeView.model().rootDirectory().path()
         # Get subject name
         subject_name = self.SubjectComboBox.currentText()
 

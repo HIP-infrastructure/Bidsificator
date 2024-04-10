@@ -80,6 +80,9 @@ class BidsFolder:
     def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
     
+    def get_bids_subects(self) -> Optional[BidsSubject]:
+        return self.__bids_subjects
+    
     def generate_participants_tsv(self, participants_tsv_path: str):
         #get all subjects and make a dict of all their optional keys and remove duplicate
         all_optional_keys = set()

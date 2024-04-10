@@ -64,6 +64,15 @@ class BidsSubject:
     def get_optional_keys(self) -> dict:
         return self.__optional_keys_dict if self.__optional_keys_dict is not None else {}
 
+    def add_optional_key(self, key, value = "n/a"):
+        self.__optional_keys_dict[key] = value
+
+    def remove_optional_key(self, key):
+        if key in self.__optional_keys_dict:
+            del self.__optional_keys_dict[key]
+        else:
+            print("Key not found : ", key)
+            
     @staticmethod
     def define_bids_functionnal_string(subject_entities: dict) -> str:
         bids_name = subject_entities["sub"]
