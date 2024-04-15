@@ -67,6 +67,12 @@ class BidsSubject:
     def add_optional_key(self, key, value = "n/a"):
         self.__optional_keys_dict[key] = value
 
+    # Add a key at a specific position and keep the order
+    def add_optional_key_at(self, position: int, key, value = "n/a"):
+        items = list(self.__optional_keys_dict.items())
+        items.insert(position, (key, value))
+        self.__optional_keys_dict = dict(items)
+
     def remove_optional_key(self, key):
         if key in self.__optional_keys_dict:
             del self.__optional_keys_dict[key]

@@ -71,11 +71,16 @@ class BidsFolder:
         return new_subject
     
     def delete_bids_subject(self, subject_id: str):
-        subject_to_delete = self.__path / subject_id
-        if subject_to_delete.exists():
-            shutil.rmtree(subject_to_delete)
-        else:
-            print("Subject not found")
+        for subject in self.__bids_subjects:
+            if subject.get_subject_id() == subject_id:
+                #Remove subject from list
+                self.__bids_subjects.remove(subject)
+                #Remove subject folder from disk
+                subject_to_delete = self.__path / subject_id
+                shutil.rmtree(subject_to_delete)
+                print("Subject " + subject_id + " deleted")
+                return 
+        print("Subject " + subject_id + " not found")
 
     def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
@@ -83,16 +88,17 @@ class BidsFolder:
     def get_bids_subects(self) -> Optional[BidsSubject]:
         return self.__bids_subjects
     
-    def generate_participants_tsv(self, participants_tsv_path: str):
+    def generate_participants_tsv(self, participants_tsv_path: str = ""):        
+        if not participants_tsv_path:
+            participants_tsv_path = self.__path / "participants.tsv"
+
         #get all subjects and make a dict of all their optional keys and remove duplicate
-        all_optional_keys = set()
-        for subject in self.__bids_subjects:
-            all_optional_keys.update(subject.get_optional_keys().keys())
-        all_optional_keys = list(all_optional_keys)
+        all_optional_keys = list({key: None for subject in  self.__bids_subjects for key in subject.get_optional_keys().keys()})
 
         #open participants_tsv file and write the header
         with open(participants_tsv_path, 'w', newline='') as f:
             writer = csv.writer(f, delimiter='\t')
+            print(str(["participant_id"] + all_optional_keys))
             writer.writerow(["participant_id"] + all_optional_keys)
             for subject in self.__bids_subjects:
                 row = [subject.get_subject_id()]

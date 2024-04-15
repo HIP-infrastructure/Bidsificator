@@ -8,6 +8,7 @@
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -40,7 +41,7 @@ class Ui_MainWindow(object):
         self.CreateSubjectPushButton.setObjectName("CreateSubjectPushButton")
         self.CreateSubjectLayout.addWidget(self.CreateSubjectPushButton)
         self.gridLayout_2.addLayout(self.CreateSubjectLayout, 0, 0, 1, 1)
-        self.tableWidget = QtWidgets.QTableWidget(parent=self.ParticipantsTab)
+        self.tableWidget = PatientTableWidget(parent=self.ParticipantsTab)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.setColumnCount(0)
         self.tableWidget.setRowCount(0)
@@ -325,3 +326,4 @@ class Ui_MainWindow(object):
         self.actionOpen_Multiple_Bids_Datasets.setText(_translate("MainWindow", "Open Multiple Bids Datasets"))
         self.actionNew_Bids_Dataset.setText(_translate("MainWindow", "New Bids Dataset"))
         self.actionClose.setText(_translate("MainWindow", "Close"))
+from ui.PatientTableWidget import PatientTableWidget
