@@ -57,6 +57,24 @@
               <height>28</height>
              </size>
             </property>
+            <property name="inputMask">
+             <string/>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+            <property name="maxLength">
+             <number>32767</number>
+            </property>
+            <property name="cursorPosition">
+             <number>0</number>
+            </property>
+            <property name="placeholderText">
+             <string>sub-&lt;IDENTIFIER123&gt;</string>
+            </property>
+            <property name="cursorMoveStyle">
+             <enum>Qt::VisualMoveStyle</enum>
+            </property>
            </widget>
           </item>
           <item>
@@ -790,7 +808,7 @@
   <customwidget>
    <class>PatientTableWidget</class>
    <extends>QTableWidget</extends>
-   <header>PatientTableWidget</header>
+   <header>ui.PatientTableWidget</header>
   </customwidget>
  </customwidgets>
  <resources/>

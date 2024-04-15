@@ -48,6 +48,12 @@ class BidsSubject:
 
     def get_subject_id(self) -> str:
         return str(self.__subject_id)
+    
+    def set_subject_id(self, subject_id: str):
+        self.__subject_id = subject_id
+        #rename the folder
+        self.__subject_path.rename(self.__parent_path / self.__subject_id)
+        #TODO : probably will need to check to rename all the files in the folder recursively
 
     def get_anat_post_path(self) -> str:
         return str(self.__anat_post_path) + "/"

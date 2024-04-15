@@ -22,7 +22,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Connect UI
         #    First tab
         self.CreateSubjectPushButton.clicked.connect(self.__createSubject)
-
+        self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         #    Second tab
         self.ModlalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
         self.BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
@@ -34,6 +34,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Trigger UI for the first time
         self.progressBar.setValue(0)
         self.__updateModalityUI()
+
+    def debug(self, oldPos, newPos):
+        print("Old position : " + str(oldPos))
+        print("New position : " + str(newPos))
 
     def __createDataset(self):        
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
@@ -51,7 +55,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             bids_folder.create_folders()
             bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
             bids_folder.generate_participants_tsv()
-            
+
             self.__loadTreeViewUI(dataset_path)
             self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
             self.__updateSubjectNamesDropDown()
@@ -93,8 +97,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         
         subject_name = self.SubjectLineEdit.text()
-        if subject_name == "":
+        if not subject_name:
             QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
+            return
+        
+        if not subject_name.startswith("sub-"):
+            QMessageBox.warning(self, "Subject Name not valid", "Subject name should start with 'sub-'")
             return
         
         self.tableWidget.CreateSubjectInTableWidget(subject_name)

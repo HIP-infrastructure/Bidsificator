@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QMenu, QInputDialog, QTableWidgetItem, QMenu, QTreeView, QMessageBox
+from PyQt6.QtWidgets import QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QMenu, QInputDialog, QTableWidgetItem, QMenu, QMessageBox
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
 
@@ -7,6 +7,7 @@ from core.BidsFolder import BidsFolder
 class PatientTableWidget(QTableWidget):
     __selected_item = None
     __bids_folder = None
+    __previous_cell_text = None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -14,6 +15,28 @@ class PatientTableWidget(QTableWidget):
         self.horizontalHeader().customContextMenuRequested.connect(self.ShowHorizontalContextMenu)
         self.verticalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.verticalHeader().customContextMenuRequested.connect(self.ShowVerticalContextMenu)
+
+    def __connectTableWidget(self):
+        self.itemClicked.connect(self.ItemClicked)
+        self.itemChanged.connect(self.ItemChanged)
+
+    def __disconnectTableWidget(self):
+        """
+        Disconnects the `itemClicked` and `itemChanged` signals from their respective slots.
+        This method attempts to disconnect the `itemClicked` signal from the `ItemClicked` slot and the `itemChanged` signal from the `ItemChanged` slot. 
+        If a signal is not connected to its slot, a `TypeError` is raised and caught, allowing the method to continue.
+        
+        Raises:
+            TypeError: If a signal is not connected to its slot. This exception is caught and does not interrupt the method.
+        """
+        try:
+            self.itemClicked.disconnect(self.ItemClicked)
+        except TypeError:
+            pass   
+        try:
+            self.itemChanged.disconnect(self.ItemChanged)
+        except TypeError:
+            pass
 
     def ShowHorizontalContextMenu(self, event):
         index = self.indexAt(event)
@@ -75,6 +98,7 @@ class PatientTableWidget(QTableWidget):
         else:
             self.setHorizontalHeaderLabels(["Subject ID"])
 
+        self.__disconnectTableWidget()
         #Then fill the cells with participants data
         for subject in subjects:
             optional_keys = subject.get_optional_keys()
@@ -87,6 +111,7 @@ class PatientTableWidget(QTableWidget):
                 keyItem = QTableWidgetItem(optional_keys.get(key, "n/a"))
                 keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.setItem(rowPosition, i + 1, keyItem)
+        self.__connectTableWidget()
 
     def CreateSubjectInTableWidget(self,subject_name: str):
         subject_description = self.GetSubjectsKeysFromTable()
@@ -95,7 +120,7 @@ class PatientTableWidget(QTableWidget):
             subject_description = {'age' : '123', 'sex' : 'M/F'}
         print("subject_description after check not: " + str(subject_description))
 
-        bids_subject = self.__bids_folder.add_bids_subject("sub-" + subject_name, subject_description)
+        bids_subject = self.__bids_folder.add_bids_subject(subject_name, subject_description)
         self.__bids_folder.generate_participants_tsv()
 
         #insert a new row
@@ -110,6 +135,7 @@ class PatientTableWidget(QTableWidget):
         else:
             self.setHorizontalHeaderLabels(["Subject ID"])
 
+        self.__disconnectTableWidget()
         #Add subject id
         subjectItem = QTableWidgetItem(bids_subject.get_subject_id())
         subjectItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -119,6 +145,7 @@ class PatientTableWidget(QTableWidget):
             keyItem = QTableWidgetItem(subject_description.get(key, "n/a"))
             keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setItem(rowPosition, i + 1, keyItem)
+        self.__connectTableWidget()
 
     def AddKeyBeforeSelected(self):        
         key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
@@ -162,20 +189,23 @@ class PatientTableWidget(QTableWidget):
     
     def RemoveSelectedKey(self):
         column_to_delete = self.__selected_item.column()
-        subjects = self.__bids_folder.get_bids_subects()
-        for subject in subjects:
-            subject.remove_optional_key(self.horizontalHeaderItem(column_to_delete).text())
+        key_to_delete = self.horizontalHeaderItem(column_to_delete).text()
+        
+        return_value = QMessageBox.warning(self, "Delete Key", "Are you sure you want to delete the key " + key_to_delete + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if return_value == QMessageBox.StandardButton.Yes:
+            #Remove for each subject in the data structures
+            subjects = self.__bids_folder.get_bids_subects()
+            for subject in subjects:
+                subject.remove_optional_key(key_to_delete)
 
-        #remove the column corresponding to the selected item
-        self.removeColumn(column_to_delete)
+            #remove the column corresponding to the selected item
+            self.removeColumn(column_to_delete)
 
-        #update the participants.tsv file
-        self.__bids_folder.generate_participants_tsv()
+            #update the participants.tsv file
+            self.__bids_folder.generate_participants_tsv()
 
     def DeleteSelectedSubject(self):
         row_to_delete = self.__selected_item.row()
-        
-        #remove in the datastructure
         subject_id = self.item(row_to_delete, 0).text()
 
         return_value = QMessageBox.warning(self, "Delete Subject", "Are you sure you want to delete the subject " + subject_id + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -186,3 +216,24 @@ class PatientTableWidget(QTableWidget):
             self.removeRow(row_to_delete)
             #update the participants.tsv file
             self.__bids_folder.generate_participants_tsv()
+
+    def ItemChanged(self, item):
+        print("Item changed")
+        print("row: " + str(item.row()) + " column: " + str(item.column()))
+        print("text: " + item.text())
+        if item.column() == 0:
+            subject_id = self.__previous_cell_text
+            subject = self.__bids_folder.get_bids_subject(subject_id)
+            subject.set_subject_id(item.text())
+            self.__bids_folder.generate_participants_tsv()
+        else:
+            subject_id = self.item(item.row(), 0).text()
+            key = self.horizontalHeaderItem(item.column()).text()
+            self.__bids_folder.get_bids_subject(subject_id).add_optional_key(key, item.text())
+            self.__bids_folder.generate_participants_tsv()
+
+    def ItemClicked(self, item):
+        print("Current item changed")
+        print("row: " + str(item.row()) + " column: " + str(item.column()))
+        print("text: " + item.text())
+        self.__previous_cell_text = item.text()

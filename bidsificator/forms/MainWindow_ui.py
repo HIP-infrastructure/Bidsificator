@@ -33,6 +33,11 @@ class Ui_MainWindow(object):
         self.SubjectLineEdit = QtWidgets.QLineEdit(parent=self.ParticipantsTab)
         self.SubjectLineEdit.setMinimumSize(QtCore.QSize(0, 28))
         self.SubjectLineEdit.setMaximumSize(QtCore.QSize(16777215, 28))
+        self.SubjectLineEdit.setInputMask("")
+        self.SubjectLineEdit.setText("")
+        self.SubjectLineEdit.setMaxLength(32767)
+        self.SubjectLineEdit.setCursorPosition(0)
+        self.SubjectLineEdit.setCursorMoveStyle(QtCore.Qt.CursorMoveStyle.VisualMoveStyle)
         self.SubjectLineEdit.setObjectName("SubjectLineEdit")
         self.CreateSubjectLayout.addWidget(self.SubjectLineEdit)
         self.CreateSubjectPushButton = QtWidgets.QPushButton(parent=self.ParticipantsTab)
@@ -291,6 +296,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "Bidsificator"))
+        self.SubjectLineEdit.setPlaceholderText(_translate("MainWindow", "sub-<IDENTIFIER123>"))
         self.CreateSubjectPushButton.setText(_translate("MainWindow", "Create Subject"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.ParticipantsTab), _translate("MainWindow", "Participants"))
         self.Subjectlabel.setText(_translate("MainWindow", "Subject"))
