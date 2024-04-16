@@ -35,10 +35,14 @@ def processBidsFiles(conn, dataset_path: str, subject_name: str, file_list: list
         # Process file based on its modality
         modality = file.get("modality", "")
         if modality == "ieeg (ieeg)":
-            new_file_path = bids_subject.add_functionnal_file(file_path, entities)
-            bids_subject.generate_events_file(new_file_path, entities)
-            bids_subject.generate_channels_file(new_file_path, entities)
-            bids_subject.generate_task_file(new_file_path, entities)
+            try:
+                new_file_path = bids_subject.add_functionnal_file(file_path, entities)
+                bids_subject.generate_events_file(new_file_path, entities)
+                bids_subject.generate_channels_file(new_file_path, entities)
+                bids_subject.generate_task_file(new_file_path, entities)
+            except Exception as e:
+                print(f"Error processing file {file_path}: {e}")
+                print(f"Skipping file")
         elif modality in anatomical_modalities:
             #If it's an anat folder, probably need to convert 
             if os.path.isdir(file_path):
@@ -50,7 +54,7 @@ def processBidsFiles(conn, dataset_path: str, subject_name: str, file_list: list
                     bids_subject.add_anatomical_file(file_path, entities, str(modality).replace(" (anat)", ""))
                     os.remove(file_path)
             else:
-                bids_subject.add_anatomical_file(file_path, file)
+                bids_subject.add_anatomical_file(file_path, entities, str(modality).replace(" (anat)", ""))
             print("adding anatomical file")
         else:
             print("modality not recognized : ", modality)

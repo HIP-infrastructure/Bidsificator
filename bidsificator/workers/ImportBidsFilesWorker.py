@@ -11,7 +11,7 @@ class ImportBidsFilesWorker(QThread):
         self.dataset_path = dataset_path
         self.subject_name = subject_name
         self.file_list = file_list
-        self.anatomical_modalities = {"T1w (anat)", "T2w (anat)", "T1rho (anat)", "T2rho (anat)", "FLAIR (anat)"}
+        self.anatomical_modalities = {"T1w (anat)", "T2w (anat)", "T1rho (anat)", "T2rho (anat)", "FLAIR (anat)", "ct (anat)"}
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()

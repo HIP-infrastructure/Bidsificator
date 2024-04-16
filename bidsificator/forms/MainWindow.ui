@@ -735,17 +735,17 @@
             </item>
             <item>
              <property name="text">
+              <string>ct (anat)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
               <string>ieeg (ieeg)</string>
              </property>
             </item>
             <item>
              <property name="text">
               <string>photo (ieeg)</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>ct (ct)</string>
              </property>
             </item>
            </widget>
