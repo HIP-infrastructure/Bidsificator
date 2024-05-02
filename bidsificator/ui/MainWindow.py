@@ -112,14 +112,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
         
+        self.SubjectComboBox.currentTextChanged.connect(self.__updateSubjectDetails)
         self.SubjectComboBox.clear()
         self.SubjectComboBox.addItems(subject_names)
+
+    def __updateSubjectDetails(self):
+        dataset_path = self.fileTreeView.model().rootDirectory().path()
+        subject_name = self.SubjectComboBox.currentText()
+        subject_path = os.path.join(dataset_path, subject_name)
+
+        session_names = [f for f in os.listdir(subject_path) if os.path.isdir(os.path.join(subject_path, f)) and not f.startswith(".") and f.startswith("ses-")]
+        self.sessionComboBox.clear()
+        self.sessionComboBox.addItems(session_names)
 
     def __updateModalityUI(self):
         if "(anat)" in self.ModlalityComboBox.currentText():
             #session
             self.sessionLabel.show()
-            self.sessionLineEdit.show()
+            self.sessionComboBox.show()
             #task
             self.taskLabel.hide()
             self.taskLineEdit.hide()
@@ -137,7 +147,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         elif "(ieeg)" in self.ModlalityComboBox.currentText():
             #session
             self.sessionLabel.show()
-            self.sessionLineEdit.show()
+            self.sessionComboBox.show()
             #task
             self.taskLabel.show()
             self.taskLineEdit.show()
@@ -186,13 +196,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #According to modality get the task and relevant elements from ui 
         if "(anat)" in modality:
             task = None
-            session = self.sessionLineEdit.text()
+            session = self.sessionComboBox.text()
             contrast_agent = self.contrastAgentLineEdit.text()
             acquisition = self.acquisitionLineEdit.text()
             reconstruction = self.reconstructionLineEdit.text()
         elif "(ieeg)" in modality:
             task = self.taskLineEdit.text()
-            session = self.sessionLineEdit.text()
+            session = self.sessionComboBox.text()
             contrast_agent = None
             acquisition = self.acquisitionLineEdit.text()
             reconstruction = None
