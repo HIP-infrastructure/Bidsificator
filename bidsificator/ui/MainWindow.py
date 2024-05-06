@@ -5,6 +5,7 @@ from PyQt6.QtGui import QFileSystemModel, QAction, QCursor
 from core.BidsFolder import BidsFolder
 from forms.MainWindow_ui import Ui_MainWindow
 from workers.ImportBidsFilesWorker import ImportBidsFilesWorker
+from bids_validator import BIDSValidator
 
 import os
 
@@ -30,6 +31,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AddPushButton.clicked.connect(self.__addFileToList)
         self.RemovePushButton.clicked.connect(self.__removeFileFromList)
         self.StartImportPushButton.clicked.connect(self.__startFileImport)
+        self.BidsValidatorPushButton.clicked.connect(self.__validateBidsDataset)
 
         # Trigger UI for the first time
         self.progressBar.setValue(0)
@@ -316,6 +318,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Start the worker thread
         self.__worker.start()
+
+    def __validateBidsDataset(self):
+        if not self.fileTreeView.model(): 
+            QMessageBox.warning(self, "No Dataset found", "Please load a Dataset first")
+            return 
+        
+        dataset_path =  self.fileTreeView.model().rootDirectory().path()
+        subject_name = "/" + self.SubjectComboBox.currentText()
+        print("Validating BIDS dataset at " + subject_name)
+
+        # Validate BIDS dataset at /subject_name
+        validator = BIDSValidator()
+
+        #Get all files path of subject_name except files starting with . (hidden files)
+        subject_path = dataset_path + subject_name
+        subject_files = [os.path.join(dp, f) for dp, dn, filenames in os.walk(subject_path) for f in filenames if not f.startswith(".")]
+        #strip dataset_path from the file path
+        subject_files = [file.replace(dataset_path, "") for file in subject_files]
+
+        res = True
+        for file in subject_files:
+            res = res and validator.is_bids(file)
+
+        if res:
+            QMessageBox.information(self, "Dataset compliant", "Dataset is BIDS compliant")
+        else:
+            QMessageBox.warning(self, "Dataset not compliant", "Dataset is not BIDS compliant")
 
     def __onWorkerFinished(self):
         """Display a completion message and handle cleanup after the worker thread finishess"""
