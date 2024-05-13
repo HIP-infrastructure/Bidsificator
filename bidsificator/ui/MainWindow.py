@@ -12,6 +12,8 @@ import os
 class MainWindow(QMainWindow, Ui_MainWindow):
     __file_list = []
     __worker = None
+    _item_memory = None
+    updateLock = False
 
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -25,11 +27,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.CreateSubjectPushButton.clicked.connect(self.__createSubject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         #    Second tab
-        self.ModlalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
-        self.BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
-        self.IsDicomFolderCheckBox.stateChanged.connect(self.__updateBrowseFileUI)
-        self.AddPushButton.clicked.connect(self.__addFileToList)
-        self.RemovePushButton.clicked.connect(self.__removeFileFromList)
+        #       Add/Remove file
+        self.AR_ModalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
+        self.AR_BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
+        self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.__updateBrowseFileUI)
+        self.AR_AddPushButton.clicked.connect(self.__addFileToList)
+        self.AR_RemovePushButton.clicked.connect(self.__removeFileFromList)
+        #       View/Edit file
+        self.VE_FileListWidget.itemClicked.connect(self.__showUiElementDetails)
+        self.VE_FileListWidget.itemSelectionChanged.connect(self.__showUiElementDetails)
+        
+        self.VE_ModalityComboBox.currentTextChanged.connect(self.textEdited)
+        self.VE_SessionComboBox.currentTextChanged.connect(self.textEdited)
+        self.VE_TaskLineEdit.textEdited.connect(self.textEdited)
+        self.VE_TaskLineEdit.editingFinished.connect(self.editingFinished)
+        self.VE_ContrastAgentLineEdit.textEdited.connect(self.textEdited)
+        self.VE_ContrastAgentLineEdit.editingFinished.connect(self.editingFinished)
+        self.VE_AcquisitionLineEdit.textEdited.connect(self.textEdited)
+        self.VE_AcquisitionLineEdit.editingFinished.connect(self.editingFinished)
+        self.VE_ReconstructionLineEdit.textEdited.connect(self.textEdited)
+        self.VE_ReconstructionLineEdit.editingFinished.connect(self.editingFinished)
+        self.VE_PathLineEdit.textEdited.connect(self.textEdited)
+        self.VE_PathLineEdit.editingFinished.connect(self.editingFinished)
+
+        self.VE_EditPushButton.clicked.connect(self.__ToggleEditFields)
+        self.VE_CancelPushButton.clicked.connect(self.__ResetEditFieldsFromMemory)
+        #       Buttons           
         self.StartImportPushButton.clicked.connect(self.__startFileImport)
         self.BidsValidatorPushButton.clicked.connect(self.__validateBidsDataset)
 
@@ -37,9 +60,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.progressBar.setValue(0)
         self.__updateModalityUI()
 
-    def debug(self, oldPos, newPos):
-        print("Old position : " + str(oldPos))
-        print("New position : " + str(newPos))
+    def textEdited(self, text):
+        #print("Text edited : " + text)
+        if not self.updateLock:
+            self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
+
+    def editingFinished(self):
+        #print("Editing finished")
+        if not self.updateLock:
+            self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
 
     def __createDataset(self):        
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
@@ -114,100 +143,109 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
         
-        self.SubjectComboBox.currentTextChanged.connect(self.__updateSubjectDetails)
-        self.SubjectComboBox.clear()
-        self.SubjectComboBox.addItems(subject_names)
+        self.AR_SubjectComboBox.currentTextChanged.connect(self.__updateSubjectDetails)
+        self.AR_SubjectComboBox.clear()
+        self.AR_SubjectComboBox.addItems(subject_names)
 
     def __updateSubjectDetails(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
-        subject_name = self.SubjectComboBox.currentText()
+        subject_name = self.AR_SubjectComboBox.currentText()
         subject_path = os.path.join(dataset_path, subject_name)
 
         session_names = [f for f in os.listdir(subject_path) if os.path.isdir(os.path.join(subject_path, f)) and not f.startswith(".") and f.startswith("ses-")]
-        self.sessionComboBox.clear()
-        self.sessionComboBox.addItems(session_names)
+        self.AR_SessionComboBox.clear()
+        self.AR_SessionComboBox.addItems(session_names)
+        self.VE_SessionComboBox.clear()
+        self.VE_SessionComboBox.addItems(session_names)
 
     def __updateModalityUI(self):
-        if "(anat)" in self.ModlalityComboBox.currentText():
+        if "(anat)" in self.AR_ModalityComboBox.currentText():
             #session
-            self.sessionLabel.show()
-            self.sessionComboBox.show()
+            self.AR_SessionLabel.show()
+            self.AR_SessionComboBox.show()
             #task
-            self.taskLabel.hide()
-            self.taskLineEdit.hide()
+            self.AR_TaskLabel.hide()
+            self.AR_TaskLineEdit.hide()
             #contrast
-            self.contrastAgentLabel.show()
-            self.contrastAgentLineEdit.show()
+            self.AR_ContrastAgentLabel.show()
+            self.AR_ContrastAgentLineEdit.show()
             #acquisition
-            self.acquisitionLabel.show()
-            self.acquisitionLineEdit.show()
+            self.AR_AcquisitionLabel.show()
+            self.AR_AcquisitionLineEdit.show()
             #reconstruction
-            self.reconstructionLabel.show()
-            self.reconstructionLineEdit.show()
+            self.AR_ReconstructionLabel.show()
+            self.AR_ReconstructionLineEdit.show()
             #deal with folder/file import
-            self.IsDicomFolderCheckBox.setEnabled(True)
-        elif "(ieeg)" in self.ModlalityComboBox.currentText():
+            self.AR_IsDicomFolderCheckBox.setEnabled(True)
+        elif "(ieeg)" in self.AR_ModalityComboBox.currentText():
             #session
-            self.sessionLabel.show()
-            self.sessionComboBox.show()
+            self.AR_SessionLabel.show()
+            self.AR_SessionComboBox.show()
             #task
-            self.taskLabel.show()
-            self.taskLineEdit.show()
+            self.AR_TaskLabel.show()
+            self.AR_TaskLineEdit.show()
             #contrast
-            self.contrastAgentLabel.hide()
-            self.contrastAgentLineEdit.hide()
+            self.AR_ContrastAgentLabel.hide()
+            self.AR_ContrastAgentLineEdit.hide()
             #acquisition
-            self.acquisitionLabel.show()
-            self.acquisitionLineEdit.show()
+            self.AR_AcquisitionLabel.show()
+            self.AR_AcquisitionLineEdit.show()
             #reconstruction
-            self.reconstructionLabel.hide()
-            self.reconstructionLineEdit.hide()
+            self.AR_ReconstructionLabel.hide()
+            self.AR_ReconstructionLineEdit.hide()
             #deal with folder/file import
-            self.IsDicomFolderCheckBox.setChecked(False)
-            self.IsDicomFolderCheckBox.setEnabled(False)
+            self.AR_IsDicomFolderCheckBox.setChecked(False)
+            self.AR_IsDicomFolderCheckBox.setEnabled(False)
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
     def __updateBrowseFileUI(self, state):
         if state == 0: #unchecked
-            self.BrowsePushButton.setText("Browse File")
-            self.BrowseLineEdit.setText("")
+            self.AR_BrowsePushButton.setText("Browse File")
+            self.AR_BrowseLineEdit.setText("")
         elif state == 2: #checked
-            self.BrowsePushButton.setText("Browse Folder")
-            self.BrowseLineEdit.setText("")
+            self.AR_BrowsePushButton.setText("Browse Folder")
+            self.AR_BrowseLineEdit.setText("")
         else:
             print("Error : [__UpdateBrowseFileUI] State not recognized")
 
     def __browseForFileToAdd(self):
-        if "(anat)" in self.ModlalityComboBox.currentText() and self.IsDicomFolderCheckBox.isChecked():
+        if "(anat)" in self.AR_ModalityComboBox.currentText() and self.AR_IsDicomFolderCheckBox.isChecked():
             folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
             if folderPath:
-                self.BrowseLineEdit.setText(folderPath)
+                self.AR_BrowseLineEdit.setText(folderPath)
         else:
             file_path = QFileDialog.getOpenFileName(self, "Select a file", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
             if file_path:
-                self.BrowseLineEdit.setText(file_path[0])
+                self.AR_BrowseLineEdit.setText(file_path[0])
     
     def __addFileToList(self):
+        #Need to validate focus for ui elements in order to get all the values
+        self.AR_TaskLineEdit.clearFocus()
+        self.AR_SessionComboBox.clearFocus()
+        self.AR_ContrastAgentLineEdit.clearFocus()
+        self.AR_AcquisitionLineEdit.clearFocus()
+        self.AR_ReconstructionLineEdit.clearFocus()
+        
         #Get file name
-        file_path = self.BrowseLineEdit.text()
+        file_path = self.AR_BrowseLineEdit.text()
         #Get only the filename
         file_name = os.path.basename(file_path)
         #Get the modality
-        modality = self.ModlalityComboBox.currentText()
+        modality = self.AR_ModalityComboBox.currentText()
         #According to modality get the task and relevant elements from ui 
         if "(anat)" in modality:
-            task = None
-            session = self.sessionComboBox.text()
-            contrast_agent = self.contrastAgentLineEdit.text()
-            acquisition = self.acquisitionLineEdit.text()
-            reconstruction = self.reconstructionLineEdit.text()
+            task = ""
+            session = self.AR_SessionComboBox.currentText()
+            contrast_agent = self.AR_ContrastAgentLineEdit.text()
+            acquisition = self.AR_AcquisitionLineEdit.text()
+            reconstruction = self.AR_ReconstructionLineEdit.text()
         elif "(ieeg)" in modality:
-            task = self.taskLineEdit.text()
-            session = self.sessionComboBox.text()
-            contrast_agent = None
-            acquisition = self.acquisitionLineEdit.text()
-            reconstruction = None
+            task = self.AR_TaskLineEdit.text()
+            session = self.AR_SessionComboBox.currentText()
+            contrast_agent = ""
+            acquisition = self.AR_AcquisitionLineEdit.text()
+            reconstruction = ""
         else:
             print("Error : [__AddFileToList] Modality not recognized")
             
@@ -216,93 +254,158 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "file_path": file_path,
             "modality": modality,
             "task": task,
-            "session": session,
+            "session": session.removeprefix("ses-"),
             "contrast_agent": contrast_agent,
             "acquisition": acquisition,
             "reconstruction": reconstruction
         }
-        self.__file_list.append(file)
-        self.fileListWidget.addItem(file["file_name"])
 
-        # file = {
-        #     "file_name": 'LYONNEURO_2019_LUIv_LEC1.TRC',
-        #     "file_path": '/Users/florian/Documents/Arbeit/CRNL/Data/Database/LOCA_DB/2019/LYONNEURO_2019_LUIv/LYONNEURO_2019_LUIv_LEC1/LYONNEURO_2019_LUIv_LEC1.TRC',
-        #     "modality": 'ieeg (ieeg)',
-        #     "task": 'LEC1',
-        #     "session": 'post',
-        #     "contrast_agent": '',
-        #     "acquisition": '01',
-        #     "reconstruction": ''
-        # }
-        # self.__file_list.append(file)
-        # self.fileListWidget.addItem(file["file_name"])
-
-        # file = {
-        #     "file_name": 'LYONNEURO_2019_LUIv_LEC2.TRC',
-        #     "file_path": '/Users/florian/Documents/Arbeit/CRNL/Data/Database/LOCA_DB/2019/LYONNEURO_2019_LUIv/LYONNEURO_2019_LUIv_LEC2/LYONNEURO_2019_LUIv_LEC2.TRC',
-        #     "modality": 'ieeg (ieeg)',
-        #     "task": 'LEC2',
-        #     "session": 'post',
-        #     "contrast_agent": '',
-        #     "acquisition": '01',
-        #     "reconstruction": ''
-        # }
-        # self.__file_list.append(file)
-        # self.fileListWidget.addItem(file["file_name"])
-
-        #When click on element in fileListWidget , print the relevant elements in the ui
-        self.fileListWidget.itemClicked.connect(self.__showUiElementDetails)
+        if file not in self.__file_list:
+            self.__file_list.append(file)
+            self.VE_FileListWidget.addItem(file["file_name"])
+        else:
+            QMessageBox.warning(self, "File already added", "This file has already been added to the list")
 
     def __showUiElementDetails(self):
-        item = self.fileListWidget.currentItem()
-        #Check if item is not None and is in __file_list with key file_name
-        if item and item.text() in [file["file_name"] for file in self.__file_list]:
-            #Get the file from __file_list and check if element is found
-            file = [file for file in self.__file_list if file["file_name"] == item.text()][0]
-
+        self.updateLock = True
+        selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
+        if len(selectedIndexes) > 0:
+            file = self.__file_list[selectedIndexes[0].row()]
+            self._item_memory = file
             if "(anat)" in file["modality"]:
-                self.SessionLabel.setText("Session : " + file["session"])
-                self.TaskLabel.setText("Task :")
-                self.ContrastAgentLabel.setText("Contrast Agent : " + file["contrast_agent"])
-                self.AcquisitionLabel.setText("Acquisition : " + file["acquisition"])
-                self.ReconstructionLabel.setText("Reconstruction : " + file["reconstruction"])
-                self.FilePathLabel.setText("Path : " + file["file_path"])
+                self.setComboBoxText(self.VE_ModalityComboBox, file["modality"])
+                self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + file["session"]))
+                self.VE_TaskLineEdit.setText("")
+                self.VE_ContrastAgentLineEdit.setText(file["contrast_agent"])
+                self.VE_AcquisitionLineEdit.setText(file["acquisition"])
+                self.VE_ReconstructionLineEdit.setText(file["reconstruction"])
+                self.VE_PathLineEdit.setText(file["file_path"])
             elif "(ieeg)" in file["modality"]:
-                self.SessionLabel.setText("Session : " + file["session"])
-                self.TaskLabel.setText("Task : " + file["task"])
-                self.ContrastAgentLabel.setText("Contrast Agent :")
-                self.AcquisitionLabel.setText("Acquisition : " + file["acquisition"])
-                self.ReconstructionLabel.setText("Reconstruction :")
-                self.FilePathLabel.setText("Path : " + file["file_path"])
+                self.setComboBoxText(self.VE_ModalityComboBox, file["modality"])
+                self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + file["session"]))
+                self.VE_TaskLineEdit.setText(file["task"])
+                self.VE_ContrastAgentLineEdit.setText("")
+                self.VE_AcquisitionLineEdit.setText(file["acquisition"])
+                self.VE_ReconstructionLineEdit.setText("")
+                self.VE_PathLineEdit.setText(file["file_path"])
         else:
-            self.SessionLabel.setText("Session :")
-            self.TaskLabel.setText("Task :")
-            self.ContrastAgentLabel.setText("Contrast Agent :")
-            self.AcquisitionLabel.setText("Acquisition :")
-            self.ReconstructionLabel.setText("Reconstruction :")
-            self.FilePathLabel.setText("Path :")
+            self.setComboBoxText(self.VE_ModalityComboBox, "")
+            self.setComboBoxText(self.VE_SessionComboBox, "")
+            self.VE_TaskLineEdit.setText("")
+            self.VE_ContrastAgentLineEdit.setText("")
+            self.VE_AcquisitionLineEdit.setText("")
+            self.VE_ReconstructionLineEdit.setText("")
+            self.VE_PathLineEdit.setText("")            
+        self.updateLock = False
 
     def __removeFileFromList(self):
-        #Get clicked item
-        item = self.fileListWidget.currentItem()
-        #Check if item is not None and is in __file_list with key file_name
-        if item and item.text() in [file["file_name"] for file in self.__file_list]:
-            #Get the file from __file_list and check if element is found
-            file = [file for file in self.__file_list if file["file_name"] == item.text()][0]
+        selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
+        if len(selectedIndexes) > 0:
+            file = self.__file_list[selectedIndexes[0].row()]
             #Remove the file from __file_list
             self.__file_list.remove(file)
             #Remove the item from fileListWidget
-            self.fileListWidget.takeItem(self.fileListWidget.currentRow())
+            self.VE_FileListWidget.takeItem(self.VE_FileListWidget.currentRow())
             #Update UI 
             self.__showUiElementDetails()
         else:
             print("Error : [__RemoveFileFromList] Item not found in __file_list")
 
+    def __ToggleEditFields(self):
+        newStatus = not self.VE_TaskLineEdit.isEnabled()
+        if not newStatus and self.__WasUiElementModified():
+            index = self.__file_list.index(self._item_memory)
+            file = {
+                "file_name": self.VE_FileListWidget.currentItem().text(),
+                "file_path": self.VE_PathLineEdit.text(),
+                "modality": self.VE_ModalityComboBox.currentText(),
+                "task": self.VE_TaskLineEdit.text(),
+                "session": self.VE_SessionComboBox.currentText(),
+                "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
+                "acquisition": self.VE_AcquisitionLineEdit.text(),
+                "reconstruction": self.VE_ReconstructionLineEdit.text()
+            }
+            self.__file_list[index] = file
+            self._item_memory = file                
+
+        newStatusLabel = "Editing" if newStatus else "Edit"
+        self.VE_EditPushButton.setText(newStatusLabel)
+        self.VE_FileListWidget.setEnabled(not newStatus)
+
+        self.VE_ModalityComboBox.setEnabled(newStatus)
+        self.VE_SessionComboBox.setEnabled(newStatus)
+        self.VE_TaskLineEdit.setEnabled(newStatus)
+        self.VE_ContrastAgentLineEdit.setEnabled(newStatus)
+        self.VE_AcquisitionLineEdit.setEnabled(newStatus)
+        self.VE_ReconstructionLineEdit.setEnabled(newStatus)
+        self.VE_PathLineEdit.setEnabled(newStatus)
+
+    def __ResetEditFieldsFromMemory(self):
+        self.setComboBoxText(self.VE_ModalityComboBox, self._item_memory["modality"])
+        self.setComboBoxText(self.VE_SessionComboBox, self._item_memory["session"])
+        self.VE_TaskLineEdit.setText(self._item_memory['task'])
+        self.VE_ContrastAgentLineEdit.setText(self._item_memory['contrast_agent'])
+        self.VE_AcquisitionLineEdit.setText(self._item_memory['acquisition'])
+        self.VE_ReconstructionLineEdit.setText(self._item_memory['reconstruction'])
+        self.VE_PathLineEdit.setText(self._item_memory['file_path'])
+        #Clear focus to trigger editingFinished
+        self.VE_ModalityComboBox.clearFocus()
+        self.VE_SessionComboBox.clearFocus()
+        self.VE_TaskLineEdit.clearFocus()
+        self.VE_ContrastAgentLineEdit.clearFocus()
+        self.VE_AcquisitionLineEdit.clearFocus()
+        self.VE_ReconstructionLineEdit.clearFocus()
+        self.VE_PathLineEdit.clearFocus()
+
+    def __WasUiElementModified(self):
+        if not self._item_memory:
+            return False
+        
+        file = {
+            "file_name": self.VE_FileListWidget.currentItem().text(),
+            "file_path": self.VE_PathLineEdit.text(),
+            "modality": self.VE_ModalityComboBox.currentText(),
+            "task": self.VE_TaskLineEdit.text(),
+            "session": self.VE_SessionComboBox.currentText(),
+            "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
+            "acquisition": self.VE_AcquisitionLineEdit.text(),
+            "reconstruction": self.VE_ReconstructionLineEdit.text()
+        }
+
+        same_file_name = self._item_memory['file_name'] == file['file_name']
+        same_file_path = self._item_memory['file_path'] == file['file_path']
+        same_modality = self._item_memory['modality'] == file['modality']
+        same_task = self._item_memory['task'] == file['task']
+        same_session = self._item_memory['session'] == file['session']
+        same_contrast_agent = self._item_memory['contrast_agent'] == file['contrast_agent']
+        same_acquisition = self._item_memory['acquisition'] == file['acquisition']
+        same_reconstruction = self._item_memory['reconstruction'] == file['reconstruction']
+
+        print(self._item_memory['file_name'] + " == " + file['file_name'])
+        print("Same file name :" + str(same_file_name))
+        print(self._item_memory['file_path'] + " == " + file['file_path'])
+        print("Same file path :" + str(same_file_path))
+        print(self._item_memory['modality'] + " == " + file['modality'])
+        print("Same modality :" + str(same_modality))
+        print(self._item_memory['task'] + " == " + file['task'])
+        print("Same task :" + str(same_task))
+        print(self._item_memory['session'] + " == " + file['session'])
+        print("Same session :" + str(same_session))
+        print(self._item_memory['contrast_agent'] + " == " + file['contrast_agent'])
+        print("Same contrast agent :" + str(same_contrast_agent))
+        print(self._item_memory['acquisition'] + " == " + file['acquisition'])
+        print("Same acquisition :" + str(same_acquisition))
+        print(self._item_memory['reconstruction'] + " == " + file['reconstruction'])
+        print("Same reconstruction :" + str(same_reconstruction))
+        print("--------")
+
+        return not(same_file_name and same_file_path and same_modality and same_task and same_session and same_contrast_agent and same_acquisition and same_reconstruction)
+
     def __startFileImport(self):
         # Get dataset path
         dataset_path =  self.fileTreeView.model().rootDirectory().path()
         # Get subject name
-        subject_name = self.SubjectComboBox.currentText()
+        subject_name = self.AR_SubjectComboBox.currentText()
 
         # Check if a process is already running
         if hasattr(self, '__worker') and self.__worker.isRunning():
@@ -325,7 +428,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return 
         
         dataset_path =  self.fileTreeView.model().rootDirectory().path()
-        subject_name = "/" + self.SubjectComboBox.currentText()
+        subject_name = "/" + self.AR_SubjectComboBox.currentText()
         print("Validating BIDS dataset at " + subject_name)
 
         # Validate BIDS dataset at /subject_name
@@ -345,6 +448,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(self, "Dataset compliant", "Dataset is BIDS compliant")
         else:
             QMessageBox.warning(self, "Dataset not compliant", "Dataset is not BIDS compliant")
+
+    def setComboBoxText(self, comboBox, text):
+        index = comboBox.findText(text)
+        if index >= 0:
+            comboBox.setCurrentIndex(index)
+        else:
+            comboBox.setCurrentIndex(-1)
+
+        comboBox.clearFocus()
 
     def __onWorkerFinished(self):
         """Display a completion message and handle cleanup after the worker thread finishess"""

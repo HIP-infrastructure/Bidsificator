@@ -103,13 +103,24 @@ class BidsSubject:
 
         bids_name_nosuffix = BidsSubject.define_bids_functionnal_string(file_entities) + "_ieeg"
 
+        # get Session folder path based on the ses entity
+        session_folder = ""
+        if file_entities["ses"] == "pre":
+            session_folder = self.get_func_pre_path()
+        elif file_entities["ses"] == "post":
+            session_folder = self.get_func_post_path()
+        else:
+            print("Session not recognized : ", file_entities["ses"])
+            return None
+
         # Create new_file_name based on the file_suffix
         if file_suffix == ".trc":
             new_file_name = bids_name_nosuffix + ".vhdr"
         else:
             new_file_name = bids_name_nosuffix + file_suffix
 
-        new_file_path = Path(self.get_func_post_path()) / new_file_name
+        # Create new_file_path
+        new_file_path = Path(session_folder) / new_file_name
 
         if file_suffix == ".trc":
             print("Should convert file", file_path, "to", new_file_path)
@@ -124,7 +135,7 @@ class BidsSubject:
             return None
     
     def generate_events_file(self, eeg_file_path: str, file_entities: dict):
-        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
+        base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         tsv_file_path = base_file_path + "_events.tsv"
     
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
@@ -139,7 +150,7 @@ class BidsSubject:
                 writer.writerow([onset, "n/a", trigger.Sample(), trigger.Code(), "n/a", "n/a"])
     
     def generate_channels_file(self, eeg_file_path: str, file_entities: dict):
-        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
+        base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         tsv_file_path = base_file_path + "_channels.tsv"
 
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
@@ -159,7 +170,7 @@ class BidsSubject:
                     writer.writerow([site_name, "SEEG", site_unit, lowpass_limit, highpass_limit, "intracranial", electrode_name, sampling_frequency, "n/a", 0, "good", "n/a"])
 
     def generate_task_file(self, eeg_file_path: str, file_entities: dict):
-        base_file_path = self.get_func_post_path() + BidsSubject.define_bids_functionnal_string(file_entities)
+        base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         json_file_path = base_file_path + "_ieeg.json"
 
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
