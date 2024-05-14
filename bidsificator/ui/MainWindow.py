@@ -19,23 +19,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
-        self.actionNew_Bids_Dataset.triggered.connect(self.__createDataset)
-        self.actionOpen_Bids_Dataset.triggered.connect(self.__openDataset)
+        self.actionNew_Bids_Dataset.triggered.connect(self.create_dataset)
+        self.actionOpen_Bids_Dataset.triggered.connect(self.open_dataset)
 
         # Connect UI
         #    First tab
-        self.CreateSubjectPushButton.clicked.connect(self.__createSubject)
+        self.CreateSubjectPushButton.clicked.connect(self.create_subject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         #    Second tab
         #       Add/Remove file
-        self.AR_ModalityComboBox.currentIndexChanged.connect(self.__updateModalityUI)
-        self.AR_BrowsePushButton.clicked.connect(self.__browseForFileToAdd)
-        self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.__updateBrowseFileUI)
-        self.AR_AddPushButton.clicked.connect(self.__addFileToList)
-        self.AR_RemovePushButton.clicked.connect(self.__removeFileFromList)
+        self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
+        self.AR_BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
+        self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.update_browseFile_UI)
+        self.AR_AddPushButton.clicked.connect(self.add_file_to_list)
+        self.AR_RemovePushButton.clicked.connect(self.remove_file_from_list)
         #       View/Edit file
-        self.VE_FileListWidget.itemClicked.connect(self.__showUiElementDetails)
-        self.VE_FileListWidget.itemSelectionChanged.connect(self.__showUiElementDetails)
+        self.VE_FileListWidget.itemClicked.connect(self.show_element_details_UI)
+        self.VE_FileListWidget.itemSelectionChanged.connect(self.show_element_details_UI)
         
         self.VE_ModalityComboBox.currentTextChanged.connect(self.textEdited)
         self.VE_SessionComboBox.currentTextChanged.connect(self.textEdited)
@@ -50,27 +50,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_PathLineEdit.textEdited.connect(self.textEdited)
         self.VE_PathLineEdit.editingFinished.connect(self.editingFinished)
 
-        self.VE_EditPushButton.clicked.connect(self.__ToggleEditFields)
-        self.VE_CancelPushButton.clicked.connect(self.__ResetEditFieldsFromMemory)
+        self.VE_EditPushButton.clicked.connect(self.toggle_edit_fields)
+        self.VE_CancelPushButton.clicked.connect(self.reset_edit_fields_from_memory)
         #       Buttons           
-        self.StartImportPushButton.clicked.connect(self.__startFileImport)
-        self.BidsValidatorPushButton.clicked.connect(self.__validateBidsDataset)
+        self.StartImportPushButton.clicked.connect(self.start_file_import)
+        self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
 
         # Trigger UI for the first time
         self.progressBar.setValue(0)
-        self.__updateModalityUI()
+        self.update_modality_UI()
 
-    def textEdited(self, text):
-        #print("Text edited : " + text)
-        if not self.__lock_for_update:
-            self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
-
-    def editingFinished(self):
-        #print("Editing finished")
-        if not self.__lock_for_update:
-            self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
-
-    def __createDataset(self):        
+    def create_dataset(self):        
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if folderPath:
             dataset_name = QInputDialog.getText(self, "Dataset Name", "Enter a name for the dataset")[0]
@@ -87,18 +77,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
             bids_folder.generate_participants_tsv()
 
-            self.__loadTreeViewUI(dataset_path)
+            self.load_treeView_UI(dataset_path)
+            self.tabWidget.setEnabled(True) # Enable the tabs only when a dataset is created
             self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
-            self.__updateSubjectNamesDropDown()
+            self.update_subject_names_dropDown()
 
-    def __openDataset(self):
+    def open_dataset(self):
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if folderPath:
-            self.__loadTreeViewUI(folderPath)
+            self.load_treeView_UI(folderPath)
+            self.tabWidget.setEnabled(True) # Enable the tabs only when a dataset is loaded
             self.tableWidget.LoadSubjectsInTableWidget(folderPath)
-            self.__updateSubjectNamesDropDown()
+            self.update_subject_names_dropDown()
 
-    def __loadTreeViewUI(self, initial_folder):
+    def load_treeView_UI(self, initial_folder):
         # Define file system model at the root folder chosen by the user
         m_localFileSystemModel = QFileSystemModel()
         m_localFileSystemModel.setReadOnly(True)
@@ -122,7 +114,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fileTreeView.hideColumn(3)
         self.fileTreeView.header().hide()
 
-    def __createSubject(self):
+    def create_subject(self):
         if not self.fileTreeView.model():
             QMessageBox.warning(self, "No dataset selected", "Please open a BIDS dataset first")
             return
@@ -137,17 +129,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         
         self.tableWidget.CreateSubjectInTableWidget(subject_name)
-        self.__updateSubjectNamesDropDown()
+        self.update_subject_names_dropDown()
     
-    def __updateSubjectNamesDropDown(self):
+    def update_subject_names_dropDown(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
         
-        self.AR_SubjectComboBox.currentTextChanged.connect(self.__updateSubjectDetails)
+        self.AR_SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
         self.AR_SubjectComboBox.clear()
         self.AR_SubjectComboBox.addItems(subject_names)
 
-    def __updateSubjectDetails(self):
+    def update_subject_details(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_name = self.AR_SubjectComboBox.currentText()
         subject_path = os.path.join(dataset_path, subject_name)
@@ -158,7 +150,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_SessionComboBox.clear()
         self.VE_SessionComboBox.addItems(session_names)
 
-    def __updateModalityUI(self):
+    def update_modality_UI(self):
         if "(anat)" in self.AR_ModalityComboBox.currentText():
             #session
             self.AR_SessionLabel.show()
@@ -199,7 +191,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
-    def __updateBrowseFileUI(self, state):
+    def update_browseFile_UI(self, state):
         if state == 0: #unchecked
             self.AR_BrowsePushButton.setText("Browse File")
             self.AR_BrowseLineEdit.setText("")
@@ -209,7 +201,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             print("Error : [__UpdateBrowseFileUI] State not recognized")
 
-    def __browseForFileToAdd(self):
+    def browse_for_file_to_add(self):
         if "(anat)" in self.AR_ModalityComboBox.currentText() and self.AR_IsDicomFolderCheckBox.isChecked():
             folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
             if folderPath:
@@ -219,7 +211,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if file_path:
                 self.AR_BrowseLineEdit.setText(file_path[0])
     
-    def __addFileToList(self):
+    def add_file_to_list(self):
         #Need to validate focus for ui elements in order to get all the values
         self.AR_TaskLineEdit.clearFocus()
         self.AR_SessionComboBox.clearFocus()
@@ -266,31 +258,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.warning(self, "File already added", "This file has already been added to the list")
 
-    def __showUiElementDetails(self):
+    def show_element_details_UI(self):
         self.__lock_for_update = True
         selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
         if len(selectedIndexes) > 0:
             file = self.__file_list[selectedIndexes[0].row()]
             self.__item_memory = file
             if "(anat)" in file["modality"]:
-                self.setComboBoxText(self.VE_ModalityComboBox, file["modality"])
-                self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + file["session"]))
+                self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
+                self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
                 self.VE_TaskLineEdit.setText("")
                 self.VE_ContrastAgentLineEdit.setText(file["contrast_agent"])
                 self.VE_AcquisitionLineEdit.setText(file["acquisition"])
                 self.VE_ReconstructionLineEdit.setText(file["reconstruction"])
                 self.VE_PathLineEdit.setText(file["file_path"])
             elif "(ieeg)" in file["modality"]:
-                self.setComboBoxText(self.VE_ModalityComboBox, file["modality"])
-                self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + file["session"]))
+                self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
+                self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
                 self.VE_TaskLineEdit.setText(file["task"])
                 self.VE_ContrastAgentLineEdit.setText("")
                 self.VE_AcquisitionLineEdit.setText(file["acquisition"])
                 self.VE_ReconstructionLineEdit.setText("")
                 self.VE_PathLineEdit.setText(file["file_path"])
         else:
-            self.setComboBoxText(self.VE_ModalityComboBox, "")
-            self.setComboBoxText(self.VE_SessionComboBox, "")
+            self.set_comboBox_text(self.VE_ModalityComboBox, "")
+            self.set_comboBox_text(self.VE_SessionComboBox, "")
             self.VE_TaskLineEdit.setText("")
             self.VE_ContrastAgentLineEdit.setText("")
             self.VE_AcquisitionLineEdit.setText("")
@@ -298,7 +290,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.VE_PathLineEdit.setText("")            
         self.__lock_for_update = False
 
-    def __removeFileFromList(self):
+    def remove_file_from_list(self):
         selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
         if len(selectedIndexes) > 0:
             file = self.__file_list[selectedIndexes[0].row()]
@@ -307,13 +299,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             #Remove the item from fileListWidget
             self.VE_FileListWidget.takeItem(self.VE_FileListWidget.currentRow())
             #Update UI 
-            self.__showUiElementDetails()
+            self.show_element_details_UI()
         else:
             print("Error : [__RemoveFileFromList] Item not found in __file_list")
 
-    def __ToggleEditFields(self):
+    def toggle_edit_fields(self):
         newStatus = not self.VE_TaskLineEdit.isEnabled()
-        if not newStatus and self.__WasUiElementModified():
+        if not newStatus and self.was_element_modified_UI():
             index = self.__file_list.index(self.__item_memory)
             file = {
                 "file_name": self.VE_FileListWidget.currentItem().text(),
@@ -340,9 +332,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_ReconstructionLineEdit.setEnabled(newStatus)
         self.VE_PathLineEdit.setEnabled(newStatus)
 
-    def __ResetEditFieldsFromMemory(self):
-        self.setComboBoxText(self.VE_ModalityComboBox, self.__item_memory["modality"])
-        self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + self.__item_memory["session"]))
+    def reset_edit_fields_from_memory(self):
+        self.set_comboBox_text(self.VE_ModalityComboBox, self.__item_memory["modality"])
+        self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + self.__item_memory["session"]))
         self.VE_TaskLineEdit.setText(self.__item_memory['task'])
         self.VE_ContrastAgentLineEdit.setText(self.__item_memory['contrast_agent'])
         self.VE_AcquisitionLineEdit.setText(self.__item_memory['acquisition'])
@@ -357,7 +349,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_ReconstructionLineEdit.clearFocus()
         self.VE_PathLineEdit.clearFocus()
 
-    def __WasUiElementModified(self):
+    def was_element_modified_UI(self):
         if not self.__item_memory:
             return False
         
@@ -371,7 +363,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "acquisition": self.VE_AcquisitionLineEdit.text(),
             "reconstruction": self.VE_ReconstructionLineEdit.text()
         }
-
+        print("tutu")
         same_file_name = self.__item_memory['file_name'] == file['file_name']
         same_file_path = self.__item_memory['file_path'] == file['file_path']
         same_modality = self.__item_memory['modality'] == file['modality']
@@ -401,7 +393,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         return not(same_file_name and same_file_path and same_modality and same_task and same_session and same_contrast_agent and same_acquisition and same_reconstruction)
 
-    def __startFileImport(self):
+    def start_file_import(self):
         # Get dataset path
         dataset_path =  self.fileTreeView.model().rootDirectory().path()
         # Get subject name
@@ -417,12 +409,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Connect signals
         self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
-        self.__worker.finished.connect(self.__onWorkerFinished)
+        self.__worker.finished.connect(self.on_worker_finished)
 
         # Start the worker thread
         self.__worker.start()
 
-    def __validateBidsDataset(self):
+    def validate_bids_dataset(self):
         if not self.fileTreeView.model(): 
             QMessageBox.warning(self, "No Dataset found", "Please load a Dataset first")
             return 
@@ -445,11 +437,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             res = res and validator.is_bids(file)
 
         if res:
-            QMessageBox.information(self, "Dataset compliant", "Dataset is BIDS compliant")
+            QMessageBox.information(self, "Dataset compliant", self.AR_SubjectComboBox.currentText() + " is BIDS compliant")
         else:
-            QMessageBox.warning(self, "Dataset not compliant", "Dataset is not BIDS compliant")
+            QMessageBox.warning(self, "Dataset not compliant", self.AR_SubjectComboBox.currentText() + " is not BIDS compliant")
 
-    def setComboBoxText(self, comboBox, text):
+    def set_comboBox_text(self, comboBox, text):
         index = comboBox.findText(text)
         if index >= 0:
             comboBox.setCurrentIndex(index)
@@ -458,8 +450,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         comboBox.clearFocus()
 
-    def __onWorkerFinished(self):
+    def on_worker_finished(self):
         """Display a completion message and handle cleanup after the worker thread finishess"""
 
         print("File import finished")
         self.__worker.deleteLater()  # Clean up the worker thread
+
+    def textEdited(self, text):
+        #print("Text edited : " + text)
+        if not self.__lock_for_update:
+            self.VE_CancelPushButton.setEnabled(self.was_element_modified_UI())
+
+    def editingFinished(self):
+        #print("Editing finished")
+        if not self.__lock_for_update:
+            self.VE_CancelPushButton.setEnabled(self.was_element_modified_UI())

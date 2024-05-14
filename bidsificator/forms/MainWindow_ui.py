@@ -25,6 +25,7 @@ class Ui_MainWindow(object):
         self.fileTreeView.setMaximumSize(QtCore.QSize(16777215, 16777215))
         self.fileTreeView.setObjectName("fileTreeView")
         self.tabWidget = QtWidgets.QTabWidget(parent=self.splitter)
+        self.tabWidget.setEnabled(False)
         self.tabWidget.setObjectName("tabWidget")
         self.ParticipantsTab = QtWidgets.QWidget()
         self.ParticipantsTab.setObjectName("ParticipantsTab")
