@@ -12,8 +12,8 @@ import os
 class MainWindow(QMainWindow, Ui_MainWindow):
     __file_list = []
     __worker = None
-    _item_memory = None
-    updateLock = False
+    __item_memory = None
+    __lock_for_update = False
 
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -62,12 +62,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def textEdited(self, text):
         #print("Text edited : " + text)
-        if not self.updateLock:
+        if not self.__lock_for_update:
             self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
 
     def editingFinished(self):
         #print("Editing finished")
-        if not self.updateLock:
+        if not self.__lock_for_update:
             self.VE_CancelPushButton.setEnabled(self.__WasUiElementModified())
 
     def __createDataset(self):        
@@ -267,11 +267,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "File already added", "This file has already been added to the list")
 
     def __showUiElementDetails(self):
-        self.updateLock = True
+        self.__lock_for_update = True
         selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
         if len(selectedIndexes) > 0:
             file = self.__file_list[selectedIndexes[0].row()]
-            self._item_memory = file
+            self.__item_memory = file
             if "(anat)" in file["modality"]:
                 self.setComboBoxText(self.VE_ModalityComboBox, file["modality"])
                 self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + file["session"]))
@@ -296,7 +296,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.VE_AcquisitionLineEdit.setText("")
             self.VE_ReconstructionLineEdit.setText("")
             self.VE_PathLineEdit.setText("")            
-        self.updateLock = False
+        self.__lock_for_update = False
 
     def __removeFileFromList(self):
         selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
@@ -314,7 +314,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __ToggleEditFields(self):
         newStatus = not self.VE_TaskLineEdit.isEnabled()
         if not newStatus and self.__WasUiElementModified():
-            index = self.__file_list.index(self._item_memory)
+            index = self.__file_list.index(self.__item_memory)
             file = {
                 "file_name": self.VE_FileListWidget.currentItem().text(),
                 "file_path": self.VE_PathLineEdit.text(),
@@ -326,7 +326,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "reconstruction": self.VE_ReconstructionLineEdit.text()
             }
             self.__file_list[index] = file
-            self._item_memory = file                
+            self.__item_memory = file                
 
         newStatusLabel = "Editing" if newStatus else "Edit"
         self.VE_EditPushButton.setText(newStatusLabel)
@@ -341,13 +341,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_PathLineEdit.setEnabled(newStatus)
 
     def __ResetEditFieldsFromMemory(self):
-        self.setComboBoxText(self.VE_ModalityComboBox, self._item_memory["modality"])
-        self.setComboBoxText(self.VE_SessionComboBox, self._item_memory["session"])
-        self.VE_TaskLineEdit.setText(self._item_memory['task'])
-        self.VE_ContrastAgentLineEdit.setText(self._item_memory['contrast_agent'])
-        self.VE_AcquisitionLineEdit.setText(self._item_memory['acquisition'])
-        self.VE_ReconstructionLineEdit.setText(self._item_memory['reconstruction'])
-        self.VE_PathLineEdit.setText(self._item_memory['file_path'])
+        self.setComboBoxText(self.VE_ModalityComboBox, self.__item_memory["modality"])
+        self.setComboBoxText(self.VE_SessionComboBox, str("ses-" + self.__item_memory["session"]))
+        self.VE_TaskLineEdit.setText(self.__item_memory['task'])
+        self.VE_ContrastAgentLineEdit.setText(self.__item_memory['contrast_agent'])
+        self.VE_AcquisitionLineEdit.setText(self.__item_memory['acquisition'])
+        self.VE_ReconstructionLineEdit.setText(self.__item_memory['reconstruction'])
+        self.VE_PathLineEdit.setText(self.__item_memory['file_path'])
         #Clear focus to trigger editingFinished
         self.VE_ModalityComboBox.clearFocus()
         self.VE_SessionComboBox.clearFocus()
@@ -358,7 +358,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.VE_PathLineEdit.clearFocus()
 
     def __WasUiElementModified(self):
-        if not self._item_memory:
+        if not self.__item_memory:
             return False
         
         file = {
@@ -366,36 +366,36 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "file_path": self.VE_PathLineEdit.text(),
             "modality": self.VE_ModalityComboBox.currentText(),
             "task": self.VE_TaskLineEdit.text(),
-            "session": self.VE_SessionComboBox.currentText(),
+            "session": self.VE_SessionComboBox.currentText().removeprefix("ses-"),
             "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
             "acquisition": self.VE_AcquisitionLineEdit.text(),
             "reconstruction": self.VE_ReconstructionLineEdit.text()
         }
 
-        same_file_name = self._item_memory['file_name'] == file['file_name']
-        same_file_path = self._item_memory['file_path'] == file['file_path']
-        same_modality = self._item_memory['modality'] == file['modality']
-        same_task = self._item_memory['task'] == file['task']
-        same_session = self._item_memory['session'] == file['session']
-        same_contrast_agent = self._item_memory['contrast_agent'] == file['contrast_agent']
-        same_acquisition = self._item_memory['acquisition'] == file['acquisition']
-        same_reconstruction = self._item_memory['reconstruction'] == file['reconstruction']
+        same_file_name = self.__item_memory['file_name'] == file['file_name']
+        same_file_path = self.__item_memory['file_path'] == file['file_path']
+        same_modality = self.__item_memory['modality'] == file['modality']
+        same_task = self.__item_memory['task'] == file['task']
+        same_session = self.__item_memory['session'] == file['session']
+        same_contrast_agent = self.__item_memory['contrast_agent'] == file['contrast_agent']
+        same_acquisition = self.__item_memory['acquisition'] == file['acquisition']
+        same_reconstruction = self.__item_memory['reconstruction'] == file['reconstruction']
 
-        print(self._item_memory['file_name'] + " == " + file['file_name'])
+        print(self.__item_memory['file_name'] + " == " + file['file_name'])
         print("Same file name :" + str(same_file_name))
-        print(self._item_memory['file_path'] + " == " + file['file_path'])
+        print(self.__item_memory['file_path'] + " == " + file['file_path'])
         print("Same file path :" + str(same_file_path))
-        print(self._item_memory['modality'] + " == " + file['modality'])
+        print(self.__item_memory['modality'] + " == " + file['modality'])
         print("Same modality :" + str(same_modality))
-        print(self._item_memory['task'] + " == " + file['task'])
+        print(self.__item_memory['task'] + " == " + file['task'])
         print("Same task :" + str(same_task))
-        print(self._item_memory['session'] + " == " + file['session'])
+        print(self.__item_memory['session'] + " == " + file['session'])
         print("Same session :" + str(same_session))
-        print(self._item_memory['contrast_agent'] + " == " + file['contrast_agent'])
+        print(self.__item_memory['contrast_agent'] + " == " + file['contrast_agent'])
         print("Same contrast agent :" + str(same_contrast_agent))
-        print(self._item_memory['acquisition'] + " == " + file['acquisition'])
+        print(self.__item_memory['acquisition'] + " == " + file['acquisition'])
         print("Same acquisition :" + str(same_acquisition))
-        print(self._item_memory['reconstruction'] + " == " + file['reconstruction'])
+        print(self.__item_memory['reconstruction'] + " == " + file['reconstruction'])
         print("Same reconstruction :" + str(same_reconstruction))
         print("--------")
 
