@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QMenu, QInputDialog, QTableWidgetItem, QMenu, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from core.BidsFolder import BidsFolder
@@ -8,6 +8,7 @@ class PatientTableWidget(QTableWidget):
     __selected_item = None
     __bids_folder = None
     __previous_cell_text = None
+    subject_updated = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -226,6 +227,7 @@ class PatientTableWidget(QTableWidget):
             subject = self.__bids_folder.get_bids_subject(subject_id)
             subject.set_subject_id(item.text())
             self.__bids_folder.generate_participants_tsv()
+            self.subject_updated.emit()
         else:
             subject_id = self.item(item.row(), 0).text()
             key = self.horizontalHeaderItem(item.column()).text()

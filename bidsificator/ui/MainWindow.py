@@ -27,6 +27,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #    First tab
         self.CreateSubjectPushButton.clicked.connect(self.create_subject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
+        self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
         #    Second tab
         #       Add/Remove file
         self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
