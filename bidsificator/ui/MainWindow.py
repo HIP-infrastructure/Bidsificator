@@ -14,6 +14,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     __worker = None
     __item_memory = None
     __lock_for_update = False
+    __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
 
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -203,12 +204,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def browse_for_file_to_add(self):
         if "(anat)" in self.AR_ModalityComboBox.currentText() and self.AR_IsDicomFolderCheckBox.isChecked():
-            folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+            folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", self.__browse_folder_path_memory)
             if folderPath:
+                self.__browse_folder_path_memory = folderPath
                 self.AR_BrowseLineEdit.setText(folderPath)
         else:
-            file_path = QFileDialog.getOpenFileName(self, "Select a file", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+            file_path = QFileDialog.getOpenFileName(self, "Select a file", self.__browse_folder_path_memory)
             if file_path:
+                self.__browse_folder_path_memory = os.path.dirname(file_path[0])
                 self.AR_BrowseLineEdit.setText(file_path[0])
     
     def add_file_to_list(self):
