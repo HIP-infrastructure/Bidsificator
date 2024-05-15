@@ -43,6 +43,12 @@ def processBidsFiles(conn, dataset_path: str, subject_name: str, file_list: list
             except Exception as e:
                 print(f"Error processing file {file_path}: {e}")
                 print(f"Skipping file")
+        elif modality == "photo (ieeg)":
+            try:
+                bids_subject.add_photo_file(file_path, entities["ses"], entities["acq"])
+            except Exception as e:
+                print(f"Error processing photo file {file_path}: {e}")
+                print(f"Skipping file")
         elif modality in anatomical_modalities:
             #If it's an anat folder, probably need to convert 
             if os.path.isdir(file_path):

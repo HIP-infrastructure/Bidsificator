@@ -170,13 +170,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.AR_ReconstructionLineEdit.show()
             #deal with folder/file import
             self.AR_IsDicomFolderCheckBox.setEnabled(True)
-        elif "(ieeg)" in self.AR_ModalityComboBox.currentText():
+        elif "ieeg (ieeg)" in self.AR_ModalityComboBox.currentText():
             #session
             self.AR_SessionLabel.show()
             self.AR_SessionComboBox.show()
             #task
             self.AR_TaskLabel.show()
             self.AR_TaskLineEdit.show()
+            #contrast
+            self.AR_ContrastAgentLabel.hide()
+            self.AR_ContrastAgentLineEdit.hide()
+            #acquisition
+            self.AR_AcquisitionLabel.show()
+            self.AR_AcquisitionLineEdit.show()
+            #reconstruction
+            self.AR_ReconstructionLabel.hide()
+            self.AR_ReconstructionLineEdit.hide()
+            #deal with folder/file import
+            self.AR_IsDicomFolderCheckBox.setChecked(False)
+            self.AR_IsDicomFolderCheckBox.setEnabled(False)
+        elif "photo (ieeg)" in self.AR_ModalityComboBox.currentText():
+            #session
+            self.AR_SessionLabel.show()
+            self.AR_SessionComboBox.show()
+            #task
+            self.AR_TaskLabel.hide()
+            self.AR_TaskLineEdit.hide()
             #contrast
             self.AR_ContrastAgentLabel.hide()
             self.AR_ContrastAgentLineEdit.hide()
@@ -203,16 +222,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             print("Error : [__UpdateBrowseFileUI] State not recognized")
 
     def browse_for_file_to_add(self):
-        if "(anat)" in self.AR_ModalityComboBox.currentText() and self.AR_IsDicomFolderCheckBox.isChecked():
+        modality = self.AR_ModalityComboBox.currentText()
+        filters = {
+            "(anat)": "Nifti files (*.nii *.nii.gz)",
+            "photo (ieeg)": "Image files (*.png *.jpg *.tif)",
+            "ieeg (ieeg)": "IEEG files (*.trc *.vhdr *.eeg)"
+        }
+
+        if "(anat)" in modality and self.AR_IsDicomFolderCheckBox.isChecked(): # dicom folder
             folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", self.__browse_folder_path_memory)
             if folderPath:
                 self.__browse_folder_path_memory = folderPath
                 self.AR_BrowseLineEdit.setText(folderPath)
-        else:
-            file_path = QFileDialog.getOpenFileName(self, "Select a file", self.__browse_folder_path_memory)
-            if file_path:
+        elif any(key in modality for key in filters): # nifti, photo, or ieeg file
+            file_filter = next(filter for key, filter in filters.items() if key in modality)
+            file_path = QFileDialog.getOpenFileName(self, "Select a file", self.__browse_folder_path_memory, filter=file_filter)
+            if file_path[0]:
                 self.__browse_folder_path_memory = os.path.dirname(file_path[0])
                 self.AR_BrowseLineEdit.setText(file_path[0])
+        else:
+            QMessageBox.warning(self, "Modality not recognized", "Please select a modality first")
     
     def add_file_to_list(self):
         #Need to validate focus for ui elements in order to get all the values
@@ -235,8 +264,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             contrast_agent = self.AR_ContrastAgentLineEdit.text()
             acquisition = self.AR_AcquisitionLineEdit.text()
             reconstruction = self.AR_ReconstructionLineEdit.text()
-        elif "(ieeg)" in modality:
+        elif "ieeg (ieeg)" in modality:
             task = self.AR_TaskLineEdit.text()
+            session = self.AR_SessionComboBox.currentText()
+            contrast_agent = ""
+            acquisition = self.AR_AcquisitionLineEdit.text()
+            reconstruction = ""
+        elif "photo (ieeg)" in modality:
+            task = ""
             session = self.AR_SessionComboBox.currentText()
             contrast_agent = ""
             acquisition = self.AR_AcquisitionLineEdit.text()

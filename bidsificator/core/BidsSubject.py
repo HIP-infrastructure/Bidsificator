@@ -134,6 +134,35 @@ class BidsSubject:
             print("File extension not recognized : ", file_suffix)
             return None
     
+    def add_photo_file(self, file_path: str, session:str = "", acquisition:str = ""):
+        if not isinstance(file_path, Path):
+            file_path = Path(file_path)
+        file_suffix = file_path.suffix
+        
+        # get Session folder path based on parameters
+        session_folder = ""
+        if session == "pre":
+            session_folder = self.get_func_pre_path()
+        elif session == "post":
+            session_folder = self.get_func_post_path()
+        else:
+            print("Session not recognized : ", session)
+            return None
+        
+        # create destination file name 
+        bids_name = self.__subject_id
+        if session:
+            bids_name += "_ses-" + session
+        if acquisition:
+            bids_name += "_acq-" + acquisition
+        bids_name += "_photo" + file_suffix
+        
+        if file_suffix in [".jpg", ".png", ".tif"]: 
+            print("Should copy file", file_path, "to", session_folder + bids_name)
+            shutil.copy(file_path, self.get_func_post_path() + bids_name)
+        else:    
+            print("File extension not supported for bids photo files : ", file_suffix)
+
     def generate_events_file(self, eeg_file_path: str, file_entities: dict):
         base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         tsv_file_path = base_file_path + "_events.tsv"
