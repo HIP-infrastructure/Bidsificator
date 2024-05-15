@@ -1,3 +1,4 @@
+import os
 import re
 import csv
 import json
@@ -48,12 +49,39 @@ class BidsSubject:
 
     def get_subject_id(self) -> str:
         return str(self.__subject_id)
-    
-    def set_subject_id(self, subject_id: str):
-        self.__subject_id = subject_id
-        #rename the folder
-        self.__subject_path.rename(self.__parent_path / self.__subject_id)
-        #TODO : probably will need to check to rename all the files in the folder recursively
+       
+    def set_subject_id(self, new_subject_id: str):
+        """
+        Set a new subject ID for the BidsSubject instance.
+        This method updates the subject ID and renames the subject folder and all files recursively with the new subject ID.
+
+        Args:
+            new_subject_id (str): The new subject ID to be set.
+        """
+        # Check if the new subject ID is different from the current one
+        if new_subject_id != self.__subject_id:
+            # Rename all files recursively with the new subject ID
+            for root, dirs, files in os.walk(self.__subject_path):
+                for file in files:
+                    old_file_path = os.path.join(root, file)
+                    new_file_path = os.path.join(root, file.replace(self.__subject_id, new_subject_id))
+                    os.rename(old_file_path, new_file_path)
+
+            # Create the new subject path
+            new_subject_path = self.__parent_path / new_subject_id
+
+            # Rename the subject folder
+            os.rename(self.__subject_path, new_subject_path)
+
+            # Update the subject ID and subject path
+            self.__subject_id = new_subject_id
+            self.__subject_path = new_subject_path
+
+            # Update the folder paths
+            self.__anat_post_path = self.__subject_path / "ses-post" / "anat"
+            self.__func_post_path = self.__subject_path / "ses-post" / "ieeg"
+            self.__anat_pre_path = self.__subject_path / "ses-pre" / "anat"
+            self.__func_pre_path = self.__subject_path / "ses-pre" / "ieeg"
 
     def get_anat_post_path(self) -> str:
         return str(self.__anat_post_path) + "/"
