@@ -12,6 +12,5 @@ gunicorn
 flask-httpauth
 flask
 flask-cors
-flask-restful 
+flask-restful
 flasgger
-dedent
