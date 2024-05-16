@@ -13,7 +13,7 @@ machine = platform.machine()
 
 if os_name == "Darwin":
     if 'x86_64' in machine.lower():
-        raise Exception(f"Lib not build at the moment: {os_name}")
+        from core.PyEEGFormat import wrappermac as wrapper
     elif 'arm' in machine.lower():
         from core.PyEEGFormat import wrappermacarm as wrapper
 elif os_name == "Windows":
