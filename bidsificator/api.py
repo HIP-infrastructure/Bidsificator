@@ -3,6 +3,7 @@ import csv
 import json
 import pathlib
 from pathlib import Path
+import shutil
 from flask import Flask
 from flask import request
 from flask import jsonify
@@ -171,6 +172,33 @@ def create_bids_dataset():
     bids_folder.generate_participants_tsv(participant_file_path)
 
     return jsonify(dataset_description), 200
+
+@app.route('/datasets/<string:dataset_name>', methods=['DELETE'])
+def delete_bids_dataset(dataset_name):
+    """
+    Delete a BIDS dataset
+    ---
+    tags:
+        - BIDS
+    description: A success message indicating that the dataset was deleted.
+    parameters:
+    - name: dataset_name
+      in: query
+      type: string
+      required: true
+      description: The name of the dataset to delete
+    responses:
+        200:
+            description: A successful response
+            examples:
+                application/json: ""
+    """
+    dataset_path = "/data/" + dataset_name
+    if os.path.exists(dataset_path):
+        shutil.rmtree(dataset_path)
+        return jsonify({ 'data': 'Success' }), 200
+    else:
+        return jsonify({ 'error': 'Dataset not found' }), 404
 
 @app.route('/datasets/<string:dataset_name>/participants', methods=['POST'])
 def create_empty_bids_subject(dataset_name):
