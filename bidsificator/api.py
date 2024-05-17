@@ -223,6 +223,36 @@ def create_empty_bids_subject(dataset_name):
 
     return jsonify({ 'data': 'Success' }), 201
 
+# in the body 
+# {
+#   "participant_id": "01",
+#   "optionnal_key": "25",
+#   "optionnal_key2": "M",
+#   "optionnal_key3": "CHUV"
+# }
+@app.route('/datasets/<string:dataset_name>/participants', methods=['PUT'])
+def update_bids_subject(dataset_name):
+    dataset_path = "/data/" + dataset_name + "/"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+    
+    #Get information from request
+    subject_description = request.get_json()
+    subject_id = subject_description["participant_id"]
+    subject_description.pop("participant_id", None)
+
+    bids_folder = BidsFolder(dataset_path)
+    subject = bids_folder.get_bids_subject(subject_id)
+    if subject is None:
+        return jsonify({ 'error': 'Subject not found' }), 404
+    
+    #for each key value pair in subject_description
+    #update the corresponding key and value in the subject
+    for key, value in subject_description.items():
+        subject.update_optional_key(key, value)
+    bids_folder.generate_participants_tsv()
+    return jsonify({ 'data': 'Success' }), 200
+
 @app.route('/datasets/<string:dataset_name>/participants/<string:subject_name>', methods=['DELETE'])
 def delete_bids_subect(dataset_name, subject_name):
     dataset_path = "/data/" + dataset_name + "/"
