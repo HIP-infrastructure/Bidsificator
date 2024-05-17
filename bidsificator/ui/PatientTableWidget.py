@@ -231,7 +231,7 @@ class PatientTableWidget(QTableWidget):
         else:
             subject_id = self.item(item.row(), 0).text()
             key = self.horizontalHeaderItem(item.column()).text()
-            self.__bids_folder.get_bids_subject(subject_id).add_optional_key(key, item.text())
+            self.__bids_folder.get_bids_subject(subject_id).update_optional_key(key, item.text())
             self.__bids_folder.generate_participants_tsv()
 
     def ItemClicked(self, item):

@@ -98,8 +98,14 @@ class BidsSubject:
     def get_optional_keys(self) -> dict:
         return self.__optional_keys_dict if self.__optional_keys_dict is not None else {}
 
-    def add_optional_key(self, key, value = "n/a"):
+    def update_optional_key(self, key, value = "n/a"):
         self.__optional_keys_dict[key] = value
+
+    def add_optional_key(self, key, value = "n/a"):
+        items = list(self.__optional_keys_dict.items())
+        items.insert(len(items), (key, value))
+        print("debug : " + str(items))
+        self.__optional_keys_dict = dict(items)
 
     # Add a key at a specific position and keep the order
     def add_optional_key_at(self, position: int, key, value = "n/a"):

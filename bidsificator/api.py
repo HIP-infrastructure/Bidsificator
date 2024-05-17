@@ -223,6 +223,38 @@ def create_empty_bids_subject(dataset_name):
 
     return jsonify({ 'data': 'Success' }), 200
 
+@app.route('/datasets/<string:dataset_name>/participants/key', methods=['POST'])
+def add_key_to_participants_list(dataset_name):    
+    dataset_path = "/data/" + dataset_name + "/"
+    participant_file_path = str(dataset_path) + "/participants.tsv"
+    content = request.get_json()
+    key_name = content.get('name', '')
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+    
+    bids_folder = BidsFolder(dataset_path)
+    subjects = bids_folder.get_bids_subects()
+    for subject in subjects:
+        subject.add_optional_key(key_name)
+    bids_folder.generate_participants_tsv()
+
+    return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
+
+@app.route('/datasets/<string:dataset_name>/participants/key/<string:key_name>', methods=['DELETE'])
+def remove_key_from_participants_list(dataset_name, key_name):
+    dataset_path = "/data/" + dataset_name + "/"
+    participant_file_path = str(dataset_path) + "/participants.tsv"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+
+    bids_folder = BidsFolder(dataset_path)
+    subjects = bids_folder.get_bids_subects()
+    for subject in subjects:
+        subject.remove_optional_key(key_name)
+    bids_folder.generate_participants_tsv()
+
+    return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
+
 @app.route('/datasets/<string:dataset_name>/files', methods=['POST'])
 def add_files_to_bids_subject(dataset_name):
     """
