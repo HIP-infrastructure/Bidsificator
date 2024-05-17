@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "bidsificator"
+version = "0.1.0"
+description = ""
+authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
+license = "Apache 2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+
+pyqt6 = "^6.4"
+pyqt6-tools = "^6.4"
+
+# bids
+numpy = ">=1.26"
+dicom2nifti = ">=2.4.10"
+bids_validator = ">=1.14.5"
+
+# API
+flasgger = "^0.9"
+flask = "^3.0"
+flask-cors = "^4.0"
+flask-httpauth = "^4.8"
+flask-restful = "^0.3"
+
+[tool.poetry.scripts]
+bidsificator = "bidsificator.main:main"
+bidsificator-api = "bidsificator.api:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

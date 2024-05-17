@@ -1107,7 +1107,7 @@
   <customwidget>
    <class>PatientTableWidget</class>
    <extends>QTableWidget</extends>
-   <header>ui.PatientTableWidget</header>
+   <header>..ui.PatientTableWidget</header>
   </customwidget>
  </customwidgets>
  <resources/>

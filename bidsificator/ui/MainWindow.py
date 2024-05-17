@@ -1,14 +1,20 @@
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox, QInputDialog, QTableWidgetItem, QMenu, QTreeView
-from PyQt6.QtCore import QStandardPaths, Qt, QModelIndex, QAbstractItemModel
-from PyQt6.QtGui import QFileSystemModel, QAction, QCursor
+import os
 
-from core.BidsFolder import BidsFolder
-from core.BidsUtilityFunctions import BidsUtilityFunctions
-from forms.MainWindow_ui import Ui_MainWindow
-from workers.ImportBidsFilesWorker import ImportBidsFilesWorker
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QFileDialog,
+    QMessageBox,
+    QInputDialog,
+)
+from PyQt6.QtCore import QStandardPaths
+from PyQt6.QtGui import QFileSystemModel
 from bids_validator import BIDSValidator
 
-import os
+from ..core.BidsFolder import BidsFolder
+from ..core.BidsUtilityFunctions import BidsUtilityFunctions
+from ..forms.MainWindow_ui import Ui_MainWindow
+from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
+
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     __file_list = []

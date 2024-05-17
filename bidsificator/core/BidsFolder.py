@@ -4,7 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from core.BidsSubject import BidsSubject
+from .BidsSubject import BidsSubject
+
 
 class BidsFolder:
     def __init__(self, root_path: str):

@@ -3,17 +3,17 @@ import csv
 import json
 import pathlib
 from pathlib import Path
-import shutil
+from textwrap import dedent
+
 from flask import Flask
 from flask import request
 from flask import jsonify
 from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
-from core.BidsFolder import BidsFolder
-from core.BidsUtilityFunctions import BidsUtilityFunctions
 from flasgger import Swagger
-from textwrap import dedent
-from urllib.parse import unquote
+
+from .core.BidsFolder import BidsFolder
+from .core.BidsUtilityFunctions import BidsUtilityFunctions
 
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
@@ -768,5 +768,9 @@ def remove_key_from_participants_list(dataset_name, key_name):
 
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
 
+def main():
+    app.run(debug=True, port=5000)
+
+
 if __name__ == '__main__':
-  app.run(debug=True, port=5000)
+    main()
