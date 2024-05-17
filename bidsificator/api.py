@@ -221,6 +221,20 @@ def create_empty_bids_subject(dataset_name):
     #Generate participants.tsv
     bids_folder.generate_participants_tsv(participant_file_path)
 
+    return jsonify({ 'data': 'Success' }), 201
+
+@app.route('/datasets/<string:dataset_name>/participants/<string:subject_name>', methods=['DELETE'])
+def delete_bids_subect(dataset_name, subject_name):
+    dataset_path = "/data/" + dataset_name + "/"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+
+    bids_folder = BidsFolder(dataset_path)
+    subjects = bids_folder.get_bids_subject(subject_name)
+    if subjects is None:
+        return jsonify({ 'error': 'Subject not found' }), 404
+    
+    bids_folder.delete_bids_subject(subject_name)
     return jsonify({ 'data': 'Success' }), 200
 
 @app.route('/datasets/<string:dataset_name>/participants/key', methods=['POST'])
