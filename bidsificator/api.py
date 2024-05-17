@@ -265,6 +265,7 @@ def delete_bids_subect(dataset_name, subject_name):
         return jsonify({ 'error': 'Subject not found' }), 404
     
     bids_folder.delete_bids_subject(subject_name)
+    bids_folder.generate_participants_tsv()
     return jsonify({ 'data': 'Success' }), 200
 
 @app.route('/datasets/<string:dataset_name>/participants/key', methods=['POST'])
