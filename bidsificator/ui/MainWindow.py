@@ -227,7 +227,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         filters = {
             "(anat)": "Nifti files (*.nii *.nii.gz)",
             "photo (ieeg)": "Image files (*.png *.jpg *.tif)",
-            "ieeg (ieeg)": "IEEG files (*.trc *.vhdr *.eeg)"
+            "ieeg (ieeg)": "IEEG files (*.trc *.vhdr *.edf)"
         }
 
         if "(anat)" in modality and self.AR_IsDicomFolderCheckBox.isChecked(): # dicom folder

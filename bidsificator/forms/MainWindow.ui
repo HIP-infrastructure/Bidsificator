@@ -217,7 +217,7 @@
                 </item>
                 <item>
                  <property name="text">
-                  <string>T2start (anat)</string>
+                  <string>T2* (anat)</string>
                  </property>
                 </item>
                 <item>
@@ -929,7 +929,7 @@
               </item>
               <item>
                <property name="text">
-                <string>T2start (anat)</string>
+                <string>T2* (anat)</string>
                </property>
               </item>
               <item>

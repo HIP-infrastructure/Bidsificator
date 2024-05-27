@@ -375,7 +375,7 @@ def add_files_to_bids_subject(dataset_name):
                 bids_subject.generate_channels_file(new_file_path, file["entities"])
                 bids_subject.generate_task_file(new_file_path, file["entities"])
 
-            elif file["modality"] == "T1w" or file["modality"] == "T2w" or file["modality"] == "T1rho" or file["modality"] == "T2rho" or file["modality"] == "FLAIR":            
+            elif file["modality"] == "T1w" or file["modality"] == "T2w" or file["modality"] == "T1rho" or file["modality"] == "T2*" or file["modality"] == "FLAIR":            
                 bids_subject.add_anatomical_file(file_path, file)
 
             else:
