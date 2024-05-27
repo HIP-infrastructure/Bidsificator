@@ -33,6 +33,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
         self.AR_BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
         self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.update_browseFile_UI)
+        self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.AR_AddPushButton.clicked.connect(self.add_file_to_list)
         self.AR_RemovePushButton.clicked.connect(self.remove_file_from_list)
         #       View/Edit file
@@ -41,8 +42,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.VE_ModalityComboBox.currentTextChanged.connect(self.textEdited)
         self.VE_SessionComboBox.currentTextChanged.connect(self.textEdited)
-        self.VE_TaskLineEdit.textEdited.connect(self.textEdited)
-        self.VE_TaskLineEdit.editingFinished.connect(self.editingFinished)
+        self.VE_TaskComboBox.currentTextChanged.connect(self.textEdited)
         self.VE_ContrastAgentLineEdit.textEdited.connect(self.textEdited)
         self.VE_ContrastAgentLineEdit.editingFinished.connect(self.editingFinished)
         self.VE_AcquisitionLineEdit.textEdited.connect(self.textEdited)
@@ -159,7 +159,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.AR_SessionComboBox.show()
             #task
             self.AR_TaskLabel.hide()
-            self.AR_TaskLineEdit.hide()
+            self.AR_TaskComboBox.hide()
             #contrast
             self.AR_ContrastAgentLabel.show()
             self.AR_ContrastAgentLineEdit.show()
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.AR_SessionComboBox.show()
             #task
             self.AR_TaskLabel.show()
-            self.AR_TaskLineEdit.show()
+            self.AR_TaskComboBox.show()
             #contrast
             self.AR_ContrastAgentLabel.hide()
             self.AR_ContrastAgentLineEdit.hide()
@@ -196,7 +196,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.AR_SessionComboBox.show()
             #task
             self.AR_TaskLabel.hide()
-            self.AR_TaskLineEdit.hide()
+            self.AR_TaskComboBox.hide()
             #contrast
             self.AR_ContrastAgentLabel.hide()
             self.AR_ContrastAgentLineEdit.hide()
@@ -244,9 +244,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.warning(self, "Modality not recognized", "Please select a modality first")
     
+    def update_task_combobox_UI(self):
+        if "Other" in self.AR_TaskComboBox.currentText():
+            task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
+            if task_name == "":
+                QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
+                return  
+            else:
+                self.AR_TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
+                #Insert the new task in AR_TaskComboBox
+                self.AR_TaskComboBox.insertItem(self.AR_TaskComboBox.count()-1, task_name)
+                self.AR_TaskComboBox.setCurrentIndex(self.AR_TaskComboBox.count()-2)
+                #Insert the new task in VE_TaskComboBox
+                self.VE_TaskComboBox.insertItem(self.VE_TaskComboBox.count(), task_name)
+                self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+    
     def add_file_to_list(self):
         #Need to validate focus for ui elements in order to get all the values
-        self.AR_TaskLineEdit.clearFocus()
+        self.AR_TaskComboBox.clearFocus()
         self.AR_SessionComboBox.clearFocus()
         self.AR_ContrastAgentLineEdit.clearFocus()
         self.AR_AcquisitionLineEdit.clearFocus()
@@ -266,7 +281,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             acquisition = self.AR_AcquisitionLineEdit.text()
             reconstruction = self.AR_ReconstructionLineEdit.text()
         elif "ieeg (ieeg)" in modality:
-            task = self.AR_TaskLineEdit.text()
+            task = self.AR_TaskComboBox.currentText()
             session = self.AR_SessionComboBox.currentText()
             contrast_agent = ""
             acquisition = self.AR_AcquisitionLineEdit.text()
@@ -306,7 +321,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if "(anat)" in file["modality"]:
                 self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
                 self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
-                self.VE_TaskLineEdit.setText("")
+                self.set_comboBox_text(self.VE_TaskComboBox, "")
                 self.VE_ContrastAgentLineEdit.setText(file["contrast_agent"])
                 self.VE_AcquisitionLineEdit.setText(file["acquisition"])
                 self.VE_ReconstructionLineEdit.setText(file["reconstruction"])
@@ -314,7 +329,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif "(ieeg)" in file["modality"]:
                 self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
                 self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
-                self.VE_TaskLineEdit.setText(file["task"])
+                self.set_comboBox_text(self.VE_TaskComboBox, file["task"])
                 self.VE_ContrastAgentLineEdit.setText("")
                 self.VE_AcquisitionLineEdit.setText(file["acquisition"])
                 self.VE_ReconstructionLineEdit.setText("")
@@ -322,7 +337,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.set_comboBox_text(self.VE_ModalityComboBox, "")
             self.set_comboBox_text(self.VE_SessionComboBox, "")
-            self.VE_TaskLineEdit.setText("")
+            self.set_comboBox_text(self.VE_TaskComboBox, "")
             self.VE_ContrastAgentLineEdit.setText("")
             self.VE_AcquisitionLineEdit.setText("")
             self.VE_ReconstructionLineEdit.setText("")
@@ -343,14 +358,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             print("Error : [__RemoveFileFromList] Item not found in __file_list")
 
     def toggle_edit_fields(self):
-        newStatus = not self.VE_TaskLineEdit.isEnabled()
+        newStatus = not self.VE_AcquisitionLineEdit.isEnabled()
         if not newStatus and self.was_element_modified_UI():
             index = self.__file_list.index(self.__item_memory)
             file = {
                 "file_name": self.VE_FileListWidget.currentItem().text(),
                 "file_path": self.VE_PathLineEdit.text(),
                 "modality": self.VE_ModalityComboBox.currentText(),
-                "task": self.VE_TaskLineEdit.text(),
+                "task": self.VE_TaskComboBox.currentText(),
                 "session": self.VE_SessionComboBox.currentText(),
                 "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
                 "acquisition": self.VE_AcquisitionLineEdit.text(),
@@ -365,7 +380,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.VE_ModalityComboBox.setEnabled(newStatus)
         self.VE_SessionComboBox.setEnabled(newStatus)
-        self.VE_TaskLineEdit.setEnabled(newStatus)
+        self.VE_TaskComboBox.setEnabled(newStatus)
         self.VE_ContrastAgentLineEdit.setEnabled(newStatus)
         self.VE_AcquisitionLineEdit.setEnabled(newStatus)
         self.VE_ReconstructionLineEdit.setEnabled(newStatus)
@@ -374,7 +389,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def reset_edit_fields_from_memory(self):
         self.set_comboBox_text(self.VE_ModalityComboBox, self.__item_memory["modality"])
         self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + self.__item_memory["session"]))
-        self.VE_TaskLineEdit.setText(self.__item_memory['task'])
+        self.set_comboBox_text(self.VE_TaskComboBox, self.__item_memory["task"])
         self.VE_ContrastAgentLineEdit.setText(self.__item_memory['contrast_agent'])
         self.VE_AcquisitionLineEdit.setText(self.__item_memory['acquisition'])
         self.VE_ReconstructionLineEdit.setText(self.__item_memory['reconstruction'])
@@ -382,7 +397,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #Clear focus to trigger editingFinished
         self.VE_ModalityComboBox.clearFocus()
         self.VE_SessionComboBox.clearFocus()
-        self.VE_TaskLineEdit.clearFocus()
+        self.VE_TaskComboBox.clearFocus()
         self.VE_ContrastAgentLineEdit.clearFocus()
         self.VE_AcquisitionLineEdit.clearFocus()
         self.VE_ReconstructionLineEdit.clearFocus()
@@ -396,13 +411,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "file_name": self.VE_FileListWidget.currentItem().text(),
             "file_path": self.VE_PathLineEdit.text(),
             "modality": self.VE_ModalityComboBox.currentText(),
-            "task": self.VE_TaskLineEdit.text(),
+            "task": self.VE_TaskComboBox.currentText(),
             "session": self.VE_SessionComboBox.currentText().removeprefix("ses-"),
             "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
             "acquisition": self.VE_AcquisitionLineEdit.text(),
             "reconstruction": self.VE_ReconstructionLineEdit.text()
         }
-        print("tutu")
+
         same_file_name = self.__item_memory['file_name'] == file['file_name']
         same_file_path = self.__item_memory['file_path'] == file['file_path']
         same_modality = self.__item_memory['modality'] == file['modality']
