@@ -295,18 +295,17 @@ def create_bids_dataset():
     """
     # Retrieve user information from the JSON request
     content = request.get_json()
-    dataset_path = "/data/" + content.get('dataset_dirname', '')
-    dataset_description = content.get('DatasetDescJSON', '')
+    dataset_path = "/data/" + __clean_string(content.get('Name', ''))
 
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
     bids_folder = BidsFolder(dataset_path)
     bids_folder.create_folders()
-    bids_folder.generate_dataset_description_file(dataset_description, dataset_description_file_path)
+    bids_folder.generate_dataset_description_file(content, dataset_description_file_path)
     bids_folder.generate_participants_tsv(participant_file_path)
 
-    return jsonify(dataset_description), 200
+    return jsonify(content), 200
 
 @app.route('/datasets/<string:dataset_name>/participants', methods=['POST'])
 def create_empty_bids_subject(dataset_name):
@@ -746,6 +745,15 @@ def remove_key_from_participants_list(dataset_name, key_name):
     bids_folder.generate_participants_tsv()
 
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
+
+def __clean_string(input_string):
+    # Remove leading and trailing white spaces
+    cleaned_string = input_string.strip()
+    
+    # Replace middle white spaces with underscores
+    cleaned_string = cleaned_string.replace(" ", "_")
+    
+    return cleaned_string
 
 if __name__ == '__main__':
   app.run(debug=True, port=5000)
