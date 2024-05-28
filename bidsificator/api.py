@@ -13,7 +13,7 @@ from core.BidsFolder import BidsFolder
 from core.BidsUtilityFunctions import BidsUtilityFunctions
 from flasgger import Swagger
 from textwrap import dedent
-
+from urllib.parse import unquote
 
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
@@ -126,7 +126,7 @@ def get_dataset_description_and_participants(dataset_name):
                                 "Path": "/data/Example Dataset"
                             }
     """
-    dataset_path = "/data/" + dataset_name
+    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
