@@ -516,7 +516,7 @@ def update_bids_dataset(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = "/data/" + __clean_string(unquote(dataset_name)) + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -636,7 +636,7 @@ def delete_bids_dataset(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = "/data/" + dataset_name
+    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
     if os.path.exists(dataset_path):
         shutil.rmtree(dataset_path)
         return jsonify({ 'data': 'Success' }), 200
