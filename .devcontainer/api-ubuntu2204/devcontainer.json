@@ -1,0 +1,25 @@
+{
+"name": "Bids API Container",
+"build": {
+	// Sets the run context to 2 level up instead of the .devcontainer/api-ubuntu2204 folder
+	"context": "../../",
+	"dockerfile": "./api.Dockerfile",
+	"args": { 
+		// Update 'VARIANT' to pick a Python version: 3, 3.10, 3.9, 3.8, 3.7, 3.6
+		// Append -bullseye or -buster to pin to an OS version.
+		// Use -bullseye variants on local on arm64/Apple Silicon.
+		"VARIANT": "3.10",
+		// Options
+		"NODE_VERSION": "lts/*"
+	}
+},
+"remoteUser": "root",
+"mounts": ["source=./bidsdata,target=/data,type=bind,consistency=cached"],
+"customizations": {
+	"vscode": {
+		"extensions": [
+			"ms-python.python"
+		]
+	}
+}
+}
