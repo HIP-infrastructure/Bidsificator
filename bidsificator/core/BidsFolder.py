@@ -46,7 +46,10 @@ class BidsFolder:
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description, f, indent=4)
 
-    def generate_dataset_description_file(self, dataset_description_dict: dict, json_file_path: str):
+    def generate_dataset_description_file(self, dataset_description_dict: dict, json_file_path: str = ""):
+        if not json_file_path:
+            json_file_path = self.__path / "dataset_description.json"
+    
         # Extract values from the received dictionary
         #dataset_desc_json = dataset_description_dict["DatasetDescJSON"]
         dataset_description_dict = {
@@ -65,6 +68,13 @@ class BidsFolder:
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description_dict, f, indent=4)
 
+    def rename_dataset(self, new_dataset_name: str):
+        self.__path.rename(self.__path.parent / new_dataset_name) # Rename the folder
+        self.__path = self.__path.parent / new_dataset_name # Update the path
+
+    def get_dataset_name(self) -> str:
+        return self.__path.name
+                
     def add_bids_subject(self, subject_id: str, subject_description: dict):
         new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)

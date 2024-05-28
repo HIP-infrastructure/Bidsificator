@@ -86,6 +86,141 @@ def get_all_datasets():
 
     return jsonify(datasets), 200
 
+@app.route('/datasets/<string:dataset_name>', methods=['GET'])
+def get_dataset_description_and_participants(dataset_name):
+    """
+        Get the description and participants of a dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+        responses:
+            200:
+                description: Success, returns the dataset description and participants
+                content:
+                    application/json:
+                        example:
+                            {
+                                "Name": "Example Dataset",
+                                "BIDSVersion": "1.0.0",
+                                "License": "CC0",
+                                "Authors": ["Author1", "Author2"],
+                                "Acknowledgements": "",
+                                "HowToAcknowledge": "",
+                                "Funding": [""],
+                                "ReferencesAndLinks": [""],
+                                "DatasetDOI": "",
+                                "Participants": [
+                                    {
+                                        "participant_id": "sub-01",
+                                        "age": "25",
+                                        "sex": "M",
+                                        "hand": "R"
+                                    }
+                                ],
+                                "Path": "/data/Example Dataset"
+                            }
+    """
+    dataset_path = "/data/" + dataset_name
+    participant_file_path = str(dataset_path) + "/participants.tsv"
+    dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
+
+    #Read description of dataset and participant list
+    dataset_description = BidsUtilityFunctions.read_json_safely(dataset_description_file_path)  
+    participants = BidsUtilityFunctions.read_tsv_safely(participant_file_path) 
+  
+    #add participants list and dataset_path to returned struct
+    dataset_description["Participants"] = participants
+    dataset_description["Path"] = dataset_path
+
+    return jsonify( dataset_description ), 200
+
+@app.route('/files', methods=['GET'])
+def get_files_from_absolute_path():
+    """
+        Get the files from an absolute path
+        ---
+        tags:
+            - Files
+        parameters:
+            - name: path
+              in: query
+              type: string
+              required: true
+              description: Absolute path to check
+        responses:
+            200:
+                description: Success, returns a list of files and directories
+                content:
+                    application/json:
+                        example:
+                            [
+                                {
+                                    "name": "file1.txt",
+                                    "isDirectory": false,
+                                    "path": "/path/to/file1.txt",
+                                    "parentPath": "/path/to"
+                                },
+                                {
+                                    "name": "directory1",
+                                    "isDirectory": true,
+                                    "path": "/path/to/directory1",
+                                    "parentPath": "/path/to"
+                                }
+                            ]
+    """
+    absolute_path_to_check = request.args.get('path')
+    if os.path.exists(absolute_path_to_check):
+        files = []
+        for file in os.listdir(absolute_path_to_check):
+            file_path = os.path.join(absolute_path_to_check, file)
+            is_directory = os.path.isdir(file_path)
+            files.append({
+              "name": file,
+              "isDirectory": is_directory,
+              "path": file_path,
+              "parentPath": absolute_path_to_check
+            })
+        return jsonify(files), 200
+    else:
+        return jsonify([]), 200
+
+@app.route('/files/content', methods=['GET'])
+def get_files_content_from_absolute_path():
+    """
+        Get the content of a file from an absolute path
+        ---
+        tags:
+            - Files
+        parameters:
+            - name: path
+              in: query
+              type: string
+              required: true
+              description: Absolute path to the file
+        responses:
+            200:
+                description: Success, returns the content of the file
+                content:
+                    application/json:
+                        example:
+                            "file content"
+    """
+    absolute_file_path_to_check = request.args.get('path')
+    extensions = [".csv", ".tsv", ".txt", ".json"]
+    is_text_extension = any(absolute_file_path_to_check.endswith(ext) for ext in extensions)
+    if os.path.exists(absolute_file_path_to_check) and is_text_extension:
+        with open(absolute_file_path_to_check, 'r') as f:
+          content = f.read()
+          return jsonify(content), 200
+    else:
+        return jsonify(""), 200
+
 @app.route('/datasets', methods=['POST'])
 def create_bids_dataset():
     """
@@ -173,33 +308,6 @@ def create_bids_dataset():
 
     return jsonify(dataset_description), 200
 
-@app.route('/datasets/<string:dataset_name>', methods=['DELETE'])
-def delete_bids_dataset(dataset_name):
-    """
-    Delete a BIDS dataset
-    ---
-    tags:
-        - BIDS
-    description: A success message indicating that the dataset was deleted.
-    parameters:
-    - name: dataset_name
-      in: query
-      type: string
-      required: true
-      description: The name of the dataset to delete
-    responses:
-        200:
-            description: A successful response
-            examples:
-                application/json: ""
-    """
-    dataset_path = "/data/" + dataset_name
-    if os.path.exists(dataset_path):
-        shutil.rmtree(dataset_path)
-        return jsonify({ 'data': 'Success' }), 200
-    else:
-        return jsonify({ 'error': 'Dataset not found' }), 404
-
 @app.route('/datasets/<string:dataset_name>/participants', methods=['POST'])
 def create_empty_bids_subject(dataset_name):
     """
@@ -251,53 +359,49 @@ def create_empty_bids_subject(dataset_name):
 
     return jsonify({ 'data': 'Success' }), 201
 
-# in the body 
-# {
-#   "participant_id": "01",
-#   "optionnal_key": "25",
-#   "optionnal_key2": "M",
-#   "optionnal_key3": "CHUV"
-# }
-@app.route('/datasets/<string:dataset_name>/participants', methods=['PUT'])
-def update_bids_subject(dataset_name):
-    dataset_path = "/data/" + dataset_name + "/"
-    if not os.path.exists(dataset_path):
-        return jsonify({ 'error': 'Dataset not found' }), 404
-    
-    #Get information from request
-    subject_description = request.get_json()
-    subject_id = subject_description["participant_id"]
-    subject_description.pop("participant_id", None)
-
-    bids_folder = BidsFolder(dataset_path)
-    subject = bids_folder.get_bids_subject(subject_id)
-    if subject is None:
-        return jsonify({ 'error': 'Subject not found' }), 404
-    
-    #for each key value pair in subject_description
-    #update the corresponding key and value in the subject
-    for key, value in subject_description.items():
-        subject.update_optional_key(key, value)
-    bids_folder.generate_participants_tsv()
-    return jsonify({ 'data': 'Success' }), 200
-
-@app.route('/datasets/<string:dataset_name>/participants/<string:subject_name>', methods=['DELETE'])
-def delete_bids_subect(dataset_name, subject_name):
-    dataset_path = "/data/" + dataset_name + "/"
-    if not os.path.exists(dataset_path):
-        return jsonify({ 'error': 'Dataset not found' }), 404
-
-    bids_folder = BidsFolder(dataset_path)
-    subjects = bids_folder.get_bids_subject(subject_name)
-    if subjects is None:
-        return jsonify({ 'error': 'Subject not found' }), 404
-    
-    bids_folder.delete_bids_subject(subject_name)
-    bids_folder.generate_participants_tsv()
-    return jsonify({ 'data': 'Success' }), 200
-
 @app.route('/datasets/<string:dataset_name>/participants/key', methods=['POST'])
-def add_key_to_participants_list(dataset_name):    
+def add_key_to_participants_list(dataset_name):
+    """
+        Add a new key to all participants in a dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+            - name: body
+              in: body
+              required: true
+              schema:
+                type: object
+                properties:
+                    name:
+                        type: string
+                        required: true
+                example:
+                    name: "new_key"
+        responses:
+            200:
+                description: Success, returns the updated participants.tsv content
+                content:
+                    application/json:
+                        example:
+                            {
+                                "participant_id": "sub-01",
+                                "new_key": ""
+                            }
+            404:
+                description: Dataset not found
+                content:
+                    application/json:
+                        example:
+                            {
+                                "error": "Dataset not found"
+                            }
+    """
     dataset_path = "/data/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
     content = request.get_json()
@@ -309,21 +413,6 @@ def add_key_to_participants_list(dataset_name):
     subjects = bids_folder.get_bids_subects()
     for subject in subjects:
         subject.add_optional_key(key_name)
-    bids_folder.generate_participants_tsv()
-
-    return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
-
-@app.route('/datasets/<string:dataset_name>/participants/key/<string:key_name>', methods=['DELETE'])
-def remove_key_from_participants_list(dataset_name, key_name):
-    dataset_path = "/data/" + dataset_name + "/"
-    participant_file_path = str(dataset_path) + "/participants.tsv"
-    if not os.path.exists(dataset_path):
-        return jsonify({ 'error': 'Dataset not found' }), 404
-
-    bids_folder = BidsFolder(dataset_path)
-    subjects = bids_folder.get_bids_subects()
-    for subject in subjects:
-        subject.remove_optional_key(key_name)
     bids_folder.generate_participants_tsv()
 
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
@@ -385,122 +474,278 @@ def add_files_to_bids_subject(dataset_name):
 
     return jsonify({ 'data': 'Success' }), 200
 
-""" Retrieve the description and participants of a specified dataset.
-Endpoint: GET /datasets/string:dataset_name
-
-Parameters:
-    - dataset_name (str): The name of the dataset to retrieve information from.
-
-Returns:
-    - dict: A dictionary containing the dataset description and a list of participants.
-    - tuple (str, int): An error message and HTTP status code (404 for not found) if the dataset is not found.
-
-Description: This endpoint allows users to retrieve the description and participants of a specified dataset.
-    - The 'dataset_name' parameter in the URL specifies the dataset to retrieve information from.
-    - The function constructs the paths to the dataset, the participants.tsv file, and the dataset_description.json file.
-    - It then checks if the dataset_description.json file exists and reads its content if it does.
-    - It also checks if the participants.tsv file exists and reads its content if it does. For each line in the file (excluding the header), it extracts the subject ID and adds it to a list of participants.
-    - Finally, it returns a dictionary containing the dataset description and the list of participants.
-
-Example Usage:
-```http
-GET /datasets/my_dataset
-"""
-@app.route('/datasets/<string:dataset_name>', methods=['GET'])
-def get_dataset_description_and_participants(dataset_name):
+@app.route('/datasets/<string:dataset_name>', methods=['PUT'])
+def update_bids_dataset(dataset_name):
     """
-    Retrieve the description and participants of a specified dataset.
+        Update a BIDS dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+            - name: body
+              in: body
+              required: true
+              schema:
+                type: object
+                properties:
+                    Name:
+                        type: string
+                        description: New name of the dataset
+                    # Add other properties here as needed
+                example:
+                    Name: "new_dataset_name"
+        responses:
+            200:
+                description: Success
+                content:
+                    application/json:
+                        example:
+                            {
+                                "Name": "new_dataset_name"
+                            }
+            404:
+                description: Dataset not found
+                content:
+                    application/json:
+                        example:
+                            {
+                                "error": "Dataset not found"
+                            }
+    """
+    dataset_path = "/data/" + dataset_name + "/"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+
+    #Get information from request
+    dataset_description = request.get_json()
+
+    bids_folder = BidsFolder(dataset_path)
+    if bids_folder.get_dataset_name() != dataset_description["Name"]:
+        bids_folder.rename_dataset(dataset_description["Name"])
+    bids_folder.generate_dataset_description_file(dataset_description)
+    
+    return jsonify(dataset_description), 200
+
+@app.route('/datasets/<string:dataset_name>/participants/<string:participant_name>', methods=['PUT'])
+def update_bids_subject(dataset_name, participant_name):
+    """
+        Update a BIDS subject in a dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+            - name: body
+              in: body
+              required: true
+              schema:
+                type: object
+                properties:
+                    participant_id:
+                        type: string
+                        required: true
+                    age:
+                        type: string
+                        description: Optional key-value pair
+                    sex:
+                        type: string
+                        description: Optional key-value pair
+                    hand:
+                        type: string
+                        description: Optional key-value pair
+                example:
+                    participant_id: "sub-01"
+                    age: "25"
+                    sex: "M"
+                    hand: "R"
+        responses:
+            200:
+                description: Success
+                content:
+                    application/json:
+                        example:
+                            {
+                                "data": "Success"
+                            }
+            404:
+                description: Dataset or Subject not found
+                content:
+                    application/json:
+                        example:
+                            {
+                                "error": "Dataset not found"
+                            }
+                    application/json:
+                        example:
+                            {
+                                "error": "Subject not found"
+                            }
+    """
+    # Check if dataset exists
+    dataset_path = "/data/" + dataset_name + "/"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+    
+    # Check if subject exists
+    bids_folder = BidsFolder(dataset_path)
+    subject = bids_folder.get_bids_subject(participant_name)
+    if subject is None:
+        return jsonify({ 'error': 'Subject not found' }), 404
+    
+    # Get information from request
+    subject_description = request.get_json()
+    subject_id = subject_description["participant_id"]
+    subject_description.pop("participant_id", None)
+
+    # Update subject ID if necessary
+    if subject.get_subject_id() != subject_id:
+        subject.set_subject_id(subject_id)
+
+    # for each key value pair in subject_description
+    # update the corresponding key and value in the subject
+    for key, value in subject_description.items():
+        subject.update_optional_key(key, value)
+    bids_folder.generate_participants_tsv()
+    return jsonify({ 'data': 'Success' }), 200
+
+@app.route('/datasets/<string:dataset_name>', methods=['DELETE'])
+def delete_bids_dataset(dataset_name):
+    """
+    Delete a BIDS dataset
     ---
     tags:
         - BIDS
-    description: Returns the description and participants of a specified dataset.
-    
+    description: A success message indicating that the dataset was deleted.
+    parameters:
+    - name: dataset_name
+      in: query
+      type: string
+      required: true
+      description: The name of the dataset to delete
+    responses:
+        200:
+            description: A successful response
+            examples:
+                application/json: ""
     """
     dataset_path = "/data/" + dataset_name
+    if os.path.exists(dataset_path):
+        shutil.rmtree(dataset_path)
+        return jsonify({ 'data': 'Success' }), 200
+    else:
+        return jsonify({ 'error': 'Dataset not found' }), 404
+
+@app.route('/datasets/<string:dataset_name>/participants/<string:subject_name>', methods=['DELETE'])
+def delete_bids_subect(dataset_name, subject_name):
+    """
+        Delete a BIDS subject from a dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+            - name: subject_name
+              in: path
+              type: string
+              required: true
+              description: Name of the subject
+        responses:
+            200:
+                description: Success
+                content:
+                    application/json:
+                        example:
+                            {
+                                "data": "Success"
+                            }
+            404:
+                description: Dataset or Subject not found
+                content:
+                    application/json:
+                        example:
+                            {
+                                "error": "Dataset not found"
+                            }
+                    application/json:
+                        example:
+                            {
+                                "error": "Subject not found"
+                            }
+    """
+    dataset_path = "/data/" + dataset_name + "/"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
+
+    bids_folder = BidsFolder(dataset_path)
+    subjects = bids_folder.get_bids_subject(subject_name)
+    if subjects is None:
+        return jsonify({ 'error': 'Subject not found' }), 404
+    
+    bids_folder.delete_bids_subject(subject_name)
+    bids_folder.generate_participants_tsv()
+    return jsonify({ 'data': 'Success' }), 200
+
+@app.route('/datasets/<string:dataset_name>/participants/key/<string:key_name>', methods=['DELETE'])
+def remove_key_from_participants_list(dataset_name, key_name):
+    """
+        Delete a key from all participants in a dataset
+        ---
+        tags:
+            - BIDS
+        parameters:
+            - name: dataset_name
+              in: path
+              type: string
+              required: true
+              description: Name of the dataset
+            - name: key_name
+              in: path
+              type: string
+              required: true
+              description: Name of the key to delete
+        responses:
+            200:
+                description: Success, returns the updated participants.tsv content
+                content:
+                    application/json:
+                        example:
+                            {
+                                "participant_id": "sub-01"
+                            }
+            404:
+                description: Dataset not found
+                content:
+                    application/json:
+                        example:
+                            {
+                                "error": "Dataset not found"
+                            }
+    """
+    dataset_path = "/data/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
-    dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
+    if not os.path.exists(dataset_path):
+        return jsonify({ 'error': 'Dataset not found' }), 404
 
-    #Read description of dataset and participant list
-    dataset_description = BidsUtilityFunctions.read_json_safely(dataset_description_file_path)  
-    participants = BidsUtilityFunctions.read_tsv_safely(participant_file_path) 
-  
-    #add participants list and dataset_path to returned struct
-    dataset_description["Participants"] = participants
-    dataset_description["Path"] = dataset_path
+    bids_folder = BidsFolder(dataset_path)
+    subjects = bids_folder.get_bids_subects()
+    for subject in subjects:
+        subject.remove_optional_key(key_name)
+    bids_folder.generate_participants_tsv()
 
-    return jsonify( dataset_description ), 200
-
-""" Retrieve the files from a specified absolute path.
-Endpoint: GET /files
-
-Parameters:
-    - path (str): The absolute path to retrieve files from. This is passed as a query parameter.
-
-Returns:
-    - list: A list of dictionaries, each representing a file or directory. Each dictionary contains the name, whether it is a directory, the path, and the parent path.
-    - tuple (str, int): An empty list and HTTP status code (200 for success) if the path does not exist.
-
-Description: This endpoint allows users to retrieve the files from a specified absolute path.
-    - The 'path' query parameter specifies the absolute path to retrieve files from.
-    - The function checks if the path exists. If it does, it lists all files in the directory.
-    - For each file, it constructs the file path, checks if it is a directory, and adds a dictionary containing the file information to a list.
-    - Finally, it returns the list of files. If the path does not exist, it returns an empty list.
-
-Example Usage:
-```http
-GET /files?path=/path/to/directory
-"""
-@app.route('/files', methods=['GET'])
-def get_files_from_absolute_path():
-    """
-    Retrieve the files from a specified absolute path.
-    """
-    absolute_path_to_check = request.args.get('path')
-    if os.path.exists(absolute_path_to_check):
-        files = []
-        for file in os.listdir(absolute_path_to_check):
-            file_path = os.path.join(absolute_path_to_check, file)
-            is_directory = os.path.isdir(file_path)
-            files.append({
-              "name": file,
-              "isDirectory": is_directory,
-              "path": file_path,
-              "parentPath": absolute_path_to_check
-            })
-        return jsonify(files), 200
-    else:
-        return jsonify([]), 200
-
-""" Retrieve the content of a file from a specified absolute path.
-Endpoint: GET /files/content
-
-Parameters:
-    - path (str): The absolute path to the file to retrieve content from. This is passed as a query parameter.
-
-Returns:
-    - str: The content of the file.
-    - tuple (str, int): An empty string and HTTP status code (200 for success) if the file does not exist or does not have a text extension (.csv, .txt, .json).
-
-Description: This endpoint allows users to retrieve the content of a file from a specified absolute path.
-    - The 'path' query parameter specifies the absolute path to the file to retrieve content from.
-    - The function checks if the file exists and has a text extension. If it does, it opens the file and reads its content.
-    - Finally, it returns the content of the file. If the file does not exist or does not have a text extension, it returns an empty string.
-
-Example Usage:
-```http
-GET /files/content?path=/path/to/file.txt
-"""
-@app.route('/files/content', methods=['GET'])
-def get_files_content_from_absolute_path():
-    absolute_file_path_to_check = request.args.get('path')
-    extensions = [".csv", ".tsv", ".txt", ".json"]
-    is_text_extension = any(absolute_file_path_to_check.endswith(ext) for ext in extensions)
-    if os.path.exists(absolute_file_path_to_check) and is_text_extension:
-        with open(absolute_file_path_to_check, 'r') as f:
-          content = f.read()
-          return jsonify(content), 200
-    else:
-        return jsonify(""), 200
+    return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
 
 if __name__ == '__main__':
   app.run(debug=True, port=5000)
