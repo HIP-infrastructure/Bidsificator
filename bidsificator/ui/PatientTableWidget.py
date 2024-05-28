@@ -86,7 +86,7 @@ class PatientTableWidget(QTableWidget):
 
         #dataset_path = self.fileTreeView.model().rootDirectory().path()
         self.__bids_folder = BidsFolder(dataset_path)
-        subjects = self.__bids_folder.get_bids_subects()
+        subjects = self.__bids_folder.get_bids_subjects()
 
         #We use a dict in order to keep the order of the elements + uniqueness
         all_optional_keys = {key: None for subject in subjects for key in subject.get_optional_keys().keys()}
@@ -157,7 +157,7 @@ class PatientTableWidget(QTableWidget):
             keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setHorizontalHeaderItem(currentIndex, keyItem)
 
-            subjects = self.__bids_folder.get_bids_subects()
+            subjects = self.__bids_folder.get_bids_subjects()
             for i, subject in enumerate(subjects):
                 if key not in subject.get_optional_keys():
                     keyItem = QTableWidgetItem("n/a")
@@ -177,7 +177,7 @@ class PatientTableWidget(QTableWidget):
             keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setHorizontalHeaderItem(currentIndex, keyItem)
 
-            subjects = self.__bids_folder.get_bids_subects()
+            subjects = self.__bids_folder.get_bids_subjects()
             for i, subject in enumerate(subjects):
                 if key not in subject.get_optional_keys():
                     keyItem = QTableWidgetItem("n/a")
@@ -195,7 +195,7 @@ class PatientTableWidget(QTableWidget):
         return_value = QMessageBox.warning(self, "Delete Key", "Are you sure you want to delete the key " + key_to_delete + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if return_value == QMessageBox.StandardButton.Yes:
             #Remove for each subject in the data structures
-            subjects = self.__bids_folder.get_bids_subects()
+            subjects = self.__bids_folder.get_bids_subjects()
             for subject in subjects:
                 subject.remove_optional_key(key_to_delete)
 

@@ -409,7 +409,7 @@ def add_key_to_participants_list(dataset_name):
         return jsonify({ 'error': 'Dataset not found' }), 404
     
     bids_folder = BidsFolder(dataset_path)
-    subjects = bids_folder.get_bids_subects()
+    subjects = bids_folder.get_bids_subjects()
     for subject in subjects:
         subject.add_optional_key(key_name)
     bids_folder.generate_participants_tsv()
@@ -645,7 +645,7 @@ def delete_bids_dataset(dataset_name):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
 @app.route('/datasets/<string:dataset_name>/participants/<string:subject_name>', methods=['DELETE'])
-def delete_bids_subect(dataset_name, subject_name):
+def delete_bids_subject(dataset_name, subject_name):
     """
         Delete a BIDS subject from a dataset
         ---
@@ -740,7 +740,7 @@ def remove_key_from_participants_list(dataset_name, key_name):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
     bids_folder = BidsFolder(dataset_path)
-    subjects = bids_folder.get_bids_subects()
+    subjects = bids_folder.get_bids_subjects()
     for subject in subjects:
         subject.remove_optional_key(key_name)
     bids_folder.generate_participants_tsv()
