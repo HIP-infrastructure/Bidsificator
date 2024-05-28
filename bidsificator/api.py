@@ -522,10 +522,11 @@ def update_bids_dataset(dataset_name):
 
     #Get information from request
     dataset_description = request.get_json()
+    sanitized_dataset_name = __clean_string(dataset_description.get('Name', ''))
 
     bids_folder = BidsFolder(dataset_path)
-    if bids_folder.get_dataset_name() != dataset_description["Name"]:
-        bids_folder.rename_dataset(dataset_description["Name"])
+    if bids_folder.get_dataset_name() != sanitized_dataset_name:
+        bids_folder.rename_dataset(sanitized_dataset_name)
     bids_folder.generate_dataset_description_file(dataset_description)
     
     return jsonify(dataset_description), 200
