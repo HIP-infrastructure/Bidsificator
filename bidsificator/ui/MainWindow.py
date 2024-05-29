@@ -3,6 +3,7 @@ from PyQt6.QtCore import QStandardPaths, Qt, QModelIndex, QAbstractItemModel
 from PyQt6.QtGui import QFileSystemModel, QAction, QCursor
 
 from core.BidsFolder import BidsFolder
+from core.BidsUtilityFunctions import BidsUtilityFunctions
 from forms.MainWindow_ui import Ui_MainWindow
 from workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 from bids_validator import BIDSValidator
@@ -70,8 +71,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
                 return
         
-            dataset_path = folderPath + os.sep + dataset_name
+            # Clean the dataset name and create a unique path and update the dataset name
+            dataset_path = folderPath + os.sep + BidsUtilityFunctions.clean_string(dataset_name)
+            dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
+            dataset_name = os.path.basename(dataset_path).replace("_", " ")
 
+            # Generate usefull paths
             dataset_description_file_path = str(dataset_path) + os.sep +  "dataset_description.json"
 
             bids_folder = BidsFolder(dataset_path)

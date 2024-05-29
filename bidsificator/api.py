@@ -126,7 +126,7 @@ def get_dataset_description_and_participants(dataset_name):
                                 "Path": "/data/Example Dataset"
                             }
     """
-    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
+    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
@@ -295,7 +295,7 @@ def create_bids_dataset():
     """
     # Retrieve user information from the JSON request
     content = request.get_json()
-    dataset_path = "/data/" + __clean_string(content.get('Name', ''))
+    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(content.get('Name', ''))
 
     #Create a unique folder name
     dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
@@ -521,7 +521,7 @@ def update_bids_dataset(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
+    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -529,14 +529,14 @@ def update_bids_dataset(dataset_name):
     dataset_description = request.get_json()
     
     #We need to check if the updated name already exists
-    new_dataset_path = "/data/" + __clean_string(dataset_description.get('Name', ''))
+    new_dataset_path = "/data/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
     #Create a unique folder name
     new_dataset_path = BidsUtilityFunctions.get_unique_path(new_dataset_path)
     #Update Name in content in case it was modified
     dataset_description["Name"] = os.path.basename(new_dataset_path).replace("_", " ")
     
     #Then business as usual
-    sanitized_dataset_name = __clean_string(dataset_description.get('Name', ''))
+    sanitized_dataset_name = BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
     
     bids_folder = BidsFolder(dataset_path)
     if bids_folder.get_dataset_name() != sanitized_dataset_name:
@@ -651,7 +651,7 @@ def delete_bids_dataset(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
+    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if os.path.exists(dataset_path):
         shutil.rmtree(dataset_path)
         return jsonify({ 'data': 'Success' }), 200
@@ -760,15 +760,6 @@ def remove_key_from_participants_list(dataset_name, key_name):
     bids_folder.generate_participants_tsv()
 
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
-
-def __clean_string(input_string):
-    # Remove leading and trailing white spaces
-    cleaned_string = input_string.strip()
-    
-    # Replace middle white spaces with underscores
-    cleaned_string = cleaned_string.replace(" ", "_")
-    
-    return cleaned_string
 
 if __name__ == '__main__':
   app.run(debug=True, port=5000)
