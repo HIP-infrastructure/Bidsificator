@@ -138,7 +138,8 @@ def get_dataset_description_and_participants(dataset_name):
     dataset_description["Participants"] = participants
     dataset_description["Path"] = dataset_path
 
-    return jsonify( dataset_description ), 200
+    #use json.dumps instead of jsonify to keep order of elements
+    return json.dumps(dataset_description), 200
 
 @app.route('/files', methods=['GET'])
 def get_files_from_absolute_path():
