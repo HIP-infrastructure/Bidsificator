@@ -227,6 +227,11 @@
                 </item>
                 <item>
                  <property name="text">
+                  <string>CT (anat)</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
                   <string>ieeg (ieeg)</string>
                  </property>
                 </item>
@@ -877,6 +882,11 @@
               <item>
                <property name="text">
                 <string>FLAIR (anat)</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>CT (anat)</string>
                </property>
               </item>
               <item>
