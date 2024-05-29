@@ -24,3 +24,14 @@ class BidsUtilityFunctions:
             with open(filename, 'r') as f:
                 json_raw_content = json.load(f)
         return json_raw_content
+    
+    @staticmethod
+    def get_unique_path(path):
+        if not os.path.exists(path):
+            return path
+
+        i = 1
+        while os.path.exists(f"{path}({i})"):
+            i += 1
+
+        return f"{path}({i})"

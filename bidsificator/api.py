@@ -297,6 +297,11 @@ def create_bids_dataset():
     content = request.get_json()
     dataset_path = "/data/" + __clean_string(content.get('Name', ''))
 
+    #Create a unique folder name
+    dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
+    #Reset Name in content in case it was modified
+    content["Name"] = os.path.basename(dataset_path).replace("_", " ")
+    
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
@@ -516,14 +521,23 @@ def update_bids_dataset(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + __clean_string(unquote(dataset_name)) + "/"
+    dataset_path = "/data/" + __clean_string(unquote(dataset_name))
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
     #Get information from request
     dataset_description = request.get_json()
+    
+    #We need to check if the updated name already exists
+    new_dataset_path = "/data/" + __clean_string(dataset_description.get('Name', ''))
+    #Create a unique folder name
+    new_dataset_path = BidsUtilityFunctions.get_unique_path(new_dataset_path)
+    #Update Name in content in case it was modified
+    dataset_description["Name"] = os.path.basename(new_dataset_path).replace("_", " ")
+    
+    #Then business as usual
     sanitized_dataset_name = __clean_string(dataset_description.get('Name', ''))
-
+    
     bids_folder = BidsFolder(dataset_path)
     if bids_folder.get_dataset_name() != sanitized_dataset_name:
         bids_folder.rename_dataset(sanitized_dataset_name)
