@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file '/Users/florian/Documents/Arbeit/CHUV/Repository/Python/Bidsificator/bidsificator/forms/MainWindow.ui'
+# Form implementation generated from reading ui file 'bidsificator/forms/MainWindow.ui'
 #
 # Created by: PyQt6 UI code generator 6.4.2
 #
@@ -440,4 +440,4 @@ class Ui_MainWindow(object):
         self.actionOpen_Multiple_Bids_Datasets.setText(_translate("MainWindow", "Open Multiple Bids Datasets"))
         self.actionNew_Bids_Dataset.setText(_translate("MainWindow", "New Bids Dataset"))
         self.actionClose.setText(_translate("MainWindow", "Close"))
-from ui.PatientTableWidget import PatientTableWidget
+from ..ui.PatientTableWidget import PatientTableWidget

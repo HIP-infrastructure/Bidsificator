@@ -8,23 +8,26 @@ from pathlib import Path
 from typing import Optional
 
 # Deal with the dependency from PyEEGFormat according to os
-os_name= platform.system()
+os_name = platform.system()
 machine = platform.machine()
 
-if os_name == "Darwin":
-    if 'x86_64' in machine.lower():
-        from core.PyEEGFormat import wrappermac as wrapper
-    elif 'arm' in machine.lower():
-        from core.PyEEGFormat import wrappermacarm as wrapper
-elif os_name == "Windows":
-    from core.PyEEGFormat import wrapperwin as wrapper
-elif os_name == "Linux":
-    if 'x86_64' in machine.lower():
-        from core.PyEEGFormat import wrapperlinux as wrapper
-    elif 'arm' in machine.lower():
-        from core.PyEEGFormat import wrapperlinuxarm64 as wrapper
-else:
-    raise Exception(f"Unsupported operating system: {os_name}")
+try:
+    if os_name == "Darwin":
+        if "x86_64" in machine.lower():
+            from .PyEEGFormat import wrappermac as wrapper
+        elif "arm" in machine.lower():
+            from .PyEEGFormat import wrappermacarm as wrapper
+    elif os_name == "Windows":
+        from .PyEEGFormat import wrapperwin as wrapper
+    elif os_name == "Linux":
+        if "x86_64" in machine.lower():
+            from .PyEEGFormat import wrapperlinux as wrapper
+        elif "arm" in machine.lower():
+            from .PyEEGFormat import wrapperlinuxarm64 as wrapper
+except ImportError:
+    print(f"Unsupported operating system: {os_name} {machine.lower()}")
+    raise
+
 
 class BidsSubject:
     def __init__(self, parent_path: str, subject_id: str, optional_keys:dict = None):

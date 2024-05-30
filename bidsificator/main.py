@@ -1,9 +1,16 @@
-from PyQt6.QtWidgets import QApplication
-from ui.MainWindow import MainWindow
 import sys
 
-if __name__ == "__main__":
+from PyQt6.QtWidgets import QApplication
+
+from .ui.MainWindow import MainWindow
+
+
+def main() -> int | bool | None:
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

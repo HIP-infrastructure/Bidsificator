@@ -1,0 +1,17 @@
+{
+    "version": "0.1.0",
+    "configurations": [
+      {
+        "name": "Bidsificator Poetry",
+        "type": "debugpy",
+        "request": "launch",
+        "cwd": "${workspaceFolder}", // use current workspace folder
+        "python": "${command:python.interpreterPath}", //use current python interpreter in terminal
+        "module": "bidsificator.main",
+        "console": "integratedTerminal",
+        "redirectOutput": true,
+        "justMyCode": false,
+        "stopOnEntry": false,
+      }
+    ]
+}

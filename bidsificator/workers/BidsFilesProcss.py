@@ -1,10 +1,19 @@
 import os
 import shutil
-import dicom2nifti
-from core.BidsFolder import BidsFolder
 
-def processBidsFiles(conn, dataset_path: str, subject_name: str, file_list: list, anatomical_modalities: set[str]):
-    temp_dir = '/tmp/mri_conversion'
+import dicom2nifti
+
+from ..core.BidsFolder import BidsFolder
+
+
+def processBidsFiles(
+    conn,
+    dataset_path: str,
+    subject_name: str,
+    file_list: list,
+    anatomical_modalities: set[str],
+):
+    temp_dir = "/tmp/mri_conversion"
     os.makedirs(temp_dir, exist_ok=True)
 
     bids_folder = BidsFolder(dataset_path)

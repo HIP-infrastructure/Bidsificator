@@ -1,6 +1,9 @@
 import multiprocessing as mp
+
 from PyQt6.QtCore import pyqtSignal, QThread
-from workers.BidsFilesProcss import processBidsFiles
+
+from .BidsFilesProcss import processBidsFiles
+
 
 class ImportBidsFilesWorker(QThread):
     update_progressbar_signal = pyqtSignal(int)

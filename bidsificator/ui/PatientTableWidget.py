@@ -1,8 +1,19 @@
-from PyQt6.QtWidgets import QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QMenu, QInputDialog, QTableWidgetItem, QMenu, QMessageBox
+from PyQt6.QtWidgets import (
+    QHeaderView,
+    QMenu,
+    QTableWidget,
+    QTableWidgetItem,
+    QMenu,
+    QInputDialog,
+    QTableWidgetItem,
+    QMenu,
+    QMessageBox,
+)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
-from core.BidsFolder import BidsFolder
+from ..core.BidsFolder import BidsFolder
+
 
 class PatientTableWidget(QTableWidget):
     __selected_item = None
