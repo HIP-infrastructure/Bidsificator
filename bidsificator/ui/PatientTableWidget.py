@@ -55,8 +55,6 @@ class PatientTableWidget(QTableWidget):
         if not index.isValid():
             return
         self.__selected_item = self.indexAt(event)
-        print("Horizontal Context Menu")
-        print(str(self.__selected_item.row()) + " " + str(self.__selected_item.column()))
         canAddKeyBefore = self.__selected_item.column() > 0
 
         self.customMenu = QMenu(self)
@@ -75,8 +73,6 @@ class PatientTableWidget(QTableWidget):
         if not index.isValid():
             return
         self.__selected_item = self.indexAt(event)
-        print("Vertical Context Menu")
-        print(str(self.__selected_item.row()) + " " + str(self.__selected_item.column()))
 
         self.customMenu = QMenu(self)
         deleteSelectedSubjectAction = self.customMenu.addAction("Remove Selected Subject")
@@ -127,12 +123,15 @@ class PatientTableWidget(QTableWidget):
 
     def CreateSubjectInTableWidget(self,subject_name: str):
         subject_description = self.GetSubjectsKeysFromTable()
-        print("subject_description: " + str(subject_description))
         if not subject_description:
             subject_description = {'age' : '123', 'sex' : 'M/F'}
-        print("subject_description after check not: " + str(subject_description))
 
-        bids_subject = self.__bids_folder.add_bids_subject(subject_name, subject_description)
+        try:
+            bids_subject = self.__bids_folder.add_bids_subject(subject_name, subject_description)
+        except ValueError as e:
+            QMessageBox.warning(self, "Error", str(e))
+            return
+    
         self.__bids_folder.generate_participants_tsv()
 
         #insert a new row
@@ -230,9 +229,6 @@ class PatientTableWidget(QTableWidget):
             self.__bids_folder.generate_participants_tsv()
 
     def ItemChanged(self, item):
-        print("Item changed")
-        print("row: " + str(item.row()) + " column: " + str(item.column()))
-        print("text: " + item.text())
         if item.column() == 0:
             subject_id = self.__previous_cell_text
             subject = self.__bids_folder.get_bids_subject(subject_id)
@@ -246,7 +242,4 @@ class PatientTableWidget(QTableWidget):
             self.__bids_folder.generate_participants_tsv()
 
     def ItemClicked(self, item):
-        print("Current item changed")
-        print("row: " + str(item.row()) + " column: " + str(item.column()))
-        print("text: " + item.text())
         self.__previous_cell_text = item.text()

@@ -365,7 +365,10 @@ def create_empty_bids_subject(dataset_name):
     #Create subject
     subject_id = subject_description["participant_id"]
     subject_description.pop("participant_id", None)
-    bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
+    try:
+        bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
+    except ValueError as e:
+        return jsonify({ 'data': 'Error: there is already a subject with this ID' }), 400
     #Generate participants.tsv
     bids_folder.generate_participants_tsv(participant_file_path)
 

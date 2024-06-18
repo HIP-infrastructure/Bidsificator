@@ -50,9 +50,7 @@ class BidsFolder:
     def generate_dataset_description_file(self, dataset_description_dict: dict, json_file_path: str = ""):
         if not json_file_path:
             json_file_path = self.__path / "dataset_description.json"
-    
-        # Extract values from the received dictionary
-        #dataset_desc_json = dataset_description_dict["DatasetDescJSON"]
+
         dataset_description_dict = {
             "Name": dataset_description_dict.get("Name", "n/a"),
             "BIDSVersion": dataset_description_dict.get("BIDSVersion", "n/a"),
@@ -65,18 +63,20 @@ class BidsFolder:
             "DatasetDOI": dataset_description_dict.get("DatasetDOI", "n/a")
         }
 
-        # Write the new dictionary to the file
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description_dict, f, indent=4)
 
     def rename_dataset(self, new_dataset_name: str):
-        self.__path.rename(self.__path.parent / new_dataset_name) # Rename the folder
-        self.__path = self.__path.parent / new_dataset_name # Update the path
+        self.__path.rename(self.__path.parent / new_dataset_name)
+        self.__path = self.__path.parent / new_dataset_name
 
     def get_dataset_name(self) -> str:
         return self.__path.name
                 
-    def add_bids_subject(self, subject_id: str, subject_description: dict):
+    def add_bids_subject(self, subject_id: str, subject_description: dict):        
+        if any(subject.get_subject_id() == subject_id for subject in self.__bids_subjects):
+            raise ValueError(f"A subject with ID {subject_id} already exists.")
+
         new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)
         return new_subject
@@ -89,9 +89,7 @@ class BidsFolder:
                 #Remove subject folder from disk
                 subject_to_delete = self.__path / subject_id
                 shutil.rmtree(subject_to_delete)
-                print("Subject " + subject_id + " deleted")
                 return 
-        print("Subject " + subject_id + " not found")
 
     def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
@@ -109,7 +107,6 @@ class BidsFolder:
         #open participants_tsv file and write the header
         with open(participants_tsv_path, 'w', newline='') as f:
             writer = csv.writer(f, delimiter='\t')
-            print(str(["participant_id"] + all_optional_keys))
             writer.writerow(["participant_id"] + all_optional_keys)
             for subject in self.__bids_subjects:
                 row = [subject.get_subject_id()]
