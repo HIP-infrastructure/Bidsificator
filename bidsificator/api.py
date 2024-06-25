@@ -19,6 +19,7 @@ from .core.BidsUtilityFunctions import BidsUtilityFunctions
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
 
+__data_root_path = "/data"
 app = Flask(__name__)
 swagger = Swagger(app, template={
     "info": {
@@ -32,7 +33,6 @@ CORS(app)
 auth = HTTPBasicAuth()
 
 #TODO add_files_to_bids_subject(dataset_name): Check with manu how to handle error return if some files are missing but not all 
-#TODO Add name sanitization to handle possible spaces in dataset name
 
 @app.route('/')
 def index():
@@ -49,6 +49,24 @@ def index():
 #@auth.login_required
 def health_check():
   return "Bids Backend currently running on localhost"
+
+@app.route('/context', methods=['GET'])
+def get_data_root_path():
+    """
+        Get the data root path
+        ---
+        tags:
+            - BIDS
+        description: Returns the data root path.
+        responses:
+            200:
+                description: A successful response
+                content:
+                    application/json:
+                        example:
+                            "/data"
+    """
+    return jsonify(__data_root_path), 200
 
 @app.route('/datasets', methods=['GET'])
 def get_all_datasets():
@@ -78,8 +96,8 @@ def get_all_datasets():
                         ]
         """
     datasets = []
-    for dataset in os.listdir('/data'):
-        dataset_description_file_path = "/data/" + dataset + "/dataset_description.json"
+    for dataset in os.listdir(__data_root_path):
+        dataset_description_file_path = __data_root_path + "/" + dataset + "/dataset_description.json"
         if os.path.exists(dataset_description_file_path):
             with open(dataset_description_file_path, 'r') as f:
                 dataset_description = json.load(f)
@@ -127,7 +145,7 @@ def get_dataset_description_and_participants(dataset_name):
                                 "Path": "/data/Example Dataset"
                             }
     """
-    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
@@ -146,7 +164,6 @@ def get_dataset_description_and_participants(dataset_name):
     )
     
     return response
-
 
 @app.route('/files', methods=['GET'])
 def get_files_from_absolute_path():
@@ -229,6 +246,19 @@ def get_files_content_from_absolute_path():
     else:
         return jsonify(""), 200
 
+@app.route('/context', methods=['POST'])
+def set_data_root_path():
+    request = request.get_json()
+    path = request.get('Path', '')
+    if path[-1] == "/":
+        path = path[:-1]
+
+    if os.path.exists(path):
+        __data_root_path = path
+        return jsonify(__data_root_path), 200
+    else:
+        return jsonify({ 'error': 'Path does not exist' }), 404
+
 @app.route('/datasets', methods=['POST'])
 def create_bids_dataset():
     """
@@ -303,7 +333,7 @@ def create_bids_dataset():
     """
     # Retrieve user information from the JSON request
     content = request.get_json()
-    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(content.get('Name', ''))
+    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(content.get('Name', ''))
 
     #Create a unique folder name
     dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
@@ -352,7 +382,7 @@ def create_empty_bids_subject(dataset_name):
                     application/json: ""
     """
     #Get information from request
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     subject_description = request.get_json()
     #Create useful paths
     participant_file_path = str(dataset_path) + "/participants.tsv"
@@ -417,7 +447,7 @@ def add_key_to_participants_list(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
     content = request.get_json()
     key_name = content.get('name', '')
@@ -462,7 +492,7 @@ def add_files_to_bids_subject(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     files_description = request.get_json()
 
     bids_folder = BidsFolder(dataset_path)
@@ -532,7 +562,7 @@ def update_bids_dataset(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -540,7 +570,7 @@ def update_bids_dataset(dataset_name):
     dataset_description = request.get_json()
     
     #We need to check if the updated name already exists
-    new_dataset_path = "/data/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
+    new_dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
     #Create a unique folder name
     new_dataset_path = BidsUtilityFunctions.get_unique_path(new_dataset_path)
     #Update Name in content in case it was modified
@@ -616,7 +646,7 @@ def update_bids_subject(dataset_name, participant_name):
                             }
     """
     # Check if dataset exists
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
     
@@ -662,7 +692,7 @@ def delete_bids_dataset(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = "/data/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if os.path.exists(dataset_path):
         shutil.rmtree(dataset_path)
         return jsonify({ 'data': 'Success' }), 200
@@ -710,7 +740,7 @@ def delete_bids_subject(dataset_name, subject_name):
                                 "error": "Subject not found"
                             }
     """
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -759,7 +789,7 @@ def remove_key_from_participants_list(dataset_name, key_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = "/data/" + dataset_name + "/"
+    dataset_path = __data_root_path + "/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
