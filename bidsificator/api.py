@@ -152,7 +152,8 @@ def get_dataset_description_and_participants(dataset_name):
                                 "Path": "/data/Example Dataset"
                             }
     """
-    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
