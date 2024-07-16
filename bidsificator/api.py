@@ -12,6 +12,7 @@ from flask import jsonify
 from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
 from flasgger import Swagger
+from flask_caching import Cache
 
 from .core.BidsFolder import BidsFolder
 from .core.BidsUtilityFunctions import BidsUtilityFunctions
@@ -19,8 +20,14 @@ from .core.BidsUtilityFunctions import BidsUtilityFunctions
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
 
-__data_root_path = "/data"
+# __data_root_path = "/tmp"
+
+
 app = Flask(__name__)
+app.config['CACHE_TYPE'] = 'SimpleCache'  # Considérez d'autres types pour la production
+cache = Cache(app)
+cache.set('__data_root_path', '/tmp')
+
 swagger = Swagger(app, template={
     "info": {
         "title": "BIDS Toolbox API",
@@ -66,7 +73,8 @@ def get_data_root_path():
                         example:
                             "/data"
     """
-    return jsonify(__data_root_path), 200
+    path = cache.get('__data_root_path')
+    return jsonify(path), 200
 
 @app.route('/datasets', methods=['GET'])
 def get_all_datasets():
@@ -96,8 +104,9 @@ def get_all_datasets():
                         ]
         """
     datasets = []
-    for dataset in os.listdir(__data_root_path):
-        dataset_description_file_path = __data_root_path + "/" + dataset + "/dataset_description.json"
+    path = cache.get('__data_root_path')
+    for dataset in os.listdir(path):
+        dataset_description_file_path = path + "/" + dataset + "/dataset_description.json"
         if os.path.exists(dataset_description_file_path):
             with open(dataset_description_file_path, 'r') as f:
                 dataset_description = json.load(f)
@@ -248,16 +257,17 @@ def get_files_content_from_absolute_path():
 
 @app.route('/context', methods=['POST'])
 def set_data_root_path():
-    request = request.get_json()
-    path = request.get('Path', '')
+    json = request.get_json()
+    path = json.get('Path', '')
     if path[-1] == "/":
         path = path[:-1]
-
+    
     if os.path.exists(path):
-        __data_root_path = path
-        return jsonify(__data_root_path), 200
+        # __data_root_path = path
+        cache.set('__data_root_path', path)
+        return jsonify(path), 201
     else:
-        return jsonify({ 'error': 'Path does not exist' }), 404
+        return jsonify({ 'error': 'Path does not exist' }), 406
 
 @app.route('/datasets', methods=['POST'])
 def create_bids_dataset():
@@ -333,7 +343,8 @@ def create_bids_dataset():
     """
     # Retrieve user information from the JSON request
     content = request.get_json()
-    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(content.get('Name', ''))
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + BidsUtilityFunctions.clean_string(content.get('Name', ''))
 
     #Create a unique folder name
     dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
@@ -382,7 +393,8 @@ def create_empty_bids_subject(dataset_name):
                     application/json: ""
     """
     #Get information from request
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     subject_description = request.get_json()
     #Create useful paths
     participant_file_path = str(dataset_path) + "/participants.tsv"
@@ -447,7 +459,8 @@ def add_key_to_participants_list(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
     content = request.get_json()
     key_name = content.get('name', '')
@@ -492,7 +505,8 @@ def add_files_to_bids_subject(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     files_description = request.get_json()
 
     bids_folder = BidsFolder(dataset_path)
@@ -562,7 +576,8 @@ def update_bids_dataset(dataset_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -570,7 +585,8 @@ def update_bids_dataset(dataset_name):
     dataset_description = request.get_json()
     
     #We need to check if the updated name already exists
-    new_dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
+    path = cache.get('__data_root_path')
+    new_dataset_path = path + "/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
     #Create a unique folder name
     new_dataset_path = BidsUtilityFunctions.get_unique_path(new_dataset_path)
     #Update Name in content in case it was modified
@@ -646,7 +662,8 @@ def update_bids_subject(dataset_name, participant_name):
                             }
     """
     # Check if dataset exists
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
     
@@ -692,7 +709,8 @@ def delete_bids_dataset(dataset_name):
             examples:
                 application/json: ""
     """
-    dataset_path = __data_root_path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + BidsUtilityFunctions.clean_string(unquote(dataset_name))
     if os.path.exists(dataset_path):
         shutil.rmtree(dataset_path)
         return jsonify({ 'data': 'Success' }), 200
@@ -740,7 +758,8 @@ def delete_bids_subject(dataset_name, subject_name):
                                 "error": "Subject not found"
                             }
     """
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
 
@@ -789,7 +808,8 @@ def remove_key_from_participants_list(dataset_name, key_name):
                                 "error": "Dataset not found"
                             }
     """
-    dataset_path = __data_root_path + "/" + dataset_name + "/"
+    path = cache.get('__data_root_path')
+    dataset_path = path + "/" + dataset_name + "/"
     participant_file_path = str(dataset_path) + "/participants.tsv"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
