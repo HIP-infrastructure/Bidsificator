@@ -20,12 +20,10 @@ from .core.BidsUtilityFunctions import BidsUtilityFunctions
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
 
-# __data_root_path = "/tmp"
-
-
 app = Flask(__name__)
 app.config['CACHE_TYPE'] = 'SimpleCache'  # Considérez d'autres types pour la production
 cache = Cache(app)
+cache.init_app(app)
 cache.set('__data_root_path', '/tmp')
 
 swagger = Swagger(app, template={
