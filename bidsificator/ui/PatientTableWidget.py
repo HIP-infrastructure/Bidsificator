@@ -35,16 +35,16 @@ class PatientTableWidget(QTableWidget):
     def __disconnectTableWidget(self):
         """
         Disconnects the `itemClicked` and `itemChanged` signals from their respective slots.
-        This method attempts to disconnect the `itemClicked` signal from the `ItemClicked` slot and the `itemChanged` signal from the `ItemChanged` slot. 
+        This method attempts to disconnect the `itemClicked` signal from the `ItemClicked` slot and the `itemChanged` signal from the `ItemChanged` slot.
         If a signal is not connected to its slot, a `TypeError` is raised and caught, allowing the method to continue.
-        
+
         Raises:
             TypeError: If a signal is not connected to its slot. This exception is caught and does not interrupt the method.
         """
         try:
             self.itemClicked.disconnect(self.ItemClicked)
         except TypeError:
-            pass   
+            pass
         try:
             self.itemChanged.disconnect(self.ItemChanged)
         except TypeError:
@@ -77,7 +77,7 @@ class PatientTableWidget(QTableWidget):
         self.customMenu = QMenu(self)
         deleteSelectedSubjectAction = self.customMenu.addAction("Remove Selected Subject")
         deleteSelectedSubjectAction.triggered.connect(self.DeleteSelectedSubject)
-        
+
         self.customMenu.popup(QCursor.pos())
 
     def GetSubjectsKeysFromTable(self):
@@ -86,7 +86,7 @@ class PatientTableWidget(QTableWidget):
         if "Subject ID" in subjects_keys:
             del subjects_keys["Subject ID"]
         return subjects_keys
-    
+
     def LoadSubjectsInTableWidget(self, dataset_path: str):
         #cleanup
         self.setRowCount(0)
@@ -131,7 +131,7 @@ class PatientTableWidget(QTableWidget):
         except ValueError as e:
             QMessageBox.warning(self, "Error", str(e))
             return
-    
+
         self.__bids_folder.generate_participants_tsv()
 
         #insert a new row
@@ -158,7 +158,7 @@ class PatientTableWidget(QTableWidget):
             self.setItem(rowPosition, i + 1, keyItem)
         self.__connectTableWidget()
 
-    def AddKeyBeforeSelected(self):        
+    def AddKeyBeforeSelected(self):
         key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
         if ok and key:
             currentIndex = self.__selected_item.column()
@@ -172,13 +172,13 @@ class PatientTableWidget(QTableWidget):
                 if key not in subject.get_optional_keys():
                     keyItem = QTableWidgetItem("n/a")
                     keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.setItem(i, currentIndex, keyItem)    
+                    self.setItem(i, currentIndex, keyItem)
                     #
-                    subject.add_optional_key_at(currentIndex - 1, key, keyItem.text())      
+                    subject.add_optional_key_at(currentIndex - 1, key, keyItem.text())
 
             self.__bids_folder.generate_participants_tsv()
 
-    def AddKeyAfterSelected(self):        
+    def AddKeyAfterSelected(self):
         key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
         if ok and key:
             currentIndex = self.__selected_item.column() + 1
@@ -192,16 +192,16 @@ class PatientTableWidget(QTableWidget):
                 if key not in subject.get_optional_keys():
                     keyItem = QTableWidgetItem("n/a")
                     keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.setItem(i, currentIndex, keyItem)    
+                    self.setItem(i, currentIndex, keyItem)
                     #
                     subject.add_optional_key_at(currentIndex - 1, key, keyItem.text())
-            
+
             self.__bids_folder.generate_participants_tsv()
-    
+
     def RemoveSelectedKey(self):
         column_to_delete = self.__selected_item.column()
         key_to_delete = self.horizontalHeaderItem(column_to_delete).text()
-        
+
         return_value = QMessageBox.warning(self, "Delete Key", "Are you sure you want to delete the key " + key_to_delete + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if return_value == QMessageBox.StandardButton.Yes:
             #Remove for each subject in the data structures

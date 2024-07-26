@@ -26,7 +26,7 @@ class BidsUtilityFunctions:
                         row_dict[headers[i]] = value
                     data.append(row_dict)
         return data
-    
+
     @staticmethod
     def read_json_safely(filename: str) -> str:
         """
@@ -44,7 +44,7 @@ class BidsUtilityFunctions:
             with open(filename, 'r') as f:
                 json_raw_content = json.load(f)
         return json_raw_content
-    
+
     @staticmethod
     def get_unique_path(path):
         """
@@ -55,7 +55,7 @@ class BidsUtilityFunctions:
 
         Parameters:
         path (str): The input path
-        
+
         Returns:
         str: The unique path
         """
@@ -67,7 +67,7 @@ class BidsUtilityFunctions:
             i += 1
 
         return f"{path}({i})"
-    
+
     @staticmethod
     def clean_string(input_string):
         """
@@ -83,5 +83,5 @@ class BidsUtilityFunctions:
         str: The cleaned string
         """
         cleaned_string = input_string.strip()
-        cleaned_string = cleaned_string.replace(" ", "_")  
+        cleaned_string = cleaned_string.replace(" ", "_")
         return cleaned_string

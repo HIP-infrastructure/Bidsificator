@@ -2,23 +2,21 @@ import multiprocessing as mp
 
 from PyQt6.QtCore import pyqtSignal, QThread
 
-from .BidsFilesProcss import processBidsFiles
+from .BidsSubjectsProcess import processBidsSubjects
 
-
-class ImportBidsFilesWorker(QThread):
+class ImportBidsSubjectsWorker(QThread):
     update_progressbar_signal = pyqtSignal(int)
     finished = pyqtSignal()
 
-    def __init__(self, dataset_path: str, subject_name: str, file_list: list):
+    def __init__(self, dataset_path: str, subject_list: str):
         super().__init__()
         self.dataset_path = dataset_path
-        self.subject_name = subject_name
-        self.file_list = file_list
+        self.subject_list = subject_list
         self.anatomical_modalities = {"T1w (anat)", "T2w (anat)", "T1rho (anat)", "T2* (anat)", "FLAIR (anat)", "CT (anat)"}
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()
-        process = mp.Process(target=processBidsFiles, args=(child_conn, self.dataset_path, self.subject_name, self.file_list, self.anatomical_modalities))
+        process = mp.Process(target=processBidsSubjects, args=(child_conn, self.dataset_path, self.subject_list, self.anatomical_modalities))
         process.start()
 
         while True:

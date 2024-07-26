@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -10,23 +12,34 @@ from PyQt6.QtCore import QStandardPaths
 from PyQt6.QtGui import QFileSystemModel
 from bids_validator import BIDSValidator
 
+from bidsificator.workers import ImportBidsSubjectsWorker
+
 from ..core.BidsFolder import BidsFolder
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
+from ..core.DataCrawler import DataCrawler
 from ..forms.MainWindow_ui import Ui_MainWindow
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
-
+from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
+from ..ui.FileEditor import FileEditor
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    __file_list = []
+    __subject_data = []
     __worker = None
-    __item_memory = None
-    __lock_for_update = False
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+    __ImportSubjectFileEditor = None
+    __ImportFileFileEditor = None
 
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
+        # Create FileEditor
+        self.__ImportSubjectFileEditor = FileEditor()
+        self.IS_FileEditorLayout.addWidget(self.__ImportSubjectFileEditor)
+        self.__ImportFileFileEditor = FileEditor()
+        self.IF_FileEditorLayout.addWidget(self.__ImportFileFileEditor)
+
+        # Connect Menu
         self.actionNew_Bids_Dataset.triggered.connect(self.create_dataset)
         self.actionOpen_Bids_Dataset.triggered.connect(self.open_dataset)
 
@@ -36,32 +49,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
         #    Second tab
+        self.IS_ParsePushButton.clicked.connect(self.parse_subject_to_import)
+        self.IS_SubjectListWidget.itemClicked.connect(self.update_import_subject_fileList)
+        self.IS_SubjectListWidget.itemSelectionChanged.connect(self.update_import_subject_fileList)
+        self.IS_StartImportPushButton.clicked.connect(self.start_subjects_import)
+        #    Third tab
         #       Add/Remove file
         self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
         self.AR_BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
         self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.update_browseFile_UI)
         self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.AR_AddPushButton.clicked.connect(self.add_file_to_list)
-        self.AR_RemovePushButton.clicked.connect(self.remove_file_from_list)
-        #       View/Edit file
-        self.VE_FileListWidget.itemClicked.connect(self.show_element_details_UI)
-        self.VE_FileListWidget.itemSelectionChanged.connect(self.show_element_details_UI)
-        
-        self.VE_ModalityComboBox.currentTextChanged.connect(self.textEdited)
-        self.VE_SessionComboBox.currentTextChanged.connect(self.textEdited)
-        self.VE_TaskComboBox.currentTextChanged.connect(self.textEdited)
-        self.VE_ContrastAgentLineEdit.textEdited.connect(self.textEdited)
-        self.VE_ContrastAgentLineEdit.editingFinished.connect(self.editingFinished)
-        self.VE_AcquisitionLineEdit.textEdited.connect(self.textEdited)
-        self.VE_AcquisitionLineEdit.editingFinished.connect(self.editingFinished)
-        self.VE_ReconstructionLineEdit.textEdited.connect(self.textEdited)
-        self.VE_ReconstructionLineEdit.editingFinished.connect(self.editingFinished)
-        self.VE_PathLineEdit.textEdited.connect(self.textEdited)
-        self.VE_PathLineEdit.editingFinished.connect(self.editingFinished)
-
-        self.VE_EditPushButton.clicked.connect(self.toggle_edit_fields)
-        self.VE_CancelPushButton.clicked.connect(self.reset_edit_fields_from_memory)
-        #       Buttons           
+        self.AR_RemovePushButton.clicked.connect(self.__ImportFileFileEditor.remove_selected_file_from_list)
+        #       Buttons
         self.StartImportPushButton.clicked.connect(self.start_file_import)
         self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
 
@@ -69,14 +69,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.progressBar.setValue(0)
         self.update_modality_UI()
 
-    def create_dataset(self):        
+    def create_dataset(self):
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if folderPath:
             dataset_name = QInputDialog.getText(self, "Dataset Name", "Enter a name for the dataset")[0]
             if dataset_name == "":
                 QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
                 return
-        
+
             # Clean the dataset name and create a unique path and update the dataset name
             dataset_path = folderPath + os.sep + BidsUtilityFunctions.clean_string(dataset_name)
             dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
@@ -131,23 +131,58 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.fileTreeView.model():
             QMessageBox.warning(self, "No dataset selected", "Please open a BIDS dataset first")
             return
-        
+
         subject_name = self.SubjectLineEdit.text()
         if not subject_name:
             QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
             return
-        
+
         if not subject_name.startswith("sub-"):
             QMessageBox.warning(self, "Subject Name not valid", "Subject name should start with 'sub-'")
             return
-        
+
         self.tableWidget.CreateSubjectInTableWidget(subject_name)
         self.update_subject_names_dropDown()
-    
+
+    def parse_subject_to_import(self):
+        self.__subject_data = DataCrawler.crawl_data('bidsificator/config/config.yaml')
+        for subject in self.__subject_data:
+            files = []
+            for data_type, data_info in subject["data"].items():
+                for file_path in data_info["file_paths"]:
+                    file_name = Path(file_path).name
+                    file = {
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "modality": "",
+                        "task": "",
+                        "session": "",
+                        "contrast_agent": "",
+                        "acquisition": "",
+                        "reconstruction": ""
+                    }
+                    files.append(file)
+            subject["files"] = files
+            del subject["data"]
+
+        self.IS_SubjectListWidget.clear()
+        for subject in self.__subject_data:
+            self.IS_SubjectListWidget.addItem(subject["subject_id"])
+
+    def update_import_subject_fileList(self):
+        selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
+        if len(selectedIndexes) > 0:
+            subject_id = self.IS_SubjectListWidget.item(selectedIndexes[0].row()).text()
+            self.__ImportSubjectFileEditor.clear_file_list()
+            for subject in self.__subject_data:
+                if subject["subject_id"] == subject_id:
+                    self.__ImportSubjectFileEditor.add_files_to_list(subject)
+                    return
+
     def update_subject_names_dropDown(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
-        
+
         self.AR_SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
         self.AR_SubjectComboBox.clear()
         self.AR_SubjectComboBox.addItems(subject_names)
@@ -160,8 +195,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         session_names = [f for f in os.listdir(subject_path) if os.path.isdir(os.path.join(subject_path, f)) and not f.startswith(".") and f.startswith("ses-")]
         self.AR_SessionComboBox.clear()
         self.AR_SessionComboBox.addItems(session_names)
-        self.VE_SessionComboBox.clear()
-        self.VE_SessionComboBox.addItems(session_names)
+        self.__ImportFileFileEditor.SessionComboBox.clear()
+        self.__ImportFileFileEditor.SessionComboBox.addItems(session_names)
 
     def update_modality_UI(self):
         if "(anat)" in self.AR_ModalityComboBox.currentText():
@@ -254,22 +289,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.AR_BrowseLineEdit.setText(file_path[0])
         else:
             QMessageBox.warning(self, "Modality not recognized", "Please select a modality first")
-    
+
     def update_task_combobox_UI(self):
         if "Other" in self.AR_TaskComboBox.currentText():
             task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
             if task_name == "":
                 QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
-                return  
+                return
             else:
                 self.AR_TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
                 #Insert the new task in AR_TaskComboBox
                 self.AR_TaskComboBox.insertItem(self.AR_TaskComboBox.count()-1, task_name)
                 self.AR_TaskComboBox.setCurrentIndex(self.AR_TaskComboBox.count()-2)
                 #Insert the new task in VE_TaskComboBox
-                self.VE_TaskComboBox.insertItem(self.VE_TaskComboBox.count(), task_name)
+                self.__ImportFileFileEditor.TaskComboBox.insertItem(self.__ImportFileFileEditor.TaskComboBox.count(), task_name)
                 self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-    
+
     def add_file_to_list(self):
         #Need to validate focus for ui elements in order to get all the values
         self.AR_TaskComboBox.clearFocus()
@@ -277,14 +312,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AR_ContrastAgentLineEdit.clearFocus()
         self.AR_AcquisitionLineEdit.clearFocus()
         self.AR_ReconstructionLineEdit.clearFocus()
-        
+
         #Get file name
         file_path = self.AR_BrowseLineEdit.text()
         #Get only the filename
         file_name = os.path.basename(file_path)
         #Get the modality
         modality = self.AR_ModalityComboBox.currentText()
-        #According to modality get the task and relevant elements from ui 
+        #According to modality get the task and relevant elements from ui
         if "(anat)" in modality:
             task = ""
             session = self.AR_SessionComboBox.currentText()
@@ -305,172 +340,60 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             reconstruction = ""
         else:
             print("Error : [__AddFileToList] Modality not recognized")
-            
-        file = {
-            "file_name": file_name,
-            "file_path": file_path,
-            "modality": modality,
-            "task": task,
-            "session": session.removeprefix("ses-"),
-            "contrast_agent": contrast_agent,
-            "acquisition": acquisition,
-            "reconstruction": reconstruction
+
+        subject = {
+            "subject_id": self.AR_SubjectComboBox.currentText(),
+            "files": [
+                {
+                "file_name": file_name,
+                "file_path": file_path,
+                "modality": modality,
+                "task": task,
+                "session": session.removeprefix("ses-"),
+                "contrast_agent": contrast_agent,
+                "acquisition": acquisition,
+                "reconstruction": reconstruction
+                }
+            ]
         }
 
-        if file not in self.__file_list:
-            self.__file_list.append(file)
-            self.VE_FileListWidget.addItem(file["file_name"])
-        else:
-            QMessageBox.warning(self, "File already added", "This file has already been added to the list")
-
-    def show_element_details_UI(self):
-        self.__lock_for_update = True
-        selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
-        if len(selectedIndexes) > 0:
-            file = self.__file_list[selectedIndexes[0].row()]
-            self.__item_memory = file
-            if "(anat)" in file["modality"]:
-                self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
-                self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
-                self.set_comboBox_text(self.VE_TaskComboBox, "")
-                self.VE_ContrastAgentLineEdit.setText(file["contrast_agent"])
-                self.VE_AcquisitionLineEdit.setText(file["acquisition"])
-                self.VE_ReconstructionLineEdit.setText(file["reconstruction"])
-                self.VE_PathLineEdit.setText(file["file_path"])
-            elif "(ieeg)" in file["modality"]:
-                self.set_comboBox_text(self.VE_ModalityComboBox, file["modality"])
-                self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + file["session"]))
-                self.set_comboBox_text(self.VE_TaskComboBox, file["task"])
-                self.VE_ContrastAgentLineEdit.setText("")
-                self.VE_AcquisitionLineEdit.setText(file["acquisition"])
-                self.VE_ReconstructionLineEdit.setText("")
-                self.VE_PathLineEdit.setText(file["file_path"])
-        else:
-            self.set_comboBox_text(self.VE_ModalityComboBox, "")
-            self.set_comboBox_text(self.VE_SessionComboBox, "")
-            self.set_comboBox_text(self.VE_TaskComboBox, "")
-            self.VE_ContrastAgentLineEdit.setText("")
-            self.VE_AcquisitionLineEdit.setText("")
-            self.VE_ReconstructionLineEdit.setText("")
-            self.VE_PathLineEdit.setText("")            
-        self.__lock_for_update = False
-
-    def remove_file_from_list(self):
-        selectedIndexes = self.VE_FileListWidget.selectedIndexes() 
-        if len(selectedIndexes) > 0:
-            file = self.__file_list[selectedIndexes[0].row()]
-            #Remove the file from __file_list
-            self.__file_list.remove(file)
-            #Remove the item from fileListWidget
-            self.VE_FileListWidget.takeItem(self.VE_FileListWidget.currentRow())
-            #Update UI 
-            self.show_element_details_UI()
-        else:
-            print("Error : [__RemoveFileFromList] Item not found in __file_list")
-
-    def toggle_edit_fields(self):
-        newStatus = not self.VE_AcquisitionLineEdit.isEnabled()
-        if not newStatus and self.was_element_modified_UI():
-            index = self.__file_list.index(self.__item_memory)
-            file = {
-                "file_name": self.VE_FileListWidget.currentItem().text(),
-                "file_path": self.VE_PathLineEdit.text(),
-                "modality": self.VE_ModalityComboBox.currentText(),
-                "task": self.VE_TaskComboBox.currentText(),
-                "session": self.VE_SessionComboBox.currentText(),
-                "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
-                "acquisition": self.VE_AcquisitionLineEdit.text(),
-                "reconstruction": self.VE_ReconstructionLineEdit.text()
-            }
-            self.__file_list[index] = file
-            self.__item_memory = file                
-
-        newStatusLabel = "Editing" if newStatus else "Edit"
-        self.VE_EditPushButton.setText(newStatusLabel)
-        self.VE_FileListWidget.setEnabled(not newStatus)
-
-        self.VE_ModalityComboBox.setEnabled(newStatus)
-        self.VE_SessionComboBox.setEnabled(newStatus)
-        self.VE_TaskComboBox.setEnabled(newStatus)
-        self.VE_ContrastAgentLineEdit.setEnabled(newStatus)
-        self.VE_AcquisitionLineEdit.setEnabled(newStatus)
-        self.VE_ReconstructionLineEdit.setEnabled(newStatus)
-        self.VE_PathLineEdit.setEnabled(newStatus)
-
-    def reset_edit_fields_from_memory(self):
-        self.set_comboBox_text(self.VE_ModalityComboBox, self.__item_memory["modality"])
-        self.set_comboBox_text(self.VE_SessionComboBox, str("ses-" + self.__item_memory["session"]))
-        self.set_comboBox_text(self.VE_TaskComboBox, self.__item_memory["task"])
-        self.VE_ContrastAgentLineEdit.setText(self.__item_memory['contrast_agent'])
-        self.VE_AcquisitionLineEdit.setText(self.__item_memory['acquisition'])
-        self.VE_ReconstructionLineEdit.setText(self.__item_memory['reconstruction'])
-        self.VE_PathLineEdit.setText(self.__item_memory['file_path'])
-        #Clear focus to trigger editingFinished
-        self.VE_ModalityComboBox.clearFocus()
-        self.VE_SessionComboBox.clearFocus()
-        self.VE_TaskComboBox.clearFocus()
-        self.VE_ContrastAgentLineEdit.clearFocus()
-        self.VE_AcquisitionLineEdit.clearFocus()
-        self.VE_ReconstructionLineEdit.clearFocus()
-        self.VE_PathLineEdit.clearFocus()
-
-    def was_element_modified_UI(self):
-        if not self.__item_memory:
-            return False
-        
-        file = {
-            "file_name": self.VE_FileListWidget.currentItem().text(),
-            "file_path": self.VE_PathLineEdit.text(),
-            "modality": self.VE_ModalityComboBox.currentText(),
-            "task": self.VE_TaskComboBox.currentText(),
-            "session": self.VE_SessionComboBox.currentText().removeprefix("ses-"),
-            "contrast_agent": self.VE_ContrastAgentLineEdit.text(),
-            "acquisition": self.VE_AcquisitionLineEdit.text(),
-            "reconstruction": self.VE_ReconstructionLineEdit.text()
-        }
-
-        same_file_name = self.__item_memory['file_name'] == file['file_name']
-        same_file_path = self.__item_memory['file_path'] == file['file_path']
-        same_modality = self.__item_memory['modality'] == file['modality']
-        same_task = self.__item_memory['task'] == file['task']
-        same_session = self.__item_memory['session'] == file['session']
-        same_contrast_agent = self.__item_memory['contrast_agent'] == file['contrast_agent']
-        same_acquisition = self.__item_memory['acquisition'] == file['acquisition']
-        same_reconstruction = self.__item_memory['reconstruction'] == file['reconstruction']
-
-        print(self.__item_memory['file_name'] + " == " + file['file_name'])
-        print("Same file name :" + str(same_file_name))
-        print(self.__item_memory['file_path'] + " == " + file['file_path'])
-        print("Same file path :" + str(same_file_path))
-        print(self.__item_memory['modality'] + " == " + file['modality'])
-        print("Same modality :" + str(same_modality))
-        print(self.__item_memory['task'] + " == " + file['task'])
-        print("Same task :" + str(same_task))
-        print(self.__item_memory['session'] + " == " + file['session'])
-        print("Same session :" + str(same_session))
-        print(self.__item_memory['contrast_agent'] + " == " + file['contrast_agent'])
-        print("Same contrast agent :" + str(same_contrast_agent))
-        print(self.__item_memory['acquisition'] + " == " + file['acquisition'])
-        print("Same acquisition :" + str(same_acquisition))
-        print(self.__item_memory['reconstruction'] + " == " + file['reconstruction'])
-        print("Same reconstruction :" + str(same_reconstruction))
-        print("--------")
-
-        return not(same_file_name and same_file_path and same_modality and same_task and same_session and same_contrast_agent and same_acquisition and same_reconstruction)
+        try:
+            self.__ImportFileFileEditor.append_to_list(subject)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
 
     def start_file_import(self):
-        # Get dataset path
-        dataset_path =  self.fileTreeView.model().rootDirectory().path()
-        # Get subject name
-        subject_name = self.AR_SubjectComboBox.currentText()
-
         # Check if a process is already running
         if hasattr(self, '__worker') and self.__worker.isRunning():
-            print("Import is already in progress")
+            print("[start_file_import] Import is already in progress")
             return
 
+        # Get dataset path
+        dataset_path =  self.fileTreeView.model().rootDirectory().path()
+
         # Create worker
-        self.__worker = ImportBidsFilesWorker(dataset_path, subject_name, self.__file_list)
+        name = self.__ImportFileFileEditor._subject_data["subject_id"]
+        files = self.__ImportFileFileEditor._subject_data["files"]
+        self.__worker = ImportBidsFilesWorker(dataset_path, name, files)
+
+        # Connect signals
+        self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
+        self.__worker.finished.connect(self.on_worker_finished)
+
+        # Start the worker thread
+        self.__worker.start()
+
+    def start_subjects_import(self):
+        # Check if a process is already running
+        if hasattr(self, '__worker') and self.__worker.isRunning():
+            print("[start_subjects_import] Import is already in progress")
+            return
+
+        # Get dataset path
+        dataset_path =  self.fileTreeView.model().rootDirectory().path()
+
+        # Create worker
+        self.__worker = ImportBidsSubjectsWorker(dataset_path, self.__subject_data)
 
         # Connect signals
         self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
@@ -480,10 +403,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.__worker.start()
 
     def validate_bids_dataset(self):
-        if not self.fileTreeView.model(): 
+        if not self.fileTreeView.model():
             QMessageBox.warning(self, "No Dataset found", "Please load a Dataset first")
-            return 
-        
+            return
+
         dataset_path =  self.fileTreeView.model().rootDirectory().path()
         subject_name = "/" + self.AR_SubjectComboBox.currentText()
         print("Validating BIDS dataset at " + subject_name)
@@ -519,14 +442,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Display a completion message and handle cleanup after the worker thread finishess"""
 
         print("File import finished")
+        print("Updating Subjects list in the user interface")
+        self.tableWidget.LoadSubjectsInTableWidget(self.fileTreeView.model().rootDirectory().path())
+        self.update_subject_names_dropDown()
+        print("Cleaning up worker")
         self.__worker.deleteLater()  # Clean up the worker thread
-
-    def textEdited(self, text):
-        #print("Text edited : " + text)
-        if not self.__lock_for_update:
-            self.VE_CancelPushButton.setEnabled(self.was_element_modified_UI())
-
-    def editingFinished(self):
-        #print("Editing finished")
-        if not self.__lock_for_update:
-            self.VE_CancelPushButton.setEnabled(self.was_element_modified_UI())

@@ -72,15 +72,15 @@ class BidsFolder:
 
     def get_dataset_name(self) -> str:
         return self.__path.name
-                
-    def add_bids_subject(self, subject_id: str, subject_description: dict):        
+
+    def add_bids_subject(self, subject_id: str, subject_description: dict):
         if any(subject.get_subject_id() == subject_id for subject in self.__bids_subjects):
             raise ValueError(f"A subject with ID {subject_id} already exists.")
 
         new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)
         return new_subject
-    
+
     def delete_bids_subject(self, subject_id: str):
         for subject in self.__bids_subjects:
             if subject.get_subject_id() == subject_id:
@@ -89,15 +89,15 @@ class BidsFolder:
                 #Remove subject folder from disk
                 subject_to_delete = self.__path / subject_id
                 shutil.rmtree(subject_to_delete)
-                return 
+                return
 
     def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
-    
+
     def get_bids_subjects(self) -> Optional[BidsSubject]:
         return self.__bids_subjects
-    
-    def generate_participants_tsv(self, participants_tsv_path: str = ""):        
+
+    def generate_participants_tsv(self, participants_tsv_path: str = ""):
         if not participants_tsv_path:
             participants_tsv_path = self.__path / "participants.tsv"
 

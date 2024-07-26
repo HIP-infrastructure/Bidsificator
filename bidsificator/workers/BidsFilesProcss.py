@@ -26,7 +26,7 @@ def processBidsFiles(
     for index, file in enumerate(file_list):
         file_path = file["file_path"]
 
-        # Skip if file does not exist        
+        # Skip if file does not exist
         if not os.path.exists(file_path):
             print(f"File {file_path} does not exist. Skipping.")
             continue
@@ -59,7 +59,7 @@ def processBidsFiles(
                 print(f"Error processing photo file {file_path}: {e}")
                 print(f"Skipping file")
         elif modality in anatomical_modalities:
-            #If it's an anat folder, probably need to convert 
+            #If it's an anat folder, probably need to convert
             if os.path.isdir(file_path):
                 dicom2nifti.convert_directory(file_path, temp_dir, compression=False)
                 file_names = [f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f))]

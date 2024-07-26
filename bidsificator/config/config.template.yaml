@@ -1,0 +1,30 @@
+# This is a template for the configuration file.
+# Copy this file to config.yaml and fill in the fields.
+db_path:
+  anatomical: "/Path/to/anatomical/database"
+  functional: "/Path/to/functional/database"
+
+subject_structure:
+  # Describe how the subject is named in the database
+  # For instance :
+  #    - Lyon : "HOSPITAL_YEAR_PATIENT" => *_*_*
+  #    - Grenoble : "sub-ID" => sub-*
+  subject_pattern: ""
+  data_types:
+    # Describe the data types that are available for each subject
+    # and the path to access them. Use wildcards to match the subject_pattern
+    #
+    # In the EEG example the directory is "${subject_pattern}_*" which means that
+    # the subject_pattern will be replaced by the subject name
+    structural_MRI_pre:
+      description: "High-resolution T1-weighted images"
+      directory: "subfolder/T1pre_*"
+      file_extensions: [".nii", ".nii.gz"]
+    structural_MRI_post:
+      description: "High-resolution T1-weighted images"
+      directory: "subfolder/T1post_*"
+      file_extensions: [".nii", ".nii.gz"]
+    EEG:
+      description: "Electroencephalography data"
+      directory: "${subject_pattern}_*"
+      file_extensions: [".TRC", ".edf"]

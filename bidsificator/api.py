@@ -34,10 +34,10 @@ swagger = Swagger(app, template={
     }
 })
 
-CORS(app) 
+CORS(app)
 auth = HTTPBasicAuth()
 
-#TODO add_files_to_bids_subject(dataset_name): Check with manu how to handle error return if some files are missing but not all 
+#TODO add_files_to_bids_subject(dataset_name): Check with manu how to handle error return if some files are missing but not all
 
 @app.route('/')
 def index():
@@ -158,9 +158,9 @@ def get_dataset_description_and_participants(dataset_name):
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
     #Read description of dataset and participant list
-    dataset_description = BidsUtilityFunctions.read_json_safely(dataset_description_file_path)  
-    participants = BidsUtilityFunctions.read_tsv_safely(participant_file_path) 
-  
+    dataset_description = BidsUtilityFunctions.read_json_safely(dataset_description_file_path)
+    participants = BidsUtilityFunctions.read_tsv_safely(participant_file_path)
+
     #add participants list and dataset_path to returned struct
     dataset_description["Participants"] = participants
     dataset_description["Path"] = dataset_path
@@ -170,7 +170,7 @@ def get_dataset_description_and_participants(dataset_name):
         status=200,
         mimetype='application/json'
     )
-    
+
     return response
 
 @app.route('/files', methods=['GET'])
@@ -260,7 +260,7 @@ def set_data_root_path():
     path = json.get('Path', '')
     if path[-1] == "/":
         path = path[:-1]
-    
+
     if os.path.exists(path):
         # __data_root_path = path
         cache.set('__data_root_path', path)
@@ -327,7 +327,7 @@ def create_bids_dataset():
         200:
             description: A successful response
             examples:
-                application/json: 
+                application/json:
                     {
                         "Name": "Example Dataset",
                         "BIDSVersion": "1.0.2",
@@ -349,7 +349,7 @@ def create_bids_dataset():
     dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
     #Reset Name in content in case it was modified
     content["Name"] = os.path.basename(dataset_path).replace("_", " ")
-    
+
     participant_file_path = str(dataset_path) + "/participants.tsv"
     dataset_description_file_path = str(dataset_path) + "/dataset_description.json"
 
@@ -465,7 +465,7 @@ def add_key_to_participants_list(dataset_name):
     key_name = content.get('name', '')
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
-    
+
     bids_folder = BidsFolder(dataset_path)
     subjects = bids_folder.get_bids_subjects()
     for subject in subjects:
@@ -479,7 +479,7 @@ def add_files_to_bids_subject(dataset_name):
     """
     Add files to a BIDS subject within a specified dataset.
     ---
-    tags: 
+    tags:
         - BIDS
     description: Return a success message indicating that the files were added.
     parameters:
@@ -522,7 +522,7 @@ def add_files_to_bids_subject(dataset_name):
                 bids_subject.generate_channels_file(new_file_path, file["entities"])
                 bids_subject.generate_task_file(new_file_path, file["entities"])
 
-            elif file["modality"] == "T1w" or file["modality"] == "T2w" or file["modality"] == "T1rho" or file["modality"] == "T2*" or file["modality"] == "FLAIR" or file["modality"] == "CT":            
+            elif file["modality"] == "T1w" or file["modality"] == "T2w" or file["modality"] == "T1rho" or file["modality"] == "T2*" or file["modality"] == "FLAIR" or file["modality"] == "CT":
                 bids_subject.add_anatomical_file(file_path, file)
 
             else:
@@ -582,7 +582,7 @@ def update_bids_dataset(dataset_name):
 
     #Get information from request
     dataset_description = request.get_json()
-    
+
     #We need to check if the updated name already exists
     path = cache.get('__data_root_path')
     new_dataset_path = path + "/" + BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
@@ -590,15 +590,15 @@ def update_bids_dataset(dataset_name):
     new_dataset_path = BidsUtilityFunctions.get_unique_path(new_dataset_path)
     #Update Name in content in case it was modified
     dataset_description["Name"] = os.path.basename(new_dataset_path).replace("_", " ")
-    
+
     #Then business as usual
     sanitized_dataset_name = BidsUtilityFunctions.clean_string(dataset_description.get('Name', ''))
-    
+
     bids_folder = BidsFolder(dataset_path)
     if bids_folder.get_dataset_name() != sanitized_dataset_name:
         bids_folder.rename_dataset(sanitized_dataset_name)
     bids_folder.generate_dataset_description_file(dataset_description)
-    
+
     return jsonify(dataset_description), 200
 
 @app.route('/datasets/<string:dataset_name>/participants/<string:participant_name>', methods=['PUT'])
@@ -665,13 +665,13 @@ def update_bids_subject(dataset_name, participant_name):
     dataset_path = path + "/" + dataset_name + "/"
     if not os.path.exists(dataset_path):
         return jsonify({ 'error': 'Dataset not found' }), 404
-    
+
     # Check if subject exists
     bids_folder = BidsFolder(dataset_path)
     subject = bids_folder.get_bids_subject(participant_name)
     if subject is None:
         return jsonify({ 'error': 'Subject not found' }), 404
-    
+
     # Get information from request
     subject_description = request.get_json()
     subject_id = subject_description["participant_id"]
@@ -766,7 +766,7 @@ def delete_bids_subject(dataset_name, subject_name):
     subjects = bids_folder.get_bids_subject(subject_name)
     if subjects is None:
         return jsonify({ 'error': 'Subject not found' }), 404
-    
+
     bids_folder.delete_bids_subject(subject_name)
     bids_folder.generate_participants_tsv()
     return jsonify({ 'data': 'Success' }), 200

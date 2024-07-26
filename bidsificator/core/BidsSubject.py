@@ -52,7 +52,7 @@ class BidsSubject:
 
     def get_subject_id(self) -> str:
         return str(self.__subject_id)
-       
+
     def set_subject_id(self, new_subject_id: str):
         """
         Set a new subject ID for the BidsSubject instance.
@@ -97,7 +97,7 @@ class BidsSubject:
 
     def get_func_pre_path(self) -> str:
         return str(self.__func_pre_path) + "/"
-    
+
     def get_optional_keys(self) -> dict:
         return self.__optional_keys_dict if self.__optional_keys_dict is not None else {}
 
@@ -121,7 +121,7 @@ class BidsSubject:
             del self.__optional_keys_dict[key]
         else:
             print("Key not found : ", key)
-            
+
     @staticmethod
     def define_bids_functionnal_string(subject_entities: dict) -> str:
         bids_name = subject_entities["sub"]
@@ -170,12 +170,12 @@ class BidsSubject:
         else:
             print("File extension not recognized : ", file_suffix)
             return None
-    
+
     def add_photo_file(self, file_path: str, session:str = "", acquisition:str = ""):
         if not isinstance(file_path, Path):
             file_path = Path(file_path)
         file_suffix = file_path.suffix
-        
+
         # get Session folder path based on parameters
         session_folder = ""
         if session == "pre":
@@ -185,25 +185,25 @@ class BidsSubject:
         else:
             print("Session not recognized : ", session)
             return None
-        
-        # create destination file name 
+
+        # create destination file name
         bids_name = self.__subject_id
         if session:
             bids_name += "_ses-" + session
         if acquisition:
             bids_name += "_acq-" + acquisition
         bids_name += "_photo" + file_suffix
-        
-        if file_suffix in [".jpg", ".png", ".tif"]: 
+
+        if file_suffix in [".jpg", ".png", ".tif"]:
             print("Should copy file", file_path, "to", session_folder + bids_name)
             shutil.copy(file_path, self.get_func_post_path() + bids_name)
-        else:    
+        else:
             print("File extension not supported for bids photo files : ", file_suffix)
 
     def generate_events_file(self, eeg_file_path: str, file_entities: dict):
         base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         tsv_file_path = base_file_path + "_events.tsv"
-    
+
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
         sampling_frequency = PyIFile.get_sampling_frequency()
         trigger_count = PyIFile.get_trigger_count()
@@ -214,7 +214,7 @@ class BidsSubject:
                 trigger = PyIFile.get_trigger(i)
                 onset = trigger.Sample() / sampling_frequency
                 writer.writerow([onset, "n/a", trigger.Sample(), trigger.Code(), "n/a", "n/a"])
-    
+
     def generate_channels_file(self, eeg_file_path: str, file_entities: dict):
         base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
         tsv_file_path = base_file_path + "_channels.tsv"
@@ -281,7 +281,7 @@ class BidsSubject:
 
         with open(json_file_path, 'w') as f:
             json.dump(data, f, indent=4)
-    
+
     @staticmethod
     def define_bids_string_nonparametric_structural_mri(subject_entities: dict) -> str:
         bids_name = subject_entities["sub"]
@@ -296,8 +296,8 @@ class BidsSubject:
         if "rec" in subject_entities and subject_entities["rec"]:
             bids_name += "_rec-" + subject_entities["rec"]
         if "run" in subject_entities and subject_entities["run"]:
-            bids_name += "_run-" + subject_entities["run"]        
-        
+            bids_name += "_run-" + subject_entities["run"]
+
         return bids_name
 
     def add_anatomical_file(self, file_path: str, file_struct: dict, modality: str):
@@ -306,7 +306,7 @@ class BidsSubject:
         file_suffix = file_path.suffix
         bids_name = BidsSubject.define_bids_string_nonparametric_structural_mri(file_struct) + "_" + modality + file_suffix
         if file_suffix == ".nii" or file_suffix == ".nii.gz":
-            if file_struct["ses"] == "pre": 
+            if file_struct["ses"] == "pre":
                 print("Should copy file", file_path, "to", self.get_anat_pre_path() + bids_name)
                 shutil.copy(file_path, self.get_anat_pre_path() + bids_name)
             elif file_struct["ses"] == "post":
@@ -314,7 +314,7 @@ class BidsSubject:
                 shutil.copy(file_path, self.get_anat_post_path() + bids_name)
             else:
                 print("Session not recognized : ", file_struct["ses"])
-        else:    
+        else:
             print("File extension not supported for bids anatomical files : ", file_suffix)
 
     def delete_bids_file(self, file_full_path: str):
