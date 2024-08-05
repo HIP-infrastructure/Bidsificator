@@ -154,9 +154,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     file = {
                         "file_name": file_name,
                         "file_path": file_path,
-                        "modality": "",
+                        "modality": data_info['modality'],
                         "task": "",
-                        "session": "",
+                        "session": "post",
                         "contrast_agent": "",
                         "acquisition": "",
                         "reconstruction": ""

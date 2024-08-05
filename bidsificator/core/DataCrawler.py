@@ -49,6 +49,24 @@ class DataCrawler:
             # Merge the lists and remove duplicates
             return list(set(anatomical_subject_dirs + functional_subject_dirs))
 
+    def __guess_modality(self, data_info):
+        description = data_info['description'].lower()
+        modality_map = {
+            'intracranial': 'ieeg (ieeg)',
+            't1-weighted': 'T1w (anat)',
+            't2-weighted': 'T2w (anat)',
+            'ct': 'CT (anat)',
+            't1rho': 'T1rho (anat)',
+            't1p': 'T1rho (anat)',
+            't2star': 'T2star (anat)'
+        }
+
+        for keyword, modality in modality_map.items():
+            if keyword in description:
+                return modality
+
+        return ''
+
     def process_subject_data(self):
         """Process data for each subject directory."""
         subject_dirs = self.__get_subject_dirs()
@@ -73,6 +91,7 @@ class DataCrawler:
                             if data_type not in subject_data["data"]:
                                 subject_data["data"][data_type] = {
                                     "description": data_info['description'],
+                                    "modality": self.__guess_modality(data_info),
                                     "file_paths": found_files
                                 }
                             else:
