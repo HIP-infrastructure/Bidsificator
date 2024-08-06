@@ -7,9 +7,10 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QInputDialog,
+    QMenu,
 )
-from PyQt6.QtCore import QStandardPaths
-from PyQt6.QtGui import QFileSystemModel
+from PyQt6.QtCore import Qt, QStandardPaths
+from PyQt6.QtGui import QFileSystemModel, QCursor
 from bids_validator import BIDSValidator
 
 from bidsificator.workers import ImportBidsSubjectsWorker
@@ -49,11 +50,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
         #    Second tab
-        self.IS_ParsePushButton.clicked.connect(self.parse_subject_to_import)
-        self.IS_SubjectListWidget.itemClicked.connect(self.update_import_subject_fileList)
-        self.IS_SubjectListWidget.itemSelectionChanged.connect(self.update_import_subject_fileList)
-        self.IS_StartImportPushButton.clicked.connect(self.start_subjects_import)
-        #    Third tab
         #       Add/Remove file
         self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
         self.AR_BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
@@ -61,7 +57,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.AR_AddPushButton.clicked.connect(self.add_file_to_list)
         self.AR_RemovePushButton.clicked.connect(self.__ImportFileFileEditor.remove_selected_file_from_list)
-        #       Buttons
+        #    Third tab
+        self.IS_ParsePushButton.clicked.connect(self.parse_subject_to_import)
+        self.IS_SubjectListWidget.itemClicked.connect(self.update_import_subject_fileList)
+        self.IS_SubjectListWidget.itemSelectionChanged.connect(self.update_import_subject_fileList)
+        self.IS_StartImportPushButton.clicked.connect(self.start_subjects_import)
+        self.IS_SubjectListWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.IS_SubjectListWidget.customContextMenuRequested.connect(self.show_delete_import_subject_context_menu)
+        #    Buttons
         self.StartImportPushButton.clicked.connect(self.start_file_import)
         self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
 
@@ -197,6 +200,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AR_SessionComboBox.addItems(session_names)
         self.__ImportFileFileEditor.SessionComboBox.clear()
         self.__ImportFileFileEditor.SessionComboBox.addItems(session_names)
+
+    def show_delete_import_subject_context_menu(self):
+        # Create custom context menu
+        self.customMenu = QMenu(self)
+        deleteSelectedSubjectAction = self.customMenu.addAction("Remove Selected Subject(s)")
+        deleteSelectedSubjectAction.triggered.connect(self.remove_selected_import_subject)
+        # Enable/Disable the action based on the number of selected items
+        selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
+        self.customMenu.setEnabled(len(selectedIndexes) != 0)
+        # Show the context menu
+        self.customMenu.popup(QCursor.pos())
+
+    def remove_selected_import_subject(self):
+        reply = QMessageBox.question(self, "Remove Subject", "Are you sure you want to remove the selected subject(s)?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
+        for index in selectedIndexes[::-1]:
+            self.IS_SubjectListWidget.takeItem(index.row())
+            self.__subject_data.pop(index.row())
+
+        self.__ImportSubjectFileEditor.clear_file_list()
 
     def update_modality_UI(self):
         if "(anat)" in self.AR_ModalityComboBox.currentText():
