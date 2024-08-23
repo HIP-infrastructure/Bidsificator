@@ -320,7 +320,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if "Other" in self.AR_TaskComboBox.currentText():
             task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
             if task_name == "":
-                QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
+                QMessageBox.warning(self, "Dataset Name empty", "Please enter a valid name for your task")
                 return
             else:
                 self.AR_TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)

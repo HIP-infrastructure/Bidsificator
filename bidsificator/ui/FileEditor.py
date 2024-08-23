@@ -1,4 +1,8 @@
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import (
+    QWidget,
+    QMessageBox,
+    QInputDialog,
+)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
@@ -17,6 +21,7 @@ class FileEditor(QWidget, Ui_FileEditor):
         self.FileListWidget.itemClicked.connect(self.update_file_details)
         self.FileListWidget.itemSelectionChanged.connect(self.update_file_details)
         self.ModalityComboBox.currentIndexChanged.connect(self.update_userinterface_for_modality)
+        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
 
         self.EditPushButton.clicked.connect(self.toggle_edit_fields)
         self.CancelPushButton.clicked.connect(self.reset_edit_fields_from_memory)
@@ -109,6 +114,19 @@ class FileEditor(QWidget, Ui_FileEditor):
             self.ReconstructionLineEdit.setText("")
             self.PathLineEdit.setText("")
         self.__lock_for_update = False
+
+    def update_task_combobox_UI(self):
+        if "Other" in self.TaskComboBox.currentText():
+            task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
+            if task_name == "":
+                QMessageBox.warning(self, "Dataset Name empty", "Please enter a valid name for your task")
+                return
+            else:
+                self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
+                #Insert the new task in TaskComboBox
+                self.TaskComboBox.insertItem(self.TaskComboBox.count()-1, task_name)
+                self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
+                self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
 
     def update_userinterface_for_modality(self):
         if "(anat)" in self.ModalityComboBox.currentText():
