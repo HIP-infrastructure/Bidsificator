@@ -5,8 +5,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
 )
-from PyQt6.QtCore import QStandardPaths
-
+from PyQt6.QtCore import QStandardPaths, QItemSelectionModel
 from ..core.OptionFile import OptionFile
 from ..forms.OptionWindow_ui import Ui_OptionsForm
 
@@ -22,7 +21,8 @@ class OptionWindow(QWidget, Ui_OptionsForm):
         self.FuncDbBrowse.clicked.connect(self.FuncDbBrowse_clicked)
         self.FuncDbLineEdit.editingFinished.connect(self.FuncDbBrowse_editingFinished)
         self.SubPatternLineEdit.editingFinished.connect(self.SubPatternLineEdit_editingFinished)
-        self.listWidget.clicked.connect(self.on_ListWidget_clicked)
+        self.listWidget.clicked.connect(self.ListWidget_clicked)
+        self.listWidget.itemSelectionChanged.connect(self.ListWidget_clicked)
         self.AddDataTypePushButton.clicked.connect(self.AddDataTypePushButton_clicked)
         self.RemoveDataTypePushButton.clicked.connect(self.RemoveDataTypePushButton_clicked)
         self.DescriptionLineEdit.editingFinished.connect(self.DescriptionLineEdit_editingFinished)
@@ -41,6 +41,7 @@ class OptionWindow(QWidget, Ui_OptionsForm):
         self.SubPatternLineEdit.setText(self.options.subject_pattern)
         for data_type in self.options.data_types:
             self.listWidget.addItem(data_type)
+        self.UpdateDataTypeUI()
 
     def SeparatedDbCheckBox_stateChanged(self):
         show = self.separatedDbCheckBox.isChecked()
@@ -69,7 +70,9 @@ class OptionWindow(QWidget, Ui_OptionsForm):
     def SubPatternLineEdit_editingFinished(self):
         self.options.subject_pattern = self.SubPatternLineEdit.text()
 
-    def on_ListWidget_clicked(self):
+    def ListWidget_clicked(self):
+        if self.listWidget.currentItem() is None:
+            return
         selected_item = self.listWidget.currentItem().text()
         self.DescriptionLineEdit.setText(self.options.data_types[selected_item]['description'])
         self.DirectoryLineEdit.setText(self.options.data_types[selected_item]['directory'])
@@ -83,23 +86,43 @@ class OptionWindow(QWidget, Ui_OptionsForm):
             'file_extensions': []
         }
         self.listWidget.addItem(data_type)
+        self.listWidget.setCurrentRow(self.listWidget.count() - 1, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.UpdateDataTypeUI()
 
     def RemoveDataTypePushButton_clicked(self):
-        if self.listWidget.currentRow() == -1:
+        row = self.listWidget.currentRow()
+        if row == -1:
             return
         selected_item = self.listWidget.currentItem().text()
         self.options.data_types.pop(selected_item)
-        self.listWidget.takeItem(self.listWidget.currentRow())
+        self.listWidget.takeItem(row)
+        # Select one of the remaining items
+        if self.listWidget.count() > 0 and row-1 >= 0 and row-1 < self.listWidget.count():
+            self.listWidget.setCurrentRow(row - 1, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.UpdateDataTypeUI()
+
+    def UpdateDataTypeUI(self):
+        activate = self.listWidget.count() > 0
+        self.DescriptionLineEdit.setEnabled(activate)
+        self.DirectoryLineEdit.setEnabled(activate)
+        self.FileExtLineEdit.setEnabled(activate)
+        if not activate:
+            self.DescriptionLineEdit.clear()
+            self.DirectoryLineEdit.clear()
+            self.FileExtLineEdit.clear()
 
     def DescriptionLineEdit_editingFinished(self):
+        if self.listWidget.currentRow() == -1: return
         selected_item = self.listWidget.currentItem().text()
         self.options.data_types[selected_item]['description'] = self.DescriptionLineEdit.text()
 
     def DirectoryLineEdit_editingFinished(self):
+        if self.listWidget.currentRow() == -1: return
         selected_item = self.listWidget.currentItem().text()
         self.options.data_types[selected_item]['directory'] = self.DirectoryLineEdit.text()
 
     def FileExtLineEdit_editingFinished(self):
+        if self.listWidget.currentRow() == -1: return
         if not self.is_valid_extensions(self.FileExtLineEdit.text()):
             QMessageBox.critical(self, 'Invalid file extensions', 'Please enter valid file extensions separated by ", ".')
             return
