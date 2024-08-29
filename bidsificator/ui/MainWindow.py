@@ -22,6 +22,7 @@ from ..forms.MainWindow_ui import Ui_MainWindow
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
+from ..ui.OptionWindow import OptionWindow
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     __subject_data = []
@@ -29,6 +30,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
     __ImportSubjectFileEditor = None
     __ImportFileFileEditor = None
+    __optionWindow = None
 
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -43,6 +45,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Connect Menu
         self.actionNew_Bids_Dataset.triggered.connect(self.create_dataset)
         self.actionOpen_Bids_Dataset.triggered.connect(self.open_dataset)
+        self.actionDatabase_Configuration.triggered.connect(self.open_db_options)
 
         # Connect UI
         #    First tab
@@ -71,6 +74,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Trigger UI for the first time
         self.progressBar.setValue(0)
         self.update_modality_UI()
+
+    def open_db_options(self):
+        self.__optionWindow = OptionWindow()
+        self.__optionWindow.show()
 
     def create_dataset(self):
         folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))

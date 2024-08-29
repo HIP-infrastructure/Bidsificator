@@ -1,0 +1,6 @@
+db_path:
+  anatomical: ''
+  functional: ''
+subject_structure:
+  subject_pattern: ''
+  data_types: {}

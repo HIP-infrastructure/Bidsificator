@@ -786,7 +786,14 @@
     <addaction name="actionOpen_Bids_Dataset"/>
     <addaction name="actionClose"/>
    </widget>
+   <widget class="QMenu" name="menuOptions">
+    <property name="title">
+     <string>Configuration</string>
+    </property>
+    <addaction name="actionDatabase_Configuration"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuOptions"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionLoad_Bids_Dataset_Folder">
@@ -812,6 +819,11 @@
   <action name="actionClose">
    <property name="text">
     <string>Close</string>
+   </property>
+  </action>
+  <action name="actionDatabase_Configuration">
+   <property name="text">
+    <string>Database</string>
    </property>
   </action>
  </widget>

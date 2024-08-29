@@ -7,9 +7,8 @@ class DataCrawler:
     def __init__(self, config_file):
         self.config_data = self.__read_config_file(config_file)
         self.db_path = self.config_data['db_path']
-        self.subject_structure = self.config_data['subject_structure']
-        self.subject_pattern = self.subject_structure['subject_pattern']
-        self.data_types = self.subject_structure['data_types']
+        self.subject_pattern = self.config_data['subject_structure']['subject_pattern']
+        self.data_types = self.config_data['subject_structure']['data_types']
 
     def __expand_path(self, path_pattern):
         """Expand wildcard patterns in the given path."""
@@ -102,33 +101,4 @@ class DataCrawler:
     def crawl_data(yaml_file):
         crawler = DataCrawler(yaml_file)
         subjects_data = crawler.process_subject_data()
-
-        # file = {
-        #     "file_name": file_name,
-        #     "file_path": file_path,
-        #     "modality": modality,
-        #     "task": task,
-        #     "session": session.removeprefix("ses-"),
-        #     "contrast_agent": contrast_agent,
-        #     "acquisition": acquisition,
-        #     "reconstruction": reconstruction
-        # }
-        #transform subjects_data so that it looks like this:
-        # subjects_data = [
-        #     {
-        #         "subject_id": "sub-01",
-        #                 "files": [
-        #                     {
-        #                         "file_name": "sub-01_T1w.nii.gz",
-        #                         "file_path": "/path/to/sub-01/anat/sub-01_T1w.nii.gz",
-        #                         "modality": "",
-        #                         "task": None,
-        #                         "session": None,
-        #                         "contrast_agent": None,
-        #                         "acquisition": None,
-        #                         "reconstruction": None
-        #                     },
-        #                 ]
-        #      },
-
         return subjects_data
