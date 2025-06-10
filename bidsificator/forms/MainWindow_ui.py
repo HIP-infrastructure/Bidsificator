@@ -356,7 +356,7 @@ class Ui_MainWindow(object):
         self.IS_ParseLabel.setText(_translate("MainWindow", "Parse Subjects Data : "))
         self.IS_ParsePushButton.setText(_translate("MainWindow", "Parse"))
         self.IS_StartImportPushButton.setText(_translate("MainWindow", "Start Import"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.ImportSubjectsTab), _translate("MainWindow", "Impots Subjects"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.ImportSubjectsTab), _translate("MainWindow", "Import Subjects"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))
         self.menuOptions.setTitle(_translate("MainWindow", "Configuration"))
         self.actionLoad_Bids_Dataset_Folder.setText(_translate("MainWindow", "Load Bids Dataset Folder"))
