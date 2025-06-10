@@ -92,7 +92,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
             dataset_name = os.path.basename(dataset_path).replace("_", " ")
 
-            # Generate usefull paths
+            # Generate useful paths
             dataset_description_file_path = str(dataset_path) + os.sep +  "dataset_description.json"
 
             bids_folder = BidsFolder(dataset_path)

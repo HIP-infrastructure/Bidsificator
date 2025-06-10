@@ -69,7 +69,7 @@
         <item>
          <widget class="QLabel" name="FuncLabel">
           <property name="text">
-           <string>Functionnal : </string>
+           <string>Functional : </string>
           </property>
          </widget>
         </item>
