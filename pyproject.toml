@@ -8,9 +8,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-
-pyqt6 = "^6.4"
-pyqt6-tools = "^6.4"
+pyqt6 = "^6.8.1"
 
 # bids
 numpy = "1.26"
