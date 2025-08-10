@@ -2,7 +2,7 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
-from .ui.MainWindow import MainWindow
+from bidsificator.ui.MainWindow import MainWindow
 
 
 def main() -> int | bool | None:

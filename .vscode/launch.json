@@ -2,16 +2,15 @@
     "version": "0.1.0",
     "configurations": [
       {
-        "name": "Bidsificator Poetry",
+        "name": "Launch Bidsificator UI",
         "type": "debugpy",
         "request": "launch",
-        "cwd": "${workspaceFolder}", // use current workspace folder
-        "python": "${command:python.interpreterPath}", //use current python interpreter in terminal
-        "module": "bidsificator.main",
+        "program": "${workspaceFolder}/bidsificator/main.py",
         "console": "integratedTerminal",
-        "redirectOutput": true,
         "justMyCode": false,
-        "stopOnEntry": false,
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}"
+        }
       }
     ]
 }
