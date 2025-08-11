@@ -658,7 +658,7 @@
        </widget>
        <widget class="QWidget" name="ImportSubjectsTab">
         <attribute name="title">
-         <string>Impots Subjects</string>
+         <string>Import Subjects</string>
         </attribute>
         <layout class="QGridLayout" name="gridLayout_3">
          <item row="0" column="0">

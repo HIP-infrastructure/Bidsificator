@@ -157,7 +157,7 @@ class Ui_OptionsForm(object):
         self.separatedDbCheckBox.setText(_translate("OptionsForm", "Separated ? "))
         self.label.setText(_translate("OptionsForm", "Anatomical : "))
         self.AnatDbBrowse.setText(_translate("OptionsForm", "Browse"))
-        self.FuncLabel.setText(_translate("OptionsForm", "Functionnal : "))
+        self.FuncLabel.setText(_translate("OptionsForm", "Functional : "))
         self.FuncDbBrowse.setText(_translate("OptionsForm", "Browse"))
         self.SubjectGroupBox.setTitle(_translate("OptionsForm", "Subject"))
         self.DescriptionLabel.setText(_translate("OptionsForm", "Description :"))

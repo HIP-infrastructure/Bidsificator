@@ -10,7 +10,7 @@ RUN apt-get update && \
     python3 -m venv .env
 
 # Note : Need to comment Qt6 installation for now in requirements since 
-# there is some incompatibility beetween setuptools-70.0.0 and Qt6 
+# there is some incompatibility between setuptools-70.0.0 and Qt6 
 # (Only when testing API, not for the main app)
 COPY ./requirements.txt .
 RUN pip install -r requirements.txt
