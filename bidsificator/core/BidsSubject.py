@@ -13,19 +13,21 @@ machine = platform.machine()
 
 try:
     if os_name == "Darwin":
-        if "x86_64" in machine.lower():
-            from .PyEEGFormat import wrappermac as wrapper
-        elif "arm" in machine.lower():
+        if "arm" in machine.lower():
             from .PyEEGFormat import wrappermacarm as wrapper
+        else:
+            raise ImportError(f"No wrapper available for Darwin {machine}")
     elif os_name == "Windows":
-        from .PyEEGFormat import wrapperwin as wrapper
+        from .PyEEGFormat import wrapperwinamd64 as wrapper
     elif os_name == "Linux":
         if "x86_64" in machine.lower():
             from .PyEEGFormat import wrapperlinux as wrapper
-        elif "arm" in machine.lower():
-            from .PyEEGFormat import wrapperlinuxarm64 as wrapper
-except ImportError:
-    print(f"Unsupported operating system: {os_name} {machine.lower()}")
+        else:
+            raise ImportError(f"No wrapper available for Linux {machine}")
+    else:
+        raise ImportError(f"Unsupported operating system: {os_name}")
+except ImportError as e:
+    print(f"PyEEGFormat import error: {e}")
     raise
 
 
