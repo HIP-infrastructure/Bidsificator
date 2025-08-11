@@ -84,8 +84,14 @@ class DataCrawler:
                 expanded_dirs = self.__expand_path(os.path.join(subject_dir, data_type_dir))
                 for expanded_dir in expanded_dirs:
                     for file_extension in data_info['file_extensions']:
-                        search_path = os.path.join(expanded_dir, '*' + file_extension)
-                        found_files = glob.glob(search_path)
+                        # Find files with case-insensitive extension matching
+                        found_files = []
+                        dir_path = Path(expanded_dir)
+                        if dir_path.exists():
+                            # Get all files in directory and filter by extension (case-insensitive)
+                            ext_lower = file_extension.lower()
+                            found_files = [str(p) for p in dir_path.iterdir() 
+                                         if p.is_file() and p.suffix.lower() == ext_lower]
                         if found_files:
                             if data_type not in subject_data["data"]:
                                 subject_data["data"][data_type] = {
