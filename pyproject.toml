@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.0.0"
+version = "1.0.1"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
@@ -8,9 +8,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-
-pyqt6 = "^6.4"
-pyqt6-tools = "^6.4"
+pyqt6 = "^6.8.1"
 
 # bids
 numpy = "1.26"
