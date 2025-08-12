@@ -154,7 +154,7 @@ class BidsSubject:
 
         # Create new_file_name based on the file_suffix
         if file_suffix == ".trc":
-            new_file_name = bids_name_nosuffix + ".vhdr"
+            new_file_name = bids_name_nosuffix + ".edf"
         else:
             new_file_name = bids_name_nosuffix + file_suffix
 
