@@ -131,3 +131,31 @@ When refactoring or adding new features:
 1. **High priority**: Extract validators and business logic from views
 2. **Medium priority**: Implement controller layer for complex windows
 3. **Low priority**: Full observer pattern implementation
+
+## Recent UI Changes (2025-08-27)
+
+### Import Files Tab Refactoring
+The Import Files tab has been significantly restructured:
+
+**Removed Elements:**
+- `AR_IsDicomFolderCheckBox` - DICOM folder selection checkbox removed
+- `IF_FileEditorLayout` - FileEditor widget no longer used in Import Files tab
+- `AR_` prefix removed from all UI elements for cleaner naming
+- `splitter` widget between file tree and tabs
+- `groupBox_2` wrapper for Add/Remove Files section
+
+**Updated Elements:**
+- All `AR_*` prefixed elements renamed without prefix (e.g., `AR_SubjectComboBox` → `SubjectComboBox`)
+- `pushButton` → `AddFileButton`
+- `pushButton_2` → `RemoveFileButton`
+- `importFileTreeView` → `ImportFileTreeView`
+
+**New Architecture:**
+- Import Files tab now uses `ImportFileTreeView` for file display
+- Add/Remove buttons positioned between tree view and form fields
+- Simplified layout without nested group boxes
+
+**TODO Items:**
+- Implement new file list management using `ImportFileTreeView` instead of FileEditor
+- Create new logic for DICOM folder handling without checkbox
+- Update file import worker to use new data structure
