@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -36,6 +37,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
+        # Set up splitter with reasonable default sizes
+        # 25% for file tree, 75% for main content
+        self.mainSplitter.setSizes([300, 700])
+
         # Create FileEditor for Import Subjects tab
         self.__ImportSubjectFileEditor = FileEditor()
         self.IS_FileEditorLayout.addWidget(self.__ImportSubjectFileEditor)
@@ -56,9 +61,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #    Second tab
         #       Add/Remove file
         self.ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
-        self.BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
+        # Browse button removed from UI - files selected via "+" button only
+        # Make path field read-only for information display
+        self.BrowseLineEdit.setReadOnly(True)
         self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-        self.AddFileButton.clicked.connect(self.add_file_to_list)
+        self.AddFileButton.clicked.connect(self.add_multiple_files)
         self.RemoveFileButton.clicked.connect(self.remove_file_from_list)
         # Import File List Widget connections
         self.ImportFileListWidget.itemClicked.connect(self.on_import_file_selected)
@@ -143,36 +150,95 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def on_subject_changed(self):
         """Handle subject selection change in Import Files tab"""
         current_subject = self.SubjectComboBox.currentText()
-        if (self.__import_files_data["subject_id"] != current_subject and 
-            self.__import_files_data["files"]):
-            # Clear import list when subject changes and there are existing files
-            reply = QMessageBox.question(self, "Subject Changed", 
-                f"Subject changed to {current_subject}.\n"
-                "This will clear the current file list. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        # If no files, just update subject
+        if not self.__import_files_data["files"]:
+            self.__import_files_data["subject_id"] = current_subject
+            return
+        
+        # If subject actually changed and there are files, prompt user
+        if self.__import_files_data["subject_id"] != current_subject:
+            # Prevent recursive calls when reverting subject
+            if hasattr(self, '_reverting_subject') and self._reverting_subject:
+                return
+                
+            reply = QMessageBox.question(
+                self,
+                "Subject Changed",
+                f"You're switching from '{self.__import_files_data['subject_id']}' to '{current_subject}'.\n\n"
+                f"What would you like to do with the {len(self.__import_files_data['files'])} files in the list?\n\n"
+                f"• YES: Update all files to use '{current_subject}'\n"
+                f"• NO: Cancel - keep '{self.__import_files_data['subject_id']}' selected",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes  # Default to updating files
+            )
+            
             if reply == QMessageBox.StandardButton.Yes:
+                # Update all existing files to use new subject
+                for file_data in self.__import_files_data["files"]:
+                    file_data["intended_subject"] = current_subject
                 self.__import_files_data["subject_id"] = current_subject
-                self.__import_files_data["files"] = []
-                self.ImportFileListWidget.clear()
-        elif not self.__import_files_data["files"]:
-            # No files yet, just update subject
+            else:
+                # Cancel - revert to original subject selection
+                self._reverting_subject = True
+                self.set_comboBox_text(self.SubjectComboBox, self.__import_files_data["subject_id"])
+                self._reverting_subject = False
+                # Keep everything as it was
+        else:
+            # Same subject, just update
             self.__import_files_data["subject_id"] = current_subject
             
     def setup_import_files_tab(self):
         """Initialize the Import Files tab"""
         # Set up the list widget for displaying files
         self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.SingleSelection)
+        # Track the currently selected file index for form persistence
+        self.__current_selected_file_index = -1
+        # Initially disable form elements since no files are loaded
+        self.set_import_form_enabled(False)
         
+    def save_current_form_to_data(self):
+        """Save current form fields to the currently selected file's data"""
+        if self.__current_selected_file_index >= 0 and self.__current_selected_file_index < len(self.__import_files_data["files"]):
+            file_data = self.__import_files_data["files"][self.__current_selected_file_index]
+            
+            # Update the stored data with current form values
+            file_data["modality"] = self.ModalityComboBox.currentText()
+            file_data["session"] = self.SessionComboBox.currentText().removeprefix("ses-") if self.SessionComboBox.currentText() else ""
+            file_data["task"] = self.TaskComboBox.currentText()
+            file_data["contrast_agent"] = self.ContrastAgentLineEdit.text()
+            file_data["acquisition"] = self.AcquisitionLineEdit.text()
+            file_data["reconstruction"] = self.ReconstructionLineEdit.text()
+
     def on_import_file_selected(self):
         """Update form fields when a file is selected in the list"""
+        # Save current form data before switching
+        self.save_current_form_to_data()
+        
+        # Use current row if no selection (e.g., when called manually)
         selected_items = self.ImportFileListWidget.selectedItems()
         if not selected_items:
-            return
-            
-        # Get the index of selected file
-        index = self.ImportFileListWidget.row(selected_items[0])
+            current_row = self.ImportFileListWidget.currentRow()
+            if current_row >= 0 and current_row < len(self.__import_files_data["files"]):
+                index = current_row
+            else:
+                self.__current_selected_file_index = -1
+                # No file selected - disable form and clear fields only if no files exist
+                if len(self.__import_files_data["files"]) == 0:
+                    self.set_import_form_enabled(False)
+                    self.clear_import_form_fields()
+                return
+        else:
+            # Get the index of selected file
+            index = self.ImportFileListWidget.row(selected_items[0])
+        
+        self.__current_selected_file_index = index
+        
         if index >= 0 and index < len(self.__import_files_data["files"]):
             file_data = self.__import_files_data["files"][index]
+            
+            # Enable form elements when a file is selected
+            self.set_import_form_enabled(True)
             
             # Update form fields with file metadata
             self.BrowseLineEdit.setText(file_data["file_path"])
@@ -182,6 +248,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
             self.AcquisitionLineEdit.setText(file_data["acquisition"])
             self.ReconstructionLineEdit.setText(file_data["reconstruction"])
+        else:
+            # Index out of bounds - disable form and clear fields
+            self.__current_selected_file_index = -1
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
     
     def remove_file_from_list(self):
         """Remove selected file from the import list"""
@@ -196,11 +267,56 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.__import_files_data["files"].pop(index)
             # Remove from list widget
             self.ImportFileListWidget.takeItem(index)
-            # Clear form fields
-            self.BrowseLineEdit.clear()
-            self.ContrastAgentLineEdit.clear()
-            self.AcquisitionLineEdit.clear()
-            self.ReconstructionLineEdit.clear()
+            
+            # Update selection and form fields
+            self.update_selection_after_removal(index)
+
+    def update_selection_after_removal(self, removed_index):
+        """Update selection and form fields after removing an item"""
+        total_items = self.ImportFileListWidget.count()
+        
+        if total_items == 0:
+            # No items left - disable form and clear everything
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+            return
+        
+        # Determine which item to select next
+        if removed_index >= total_items:
+            # Removed the last item, select the new last item
+            new_selection = total_items - 1
+        else:
+            # Select the item that took the removed item's place
+            new_selection = removed_index
+        
+        # Set the new selection
+        self.ImportFileListWidget.setCurrentRow(new_selection)
+        
+        # Update form fields with the newly selected item
+        self.on_import_file_selected()
+
+    def clear_import_form_fields(self):
+        """Clear all import form fields"""
+        self.BrowseLineEdit.setText("No file selected")
+        self.ContrastAgentLineEdit.clear()
+        self.AcquisitionLineEdit.clear()
+        self.ReconstructionLineEdit.clear()
+        
+    def set_import_form_enabled(self, enabled):
+        """Enable or disable import form elements"""
+        # Form input elements
+        self.ModalityComboBox.setEnabled(enabled)
+        self.TaskComboBox.setEnabled(enabled)
+        self.SessionComboBox.setEnabled(enabled)
+        self.ContrastAgentLineEdit.setEnabled(enabled)
+        self.AcquisitionLineEdit.setEnabled(enabled)
+        self.ReconstructionLineEdit.setEnabled(enabled)
+        
+        # Remove file button (only enable if files exist)
+        self.RemoveFileButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
+        
+        # Import button (only enable if files exist)
+        self.StartImportPushButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
 
     def create_subject(self):
         if not self.fileTreeView.model():
@@ -258,10 +374,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
         subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
 
-        self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
-        self.SubjectComboBox.currentTextChanged.connect(self.on_subject_changed)
+        # Temporarily disconnect signals to prevent unwanted dialogs during update
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.update_subject_details)
+        except TypeError:
+            pass  # Connection doesn't exist
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.on_subject_changed)
+        except TypeError:
+            pass  # Connection doesn't exist
+        
         self.SubjectComboBox.clear()
         self.SubjectComboBox.addItems(subject_names)
+        
+        # Sync import data with first available subject (or empty if no subjects)
+        if subject_names and not self.__import_files_data["files"]:
+            # Only update if no files exist to avoid unwanted changes
+            self.__import_files_data["subject_id"] = subject_names[0]
+        elif not subject_names:
+            self.__import_files_data["subject_id"] = ""
+        
+        # Reconnect signals after update is complete
+        self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
+        self.SubjectComboBox.currentTextChanged.connect(self.on_subject_changed)
 
     def update_subject_details(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
@@ -495,19 +630,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 QMessageBox.warning(self, "Duplicate File", "This file is already in the list")
                 return
         
-        # Update subject if changed
+        # Files added to currently selected subject
         current_subject = self.SubjectComboBox.currentText()
-        if self.__import_files_data["subject_id"] != current_subject:
-            if self.__import_files_data["files"]:
-                reply = QMessageBox.question(self, "Subject Changed", 
-                    f"Subject changed from {self.__import_files_data['subject_id']} to {current_subject}.\n"
-                    "This will clear the current file list. Continue?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.No:
-                    return
-            self.__import_files_data["subject_id"] = current_subject
-            self.__import_files_data["files"] = []
-            self.ImportFileListWidget.clear()
+        self.__import_files_data["subject_id"] = current_subject
         
         # Add file to data structure
         file_data = {
@@ -522,18 +647,203 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         }
         self.__import_files_data["files"].append(file_data)
         
-        # Add to list widget with display text
-        display_text = f"{file_name} [{modality}]"
-        if session:
-            display_text += f" ses-{session.removeprefix('ses-')}"
-        if task:
-            display_text += f" task-{task}"
-        self.ImportFileListWidget.addItem(display_text)
+        # Add to list widget with simple filename display
+        self.ImportFileListWidget.addItem(file_name)
         
         # Clear browse field for next file
         self.BrowseLineEdit.clear()
 
+    def detect_modality_from_file(self, file_path):
+        """Auto-detect modality from filename and extension"""
+        
+        # Stage 1: File Extension → General Category
+        extension_to_category = {
+            '.nii': 'anat', '.nii.gz': 'anat',
+            '.trc': 'ieeg', '.vhdr': 'ieeg', '.edf': 'ieeg',
+            '.png': 'photo', '.jpg': 'photo', '.jpeg': 'photo', '.tif': 'photo', '.tiff': 'photo'
+        }
+        
+        # Stage 2: Filename Pattern → Specific Modality
+        anatomy_patterns = {
+            't1w': 'T1w (anat)', 't1': 'T1w (anat)',
+            't2w': 'T2w (anat)', 't2': 'T2w (anat)', 
+            'flair': 'FLAIR (anat)',
+            't1rho': 'T1rho (anat)',
+            't2star': 'T2* (anat)', 't2*': 'T2* (anat)',
+            'ct': 'CT (anat)'
+        }
+        
+        filename = os.path.basename(file_path).lower()
+        extension = ''.join(pathlib.Path(file_path).suffixes).lower()
+        
+        # Get general category from extension
+        category = extension_to_category.get(extension)
+        if not category:
+            return None
+            
+        # Match specific patterns for anatomy
+        if category == 'anat':
+            for pattern, modality in anatomy_patterns.items():
+                if pattern in filename:
+                    return modality
+            return 'T1w (anat)'  # Default fallback
+        
+        # Map other categories
+        category_defaults = {
+            'ieeg': 'ieeg (ieeg)',
+            'photo': 'photo (ieeg)'
+        }
+        return category_defaults.get(category)
+
+    def get_next_acquisition_number(self, subject_id, session, modality, task):
+        """Auto-increment acquisition for files with same properties"""
+        
+        # Find existing files with same properties
+        existing_acquisitions = []
+        for file_data in self.__import_files_data["files"]:
+            if (file_data.get("session") == session and
+                file_data.get("modality") == modality and 
+                file_data.get("task") == task):
+                # Extract acquisition number (01, 02, 03 format)
+                acq = file_data.get("acquisition", "")
+                if acq:
+                    try:
+                        existing_acquisitions.append(int(acq))
+                    except ValueError:
+                        pass
+        
+        # Find next available number
+        next_num = max(existing_acquisitions, default=0) + 1
+        return f"{next_num:02d}"
+
+    def add_multiple_files(self):
+        """New main method - replaces current single-file flow"""
+        
+        # Create universal file filter
+        all_filter = "All supported files (*.nii *.nii.gz *.trc *.vhdr *.edf *.png *.jpg *.jpeg *.tif *.tiff)"
+        
+        # Open multi-file selection dialog
+        files, _ = QFileDialog.getOpenFileNames(
+            self, 
+            "Select files to import", 
+            self.__browse_folder_path_memory,
+            all_filter
+        )
+        
+        if not files:
+            return
+            
+        # Get form defaults
+        current_subject = self.SubjectComboBox.currentText()
+        default_session = self.SessionComboBox.currentText()
+        default_task = self.TaskComboBox.currentText()
+        default_contrast_agent = self.ContrastAgentLineEdit.text()
+        default_reconstruction = self.ReconstructionLineEdit.text()
+        
+        # Process each selected file
+        imported_count = 0
+        failed_files = []
+        
+        for file_path in files:
+            try:
+                # Auto-detect modality
+                detected_modality = self.detect_modality_from_file(file_path)
+                if not detected_modality:
+                    failed_files.append(f"{os.path.basename(file_path)}: Unsupported file type")
+                    continue
+                
+                # Determine task based on modality
+                if "(anat)" in detected_modality or "photo" in detected_modality:
+                    task = ""  # Anatomy and photos don't use tasks
+                else:
+                    task = default_task
+                
+                # Auto-increment acquisition if needed
+                acquisition = self.get_next_acquisition_number(
+                    current_subject, 
+                    default_session.removeprefix("ses-") if default_session else "", 
+                    detected_modality, 
+                    task
+                )
+                
+                # Create file entry
+                file_data = {
+                    "file_name": os.path.basename(file_path),
+                    "file_path": file_path,
+                    "modality": detected_modality,
+                    "task": task,
+                    "session": default_session.removeprefix("ses-") if default_session else "",
+                    "contrast_agent": default_contrast_agent if "(anat)" in detected_modality else "",
+                    "acquisition": acquisition,
+                    "reconstruction": default_reconstruction if "(anat)" in detected_modality else ""
+                }
+                
+                # Add to import list
+                if self.add_file_to_import_data(file_data):
+                    imported_count += 1
+                
+            except Exception as e:
+                failed_files.append(f"{os.path.basename(file_path)}: {str(e)}")
+        
+        # Update UI and show results
+        self.refresh_import_file_list()
+        
+        # Show summary
+        message = f"Successfully imported {imported_count} files"
+        if failed_files:
+            message += f"\n\nFailed files:\n" + "\n".join(failed_files)
+        
+        QMessageBox.information(self, "Import Results", message)
+
+    def add_file_to_import_data(self, file_data):
+        """Add file to import data structure"""
+        
+        current_subject = self.SubjectComboBox.currentText()
+        
+        # Store the intended subject with each file
+        file_data["intended_subject"] = current_subject
+        
+        # Check for duplicates
+        for existing_file in self.__import_files_data["files"]:
+            if existing_file["file_path"] == file_data["file_path"]:
+                return False  # Skip duplicate
+        
+        # Add file
+        self.__import_files_data["files"].append(file_data)
+        return True
+
+    def refresh_import_file_list(self):
+        """Refresh the ImportFileListWidget display"""
+        
+        self.ImportFileListWidget.clear()
+        
+        for file_data in self.__import_files_data["files"]:
+            # Show only filename - single subject tab
+            display_text = file_data['file_name']
+            self.ImportFileListWidget.addItem(display_text)
+        
+        # Auto-select first file if available
+        if self.__import_files_data["files"]:
+            self.ImportFileListWidget.setCurrentRow(0)
+            self.__current_selected_file_index = 0
+            # Enable form elements when files are present
+            self.set_import_form_enabled(True)
+            # Manually call file selection to populate form since setCurrentRow may not trigger signals
+            self.on_import_file_selected()
+        else:
+            self.__current_selected_file_index = -1
+            # Disable form elements when no files
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+
+    def browse_single_file_fallback(self):
+        """Single-file browse as fallback option"""
+        self.browse_for_file_to_add()
+
     def start_file_import(self):
+        # Save current form data before starting import
+        self.save_current_form_to_data()
+        
         # Check if a process is already running
         if hasattr(self, '__worker') and self.__worker.isRunning():
             print("[start_file_import] Import is already in progress")
@@ -547,7 +857,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "No Files", "Please add files to import first")
             return
             
-        # Create worker with current import data
+        # Import all files for the current subject (single-subject tab)
         name = self.__import_files_data["subject_id"]
         files = self.__import_files_data["files"]
         self.__worker = ImportBidsFilesWorker(dataset_path, name, files)
@@ -621,5 +931,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         print("Updating Subjects list in the user interface")
         self.tableWidget.LoadSubjectsInTableWidget(self.fileTreeView.model().rootDirectory().path())
         self.update_subject_names_dropDown()
+        
+        # Show success message to user while keeping file list for review/correction
+        file_count = len(self.__import_files_data["files"])
+        QMessageBox.information(
+            self, 
+            "Import Complete", 
+            f"Successfully imported {file_count} files.\n\n"
+            "Files remain in the list for review. You can:\n"
+            "• Check/modify any file settings\n" 
+            "• Remove files if needed\n"
+            "• Add more files\n"
+            "• Re-import if there were issues"
+        )
+        
         print("Cleaning up worker")
         self.__worker.deleteLater()  # Clean up the worker thread

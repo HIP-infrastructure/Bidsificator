@@ -134,28 +134,35 @@ When refactoring or adding new features:
 
 ## Recent UI Changes (2025-08-27)
 
-### Import Files Tab Refactoring
-The Import Files tab has been significantly restructured:
+### Multi-File Import Implementation
+The Import Files tab has been enhanced with intelligent batch import functionality:
 
-**Removed Elements:**
-- `AR_IsDicomFolderCheckBox` - DICOM folder selection checkbox removed
-- `IF_FileEditorLayout` - FileEditor widget no longer used in Import Files tab
-- `AR_` prefix removed from all UI elements for cleaner naming
-- `splitter` widget between file tree and tabs
-- `groupBox_2` wrapper for Add/Remove Files section
+**New Features Implemented:**
+- **Multi-file selection**: Users can now select multiple files at once via "+" button
+- **Auto-detection**: Modality is automatically detected from filename and extension
+- **Smart acquisition numbering**: Files with identical properties get auto-incremented acquisition numbers (acq-01, acq-02, etc.)
+- **Batch processing**: Process dozens of files in seconds with intelligent defaults
 
-**Updated Elements:**
-- All `AR_*` prefixed elements renamed without prefix (e.g., `AR_SubjectComboBox` → `SubjectComboBox`)
-- `pushButton` → `AddFileButton`
-- `pushButton_2` → `RemoveFileButton`
-- `importFileTreeView` → `ImportFileTreeView`
+**Technical Implementation:**
+- `detect_modality_from_file()`: Two-stage detection (extension → category → specific modality)
+- `get_next_acquisition_number()`: Auto-increment logic for BIDS compliance
+- `add_multiple_files()`: Main multi-file import method replacing single-file workflow
+- `add_file_to_import_data()`: Enhanced file management with duplicate detection
+- `refresh_import_file_list()`: Updated display logic for batch imports
 
-**New Architecture:**
-- Import Files tab now uses `ImportFileTreeView` for file display
-- Add/Remove buttons positioned between tree view and form fields
+**Supported File Types:**
+- **Anatomy**: `.nii`, `.nii.gz` with pattern detection (T1w, T2w, FLAIR, T1rho, T2*, CT)
+- **iEEG**: `.trc`, `.vhdr`, `.edf` files
+- **Photos**: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff` files
+
+**User Experience Improvements:**
+- One-click batch import workflow
+- Smart defaults from form fields applied to all files
+- Comprehensive error reporting with success/failure summary
+- Backward compatibility with single-file browse option
+
+**Previous Refactoring (Import Files Tab):**
+- Removed `AR_IsDicomFolderCheckBox` and `IF_FileEditorLayout`
+- Updated element naming (removed `AR_` prefix)
 - Simplified layout without nested group boxes
-
-**TODO Items:**
-- Implement new file list management using `ImportFileTreeView` instead of FileEditor
-- Create new logic for DICOM folder handling without checkbox
-- Update file import worker to use new data structure
+- Uses `ImportFileListWidget` for display
