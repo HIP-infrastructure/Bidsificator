@@ -42,6 +42,10 @@ class FileEditor(QWidget, Ui_FileEditor):
         self._subject_data = subject
         for file in subject["files"]:
             self.add_file_to_list(file["file_name"])
+        
+        # Auto-select first file if there are any
+        if self.FileListWidget.count() > 0:
+            self.FileListWidget.setCurrentRow(0)
 
     def append_to_list(self, subject):
         if not self._subject_data:
@@ -129,6 +133,10 @@ class FileEditor(QWidget, Ui_FileEditor):
                 self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
 
     def update_userinterface_for_modality(self):
+        # Skip if we're in the middle of updating file details
+        if self.__lock_for_update:
+            return
+            
         if "(anat)" in self.ModalityComboBox.currentText():
             #session
             self.SessionLabel.show()

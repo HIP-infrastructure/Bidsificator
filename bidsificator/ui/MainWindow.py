@@ -339,17 +339,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.__subject_data = DataCrawler.crawl_data('bidsificator/config/config.yaml')
         for subject in self.__subject_data:
             files = []
+            acquisition_tracker = {}  # Track acquisitions per modality/session/task combo
+            
             for data_type, data_info in subject["data"].items():
                 for file_path in data_info["file_paths"]:
                     file_name = Path(file_path).name
+                    modality = data_info['modality']
+                    session = "post"
+                    task = ""
+                    
+                    # Auto-increment acquisition for files with same properties
+                    key = f"{modality}_{session}_{task}"
+                    if key not in acquisition_tracker:
+                        acquisition_tracker[key] = 0
+                    acquisition_tracker[key] += 1
+                    acquisition = f"{acquisition_tracker[key]:02d}"
+                    
                     file = {
                         "file_name": file_name,
                         "file_path": file_path,
-                        "modality": data_info['modality'],
-                        "task": "",
-                        "session": "post",
+                        "modality": modality,
+                        "task": task,
+                        "session": session,
                         "contrast_agent": "",
-                        "acquisition": "",
+                        "acquisition": acquisition,
                         "reconstruction": ""
                     }
                     files.append(file)
@@ -936,18 +949,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.LoadSubjectsInTableWidget(self.fileTreeView.model().rootDirectory().path())
         self.update_subject_names_dropDown()
         
-        # Show success message to user while keeping file list for review/correction
-        file_count = len(self.__import_files_data["files"])
-        QMessageBox.information(
-            self, 
-            "Import Complete", 
-            f"Successfully imported {file_count} files.\n\n"
-            "Files remain in the list for review. You can:\n"
-            "• Check/modify any file settings\n" 
-            "• Remove files if needed\n"
-            "• Add more files\n"
-            "• Re-import if there were issues"
-        )
+        # Check which type of worker finished to show appropriate message
+        if isinstance(self.__worker, ImportBidsSubjectsWorker):
+            # Count total files from all subjects
+            total_files = sum(len(subject.get("files", [])) for subject in self.__subject_data)
+            subject_count = len(self.__subject_data)
+            QMessageBox.information(
+                self, 
+                "Import Complete", 
+                f"Successfully imported {subject_count} subjects with {total_files} files.\n\n"
+                "Check the dataset folder for the imported files."
+            )
+        else:
+            # Import Files worker (single subject)
+            file_count = len(self.__import_files_data["files"])
+            QMessageBox.information(
+                self, 
+                "Import Complete", 
+                f"Successfully imported {file_count} files.\n\n"
+                "Files remain in the list for review. You can:\n"
+                "• Check/modify any file settings\n" 
+                "• Remove files if needed\n"
+                "• Add more files\n"
+                "• Re-import if there were issues"
+            )
         
         print("Cleaning up worker")
         self.__worker.deleteLater()  # Clean up the worker thread

@@ -227,6 +227,8 @@ class PatientTableWidget(QTableWidget):
             self.removeRow(row_to_delete)
             #update the participants.tsv file
             self.__bids_folder.generate_participants_tsv()
+            #emit signal to update other UI components
+            self.subject_updated.emit()
 
     def ItemChanged(self, item):
         if item.column() == 0:
