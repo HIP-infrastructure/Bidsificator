@@ -397,6 +397,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Reconnect signals after update is complete
         self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
         self.SubjectComboBox.currentTextChanged.connect(self.on_subject_changed)
+        
+        # Populate session dropdown for the current subject
+        if subject_names:
+            self.update_subject_details()
 
     def update_subject_details(self):
         dataset_path = self.fileTreeView.model().rootDirectory().path()
