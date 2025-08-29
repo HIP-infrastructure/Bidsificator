@@ -540,9 +540,9 @@ class ImportSubjectsController(QObject):
             # Show success message
             subject_count = len(current_subject_ids) if current_subject_ids else 3
             if current_subject_ids:
-                message = f"Template created successfully with {subject_count} pre-populated subject IDs.\n\nFile saved to:\n{file_path}\n\nPlease fill in the Surname and Firstname columns."
+                message = f"Template created successfully with {subject_count} pre-populated subject IDs.\n\nFile saved to:\n{file_path}\n\nPlease fill in the CenterName and NumericID columns."
             else:
-                message = f"Template created successfully with example entries.\n\nFile saved to:\n{file_path}\n\nPlease replace the example data with your actual subject information."
+                message = f"Template created successfully with example entries.\n\nFile saved to:\n{file_path}\n\nPlease replace the example data with your actual anonymous subject information."
             
             QMessageBox.information(
                 self._parent_widget,

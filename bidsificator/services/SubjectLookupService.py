@@ -14,7 +14,7 @@ class SubjectLookupService:
         """
         Parse CSV lookup table file.
         
-        Expected format: MicromedID;Surname;Firstname
+        Expected format: FolderID;CenterName;NumericID
         
         Args:
             csv_path: Path to CSV file
@@ -44,7 +44,7 @@ class SubjectLookupService:
                 reader = csv.DictReader(file, delimiter=delimiter)
                 
                 # Validate headers
-                expected_headers = {'MicromedID', 'Surname', 'Firstname'}
+                expected_headers = {'FolderID', 'CenterName', 'NumericID'}
                 if not expected_headers.issubset(set(reader.fieldnames or [])):
                     errors.append(f"Invalid headers. Expected: {expected_headers}, Found: {reader.fieldnames}")
                     return mapping, errors
@@ -55,37 +55,37 @@ class SubjectLookupService:
                 for row in reader:
                     line_number += 1
                     
-                    micromed_id = row.get('MicromedID', '').strip()
-                    surname = row.get('Surname', '').strip()
-                    firstname = row.get('Firstname', '').strip()
+                    folder_id = row.get('FolderID', '').strip()
+                    center_name = row.get('CenterName', '').strip()
+                    numeric_id = row.get('NumericID', '').strip()
                     
                     # Validate required fields
-                    if not micromed_id:
-                        errors.append(f"Line {line_number}: Empty MicromedID")
+                    if not folder_id:
+                        errors.append(f"Line {line_number}: Empty FolderID")
                         continue
                     
-                    if not surname or not firstname:
-                        errors.append(f"Line {line_number}: Missing surname or firstname for {micromed_id}")
+                    if not center_name or not numeric_id:
+                        errors.append(f"Line {line_number}: Missing CenterName or NumericID for {folder_id}")
                         continue
                     
                     # Format subject name
-                    formatted_name = SubjectLookupService.format_subject_name(surname, firstname)
+                    formatted_name = SubjectLookupService.format_subject_name(center_name, numeric_id)
                     
                     if not formatted_name:
-                        errors.append(f"Line {line_number}: Could not create valid subject name from '{surname}' '{firstname}'")
+                        errors.append(f"Line {line_number}: Could not create valid subject name from '{center_name}' '{numeric_id}'")
                         continue
                     
                     # Check for duplicates in CSV
-                    if micromed_id in mapping:
-                        errors.append(f"Line {line_number}: Duplicate MicromedID '{micromed_id}'")
+                    if folder_id in mapping:
+                        errors.append(f"Line {line_number}: Duplicate FolderID '{folder_id}'")
                         continue
                     
                     # Check for name conflicts
                     if formatted_name in used_names:
-                        errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}' (from '{surname}' '{firstname}')")
+                        errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}' (from '{center_name}' '{numeric_id}')")
                         continue
                     
-                    mapping[micromed_id] = formatted_name
+                    mapping[folder_id] = formatted_name
                     used_names.add(formatted_name)
                 
         except Exception as e:
@@ -94,62 +94,83 @@ class SubjectLookupService:
         return mapping, errors
     
     @staticmethod
-    def format_subject_name(surname: str, firstname: str) -> str:
+    def format_subject_name(center_name: str, numeric_id: str) -> str:
         """
-        Create BIDS-compatible subject name from surname and firstname.
+        Create anonymous BIDS-compatible subject name from center and numeric ID.
         
         Args:
-            surname: Subject's surname
-            firstname: Subject's firstname
+            center_name: Medical center name
+            numeric_id: Anonymous numeric identifier
             
         Returns:
-            Formatted subject name (e.g., "John_Doe")
+            Formatted subject name (e.g., "Paris_001")
         """
-        if not surname or not firstname:
+        if not center_name or not numeric_id:
             return ""
         
-        # Clean and format names
-        clean_surname = SubjectLookupService._clean_name(surname)
-        clean_firstname = SubjectLookupService._clean_name(firstname)
+        # Clean and format center name and numeric ID
+        clean_center = SubjectLookupService._clean_center_name(center_name)
+        clean_numeric = SubjectLookupService._clean_numeric_id(numeric_id)
         
-        if not clean_surname or not clean_firstname:
+        if not clean_center or not clean_numeric:
             return ""
         
-        # Create formatted name
-        formatted_name = f"{clean_firstname}_{clean_surname}"
-        
-        # Ensure BIDS compliance (alphanumeric + underscore, max reasonable length)
-        if len(formatted_name) > 50:  # Reasonable limit
-            # Truncate while preserving both names
-            max_part = 24  # Allow for underscore
-            clean_firstname = clean_firstname[:max_part]
-            clean_surname = clean_surname[:max_part]
-            formatted_name = f"{clean_firstname}_{clean_surname}"
+        # Create anonymous formatted name
+        formatted_name = f"{clean_center}_{clean_numeric}"
         
         return formatted_name
     
     @staticmethod
-    def _clean_name(name: str) -> str:
+    def _clean_center_name(center_name: str) -> str:
         """
-        Clean name for BIDS compatibility.
+        Clean center name for BIDS compatibility.
         
         Args:
-            name: Raw name string
+            center_name: Medical center name
             
         Returns:
-            Cleaned name (alphanumeric only)
+            Cleaned center name (max 8 chars, alphanumeric only)
         """
-        if not name:
+        if not center_name:
             return ""
         
-        # Remove accents and special characters, keep only alphanumeric
-        cleaned = re.sub(r'[^a-zA-Z0-9]', '', name.strip())
+        # Remove special characters, keep only alphanumeric
+        cleaned = re.sub(r'[^a-zA-Z0-9]', '', center_name.strip())
         
-        # Capitalize first letter
+        # Capitalize and limit length
         if cleaned:
-            cleaned = cleaned[0].upper() + cleaned[1:].lower()
+            cleaned = cleaned[:8].upper()  # "LAUSANNE", "LYON", etc.
         
         return cleaned
+    
+    @staticmethod
+    def _clean_numeric_id(numeric_id: str) -> str:
+        """
+        Clean and format numeric ID.
+        
+        Args:
+            numeric_id: Raw numeric identifier
+            
+        Returns:
+            Cleaned numeric ID (3-digit padded: "001", "042", etc.)
+        """
+        if not numeric_id:
+            return ""
+        
+        # Extract digits only
+        digits = re.sub(r'[^0-9]', '', numeric_id.strip())
+        
+        if not digits:
+            return ""
+        
+        # Convert to int and back to remove leading zeros, then pad to 3 digits
+        try:
+            num = int(digits)
+            if num < 1 or num > 999:  # Reasonable range
+                return ""
+            return str(num).zfill(3)  # "001", "042", "123", etc.
+        except ValueError:
+            return ""
     
     @staticmethod
     def validate_csv_format(csv_path: str) -> Tuple[bool, List[str]]:
@@ -188,10 +209,10 @@ class SubjectLookupService:
                 
                 # Check for expected headers (case insensitive)
                 first_line_lower = first_line.lower()
-                required_terms = ['micromed', 'surname', 'firstname']
+                required_terms = ['folderid', 'centername', 'numericid']
                 
                 if not all(term in first_line_lower for term in required_terms):
-                    errors.append("File does not contain expected headers (MicromedID, Surname, Firstname)")
+                    errors.append("File does not contain expected headers (FolderID, CenterName, NumericID)")
                     return False, errors
                 
         except Exception as e:
@@ -225,7 +246,7 @@ class SubjectLookupService:
     @staticmethod
     def generate_template_csv(subject_ids: List[str] = None) -> str:
         """
-        Generate CSV template content for lookup table.
+        Generate CSV template content for anonymous lookup table.
         
         Args:
             subject_ids: Optional list of subject IDs to pre-populate
@@ -234,18 +255,18 @@ class SubjectLookupService:
             CSV content as string
         """
         # CSV header
-        csv_lines = ["MicromedID;Surname;Firstname"]
+        csv_lines = ["FolderID;CenterName;NumericID"]
         
         if subject_ids:
-            # Pre-populate with subject IDs, leaving name fields empty
-            for subject_id in subject_ids:
-                csv_lines.append(f"{subject_id};;")
+            # Pre-populate with subject IDs, leaving center/numeric fields for manual entry
+            for i, subject_id in enumerate(subject_ids):
+                numeric_id = str(i + 1).zfill(3)  # Generate sequential IDs: 001, 002, etc.
+                csv_lines.append(f"{subject_id};CENTER_NAME;{numeric_id}")
         else:
-            # Just add a few example rows for manual entry
+            # Add example rows with realistic anonymous data
             csv_lines.extend([
-                "PAT_001;;",
-                "PAT_002;;",
-                "PAT_003;;"
+                "PAT_001;CHUV;001",
+                "PAT_002;HCL;002", 
             ])
         
         return "\n".join(csv_lines)
