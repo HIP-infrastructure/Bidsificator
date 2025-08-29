@@ -15,6 +15,9 @@ class DatasetInfo:
     description: Dict[str, Any] = field(default_factory=dict)
     participants: List[Dict[str, str]] = field(default_factory=list)
     is_valid: bool = False
+    validation_level: str = "NOT_BIDS"  # STRICT_BIDS, PARTIAL_BIDS, NOT_BIDS
+    validation_issues: List[str] = field(default_factory=list)
+    validation_warnings: List[str] = field(default_factory=list)
     
     def __post_init__(self):
         """Validate and process dataset info after initialization."""
@@ -73,6 +76,16 @@ class DatasetModel:
         """Get list of subject IDs in dataset."""
         return self._subjects.copy()
     
+    @property
+    def validation_level(self) -> str:
+        """Get current dataset validation level."""
+        return self._current_dataset.validation_level if self._current_dataset else "NOT_BIDS"
+    
+    @property
+    def validation_issues(self) -> List[str]:
+        """Get current dataset validation issues."""
+        return self._current_dataset.validation_issues if self._current_dataset else []
+    
     def create_dataset(self, dataset_path: str, dataset_name: str) -> Tuple[bool, str]:
         """
         Create a new BIDS dataset.
@@ -109,6 +122,72 @@ class DatasetModel:
         except Exception as e:
             return False, f"Failed to create dataset: {str(e)}"
     
+    def _validate_bids_structure(self, dataset_path: str) -> Dict[str, Any]:
+        """
+        Validate BIDS dataset structure and return validation results.
+        
+        Args:
+            dataset_path: Path to validate
+            
+        Returns:
+            Dictionary with validation results
+        """
+        validation_result = {
+            'level': 'NOT_BIDS',
+            'is_valid': False,
+            'issues': [],
+            'warnings': []
+        }
+        
+        # Check 1: Required files
+        desc_file = os.path.join(dataset_path, "dataset_description.json")
+        participants_file = os.path.join(dataset_path, "participants.tsv")
+        
+        has_description = os.path.exists(desc_file)
+        has_participants = os.path.exists(participants_file)
+        
+        if not has_description:
+            validation_result['issues'].append("Missing required file: dataset_description.json")
+        
+        if not has_participants:
+            validation_result['issues'].append("Missing required file: participants.tsv")
+        
+        # Check 2: Subject folders
+        try:
+            entries = os.listdir(dataset_path)
+            subject_folders = [e for e in entries 
+                             if os.path.isdir(os.path.join(dataset_path, e)) 
+                             and e.startswith("sub-")]
+            
+            if not subject_folders:
+                validation_result['issues'].append("No BIDS subject folders (sub-*) found")
+            
+            # Check 3: Optional but recommended files
+            readme_file = os.path.join(dataset_path, "README")
+            readme_md_file = os.path.join(dataset_path, "README.md")
+            if not (os.path.exists(readme_file) or os.path.exists(readme_md_file)):
+                validation_result['warnings'].append("README file is recommended but not found")
+            
+            # Determine validation level
+            # A valid BIDS dataset must have dataset_description.json and participants.tsv
+            # Subject folders are optional for newly created datasets
+            if has_description and has_participants:
+                validation_result['level'] = 'STRICT_BIDS'
+                validation_result['is_valid'] = True
+                if not subject_folders:
+                    validation_result['warnings'].append("No subjects found - this is normal for new datasets")
+            elif has_description or has_participants:
+                validation_result['level'] = 'PARTIAL_BIDS'
+                validation_result['is_valid'] = False
+            else:
+                validation_result['level'] = 'NOT_BIDS'
+                validation_result['is_valid'] = False
+                
+        except Exception as e:
+            validation_result['issues'].append(f"Error scanning directory: {str(e)}")
+        
+        return validation_result
+    
     def load_dataset(self, dataset_path: str) -> Tuple[bool, str]:
         """
         Load an existing BIDS dataset.
@@ -130,6 +209,13 @@ class DatasetModel:
             dataset_name = os.path.basename(dataset_path)
             dataset_info = DatasetInfo(name=dataset_name, path=dataset_path)
             
+            # Validate BIDS structure
+            validation_result = self._validate_bids_structure(dataset_path)
+            dataset_info.validation_level = validation_result['level']
+            dataset_info.validation_issues = validation_result['issues']
+            dataset_info.validation_warnings = validation_result['warnings']
+            dataset_info.is_valid = validation_result['is_valid']
+            
             # Load dataset description if it exists
             desc_path = dataset_info.get_dataset_description_path()
             if os.path.exists(desc_path):
@@ -141,9 +227,6 @@ class DatasetModel:
                         dataset_info.name = dataset_info.description['Name']
                 except Exception:
                     pass  # Continue with default name if description can't be loaded
-            
-            # Check if dataset has required files
-            dataset_info.is_valid = dataset_info.has_required_files()
             
             # Load subjects
             self._load_subjects(dataset_path)

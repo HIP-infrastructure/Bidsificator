@@ -42,6 +42,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Set up splitter with reasonable default sizes
         # 25% for file tree, 75% for main content
         self.mainSplitter.setSizes([300, 700])
+        
+        # BIDS validation state
+        self._is_valid_bids_dataset = False
+        self._validation_level = "NOT_BIDS"
+        self._validation_issues = []
 
         # Create FileEditor for Import Subjects tab
         self.__ImportSubjectFileEditor = FileEditor()
@@ -146,12 +151,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
     def _on_dataset_changed(self, dataset_path: str):
         """Handle dataset change from controller."""
+        # Update validation state and tabs
+        self._update_validation_state()
         self.load_treeView_UI(dataset_path)
-        self.tabWidget.setEnabled(True)  # Enable tabs when dataset is loaded
+        self._update_tabs_based_on_validation()
         
-        # Load subjects into the PatientTableWidget
-        self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
-        self.update_subject_names_dropDown()
+        # Only load subjects and update UI if it's a valid dataset
+        if self._validation_level != "NOT_BIDS":
+            self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
+            self.update_subject_names_dropDown()
+        
+        # Show validation warning if necessary
+        self._show_validation_warning_if_needed()
     
     def _on_subjects_updated(self):
         """Handle subjects update from controller - refreshes both table and dropdown."""
@@ -1077,6 +1088,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             )
             return
         
+        # Check if dataset validation allows operations (simplified since tabs are disabled for NOT_BIDS)
+        if self._validation_level == "NOT_BIDS":
+            # This shouldn't happen since tabs are disabled, but just in case
+            QMessageBox.warning(
+                self,
+                "Operations Not Available",
+                "Please load a valid BIDS dataset to enable operations."
+            )
+            return
+        elif self._validation_level == "PARTIAL_BIDS":
+            # Show warning for partial BIDS but allow operation
+            reply = QMessageBox.question(
+                self,
+                "Partial BIDS Dataset",
+                "This dataset has validation issues. Continue with operation?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
         # Create context menu
         context_menu = QMenu(self)
         
@@ -1315,3 +1347,68 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if successful_deletions:
                 error_msg = f"Partial success. Successfully deleted {len(successful_deletions)} files.\n\n" + error_msg
             QMessageBox.critical(self, "Deletion Failed", error_msg)
+    
+    def _update_validation_state(self):
+        """Update validation state from the dataset model."""
+        if hasattr(self, '_main_controller') and self._main_controller.is_dataset_loaded():
+            dataset_model = self._main_controller.dataset_controller.model
+            self._validation_level = dataset_model.validation_level
+            self._validation_issues = dataset_model.validation_issues
+            self._is_valid_bids_dataset = self._validation_level == "STRICT_BIDS"
+        else:
+            self._validation_level = "NOT_BIDS"
+            self._validation_issues = []
+            self._is_valid_bids_dataset = False
+    
+    def _show_validation_warning_if_needed(self):
+        """Show validation warning dialog if dataset is not fully BIDS compliant."""
+        if self._validation_level == "NOT_BIDS":
+            issues_text = "\n".join(f"• {issue}" for issue in self._validation_issues)
+            
+            reply = QMessageBox.question(
+                self,
+                "Not a BIDS Dataset",
+                f"This folder does not appear to be a valid BIDS dataset:\n\n"
+                f"{issues_text}\n\n"
+                f"Operations like renaming and deleting subjects/files will be restricted "
+                f"to prevent data corruption.\n\n"
+                f"Would you like to:\n"
+                f"• Click 'Yes' to load anyway (view-only mode)\n"
+                f"• Click 'No' to select a different folder",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.No:
+                # Try to open a different dataset
+                self._main_controller.open_dataset()
+                
+        elif self._validation_level == "PARTIAL_BIDS":
+            issues_text = "\n".join(f"• {issue}" for issue in self._validation_issues)
+            
+            QMessageBox.warning(
+                self,
+                "Partial BIDS Dataset",
+                f"This dataset has some BIDS structure but is missing required components:\n\n"
+                f"{issues_text}\n\n"
+                f"Some operations may be restricted. Consider fixing these issues "
+                f"to enable full functionality."
+            )
+    
+    
+    def _update_tabs_based_on_validation(self):
+        """Enable/disable tabs based on BIDS validation level."""
+        if self._validation_level == "NOT_BIDS":
+            # Disable entire tab widget for non-BIDS folders
+            self.tabWidget.setEnabled(False)
+        else:
+            # Enable tab widget and all tabs for valid BIDS datasets
+            self.tabWidget.setEnabled(True)
+            self.tabWidget.setTabEnabled(0, True)   # Dataset/subjects tab
+            self.tabWidget.setTabEnabled(1, True)   # Import Files tab
+            self.tabWidget.setTabEnabled(2, True)   # Import Subjects tab
+    
+    def refresh_validation_state(self):
+        """Force refresh of validation state - can be called manually."""
+        self._update_validation_state()
+        self._update_tabs_based_on_validation()
