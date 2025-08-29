@@ -117,7 +117,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Set up connections between controllers and UI."""
         # Dataset controller signals
         self._main_controller.dataset_changed.connect(self._on_dataset_changed)
-        self._main_controller.subjects_updated.connect(self.update_subject_names_dropDown)
+        self._main_controller.subjects_updated.connect(self._on_subjects_updated)
         
         # Import files controller signals (Second tab)
         import_files_ctrl = self._main_controller.import_files_controller
@@ -139,6 +139,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Load subjects into the PatientTableWidget
         self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
+        self.update_subject_names_dropDown()
+    
+    def _on_subjects_updated(self):
+        """Handle subjects update from controller - refreshes both table and dropdown."""
+        # Update the subject table (first tab)
+        dataset_path = self._get_dataset_path()
+        if dataset_path:
+            self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
+        
+        # Update the subject dropdown (second tab)
         self.update_subject_names_dropDown()
         
     def _on_import_file_selection_changed(self, index: int):

@@ -63,6 +63,8 @@ class MainController(QObject):
     
     def _on_import_completed(self, results: Dict[str, Any]):
         """Handle import completion from any controller."""
+        # Refresh subjects from filesystem first
+        self._dataset_controller.refresh_subjects()
         self.subjects_updated.emit()
         self.status_updated.emit("Import completed successfully")
     
