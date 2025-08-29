@@ -3,245 +3,226 @@ from PyQt6.QtWidgets import (
     QMenu,
     QTableWidget,
     QTableWidgetItem,
-    QMenu,
-    QInputDialog,
-    QTableWidgetItem,
-    QMenu,
     QMessageBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
-from ..core.BidsFolder import BidsFolder
+from ..controllers.PatientTableController import PatientTableController
 
 
 class PatientTableWidget(QTableWidget):
-    __selected_item = None
-    __bids_folder = None
-    __previous_cell_text = None
+    """Pure view component for patient/subject table using PatientTableController."""
+    
     subject_updated = pyqtSignal()
-
+    
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # Initialize without controller (will be set later)
+        self._controller = None
+        self._dataset_path_provider = None
+        
+        self._setup_ui_connections()
+        
+        # UI state
+        self._selected_item = None
+        self._previous_cell_text = None
+
+    def initialize_controller(self, dataset_path_provider):
+        """Initialize the controller after construction (for UI file compatibility)."""
+        if self._controller is None:
+            self._dataset_path_provider = dataset_path_provider
+            self._controller = PatientTableController(dataset_path_provider, self)
+            self._setup_controller_connections()
+
+    def _setup_controller_connections(self):
+        """Set up connections between controller and UI."""
+        self._controller.subjects_loaded.connect(self._on_subjects_loaded)
+        self._controller.subject_created.connect(self._on_subject_created)
+        self._controller.subject_updated.connect(self._on_subject_updated)
+        self._controller.subject_deleted.connect(self._on_subject_deleted)
+        self._controller.keys_updated.connect(self._on_keys_updated)
+        self._controller.data_changed.connect(self._on_data_changed)
+
+    def _setup_ui_connections(self):
+        """Set up UI signal connections."""
         self.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.horizontalHeader().customContextMenuRequested.connect(self.ShowHorizontalContextMenu)
+        self.horizontalHeader().customContextMenuRequested.connect(self._show_horizontal_context_menu)
         self.verticalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.verticalHeader().customContextMenuRequested.connect(self.ShowVerticalContextMenu)
+        self.verticalHeader().customContextMenuRequested.connect(self._show_vertical_context_menu)
 
-    def __connectTableWidget(self):
-        self.itemClicked.connect(self.ItemClicked)
-        self.itemChanged.connect(self.ItemChanged)
+    def _connect_table_widget(self):
+        """Connect table widget signals."""
+        self.itemClicked.connect(self._on_item_clicked)
+        self.itemChanged.connect(self._on_item_changed)
 
-    def __disconnectTableWidget(self):
-        """
-        Disconnects the `itemClicked` and `itemChanged` signals from their respective slots.
-        This method attempts to disconnect the `itemClicked` signal from the `ItemClicked` slot and the `itemChanged` signal from the `ItemChanged` slot.
-        If a signal is not connected to its slot, a `TypeError` is raised and caught, allowing the method to continue.
-
-        Raises:
-            TypeError: If a signal is not connected to its slot. This exception is caught and does not interrupt the method.
-        """
+    def _disconnect_table_widget(self):
+        """Disconnect table widget signals."""
         try:
-            self.itemClicked.disconnect(self.ItemClicked)
+            self.itemClicked.disconnect(self._on_item_clicked)
         except TypeError:
             pass
         try:
-            self.itemChanged.disconnect(self.ItemChanged)
+            self.itemChanged.disconnect(self._on_item_changed)
         except TypeError:
             pass
 
-    def ShowHorizontalContextMenu(self, event):
-        index = self.indexAt(event)
+    def _show_horizontal_context_menu(self, position):
+        """Show horizontal header context menu."""
+        index = self.indexAt(position)
         if not index.isValid():
             return
-        self.__selected_item = self.indexAt(event)
-        canAddKeyBefore = self.__selected_item.column() > 0
+        
+        self._selected_item = self.indexAt(position)
+        can_add_key_before = self._selected_item.column() > 0
 
-        self.customMenu = QMenu(self)
-        addSelectedKeyAfterAction = self.customMenu.addAction("Add key after Selected")
-        addSelectedKeyAfterAction.triggered.connect(self.AddKeyAfterSelected)
-        addKeyBeforeSelectedAction = self.customMenu.addAction("Add key before Selected")
-        addKeyBeforeSelectedAction.setEnabled(canAddKeyBefore)
-        addKeyBeforeSelectedAction.triggered.connect(self.AddKeyBeforeSelected)
-        removeSelectedKeyAction = self.customMenu.addAction("Remove Selected key")
-        removeSelectedKeyAction.triggered.connect(self.RemoveSelectedKey)
+        context_menu = QMenu(self)
+        add_key_after_action = context_menu.addAction("Add key after Selected")
+        add_key_after_action.triggered.connect(self._add_key_after_selected)
+        add_key_before_action = context_menu.addAction("Add key before Selected")
+        add_key_before_action.setEnabled(can_add_key_before)
+        add_key_before_action.triggered.connect(self._add_key_before_selected)
+        remove_key_action = context_menu.addAction("Remove Selected key")
+        remove_key_action.triggered.connect(self._remove_selected_key)
 
-        self.customMenu.popup(QCursor.pos())
+        context_menu.popup(QCursor.pos())
 
-    def ShowVerticalContextMenu(self, event):
-        index = self.indexAt(event)
+    def _show_vertical_context_menu(self, position):
+        """Show vertical header context menu."""
+        index = self.indexAt(position)
         if not index.isValid():
             return
-        self.__selected_item = self.indexAt(event)
+        
+        self._selected_item = self.indexAt(position)
 
-        self.customMenu = QMenu(self)
-        deleteSelectedSubjectAction = self.customMenu.addAction("Remove Selected Subject")
-        deleteSelectedSubjectAction.triggered.connect(self.DeleteSelectedSubject)
+        context_menu = QMenu(self)
+        delete_subject_action = context_menu.addAction("Remove Selected Subject")
+        delete_subject_action.triggered.connect(self._delete_selected_subject)
 
-        self.customMenu.popup(QCursor.pos())
+        context_menu.popup(QCursor.pos())
 
+    # Public interface methods (for backward compatibility)
+    
     def GetSubjectsKeysFromTable(self):
-        default_values = {'age' : '123', 'sex' : 'M/F'}
-        subjects_keys = {self.horizontalHeaderItem(i).text(): default_values.get(self.horizontalHeaderItem(i).text().lower(), "n/a") for i in range(1, self.columnCount())}
-        if "Subject ID" in subjects_keys:
-            del subjects_keys["Subject ID"]
-        return subjects_keys
+        """Get subjects keys from table (legacy method)."""
+        if self._controller:
+            return self._controller.get_subjects_keys_from_data()
+        return {}
 
     def LoadSubjectsInTableWidget(self, dataset_path: str):
-        #cleanup
-        self.setRowCount(0)
+        """Load subjects into table widget using controller."""
+        if self._controller:
+            self._controller.load_subjects(dataset_path)
 
-        #dataset_path = self.fileTreeView.model().rootDirectory().path()
-        self.__bids_folder = BidsFolder(dataset_path)
-        subjects = self.__bids_folder.get_bids_subjects()
+    def CreateSubjectInTableWidget(self, subject_name: str):
+        """Create subject in table widget using controller."""
+        if self._controller:
+            self._controller.create_subject(subject_name)
 
-        #We use a dict in order to keep the order of the elements + uniqueness
-        all_optional_keys = {key: None for subject in subjects for key in subject.get_optional_keys().keys()}
+    # UI Event Handlers
+    
+    def _add_key_before_selected(self):
+        """Add key before selected column using controller."""
+        if self._selected_item and self._controller:
+            self._controller.add_key_before(self._selected_item.column())
 
-        #Set horizontal header data
-        all_optional_keys = list(all_optional_keys)
-        self.setColumnCount(len(all_optional_keys) + 1)
-        if all_optional_keys:
-            self.setHorizontalHeaderLabels(["Subject ID"] + all_optional_keys)
-        else:
-            self.setHorizontalHeaderLabels(["Subject ID"])
+    def _add_key_after_selected(self):
+        """Add key after selected column using controller."""
+        if self._selected_item and self._controller:
+            self._controller.add_key_after(self._selected_item.column())
 
-        self.__disconnectTableWidget()
-        #Then fill the cells with participants data
-        for subject in subjects:
-            optional_keys = subject.get_optional_keys()
-            rowPosition = self.rowCount()
-            self.insertRow(rowPosition)
-            subjectItem = QTableWidgetItem(subject.get_subject_id())
-            subjectItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setItem(rowPosition, 0, subjectItem)
-            for i, key in enumerate(all_optional_keys):
-                keyItem = QTableWidgetItem(optional_keys.get(key, "n/a"))
-                keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.setItem(rowPosition, i + 1, keyItem)
-        self.__connectTableWidget()
+    def _remove_selected_key(self):
+        """Remove selected key using controller."""
+        if self._selected_item and self._controller:
+            column_to_delete = self._selected_item.column()
+            key_to_delete = self.horizontalHeaderItem(column_to_delete).text()
+            self._controller.remove_key(key_to_delete)
 
-    def CreateSubjectInTableWidget(self,subject_name: str):
-        subject_description = self.GetSubjectsKeysFromTable()
-        if not subject_description:
-            subject_description = {'age' : '123', 'sex' : 'M/F'}
+    def _delete_selected_subject(self):
+        """Delete selected subject using controller."""
+        if self._selected_item and self._controller:
+            row_to_delete = self._selected_item.row()
+            subject_id = self.item(row_to_delete, 0).text()
+            self._controller.delete_subject(subject_id)
 
-        try:
-            bids_subject = self.__bids_folder.add_bids_subject(subject_name, subject_description)
-        except ValueError as e:
-            QMessageBox.warning(self, "Error", str(e))
+    def _on_item_changed(self, item):
+        """Handle item change using controller."""
+        if not self._controller:
             return
-
-        self.__bids_folder.generate_participants_tsv()
-
-        #insert a new row
-        rowPosition = self.rowCount()
-        self.insertRow(rowPosition)
-
-        #Set horizontal header data
-        subject_description_list = list(subject_description)
-        self.setColumnCount(len(subject_description_list) + 1)
-        if subject_description_list:
-            self.setHorizontalHeaderLabels(["Subject ID"] + subject_description_list)
-        else:
-            self.setHorizontalHeaderLabels(["Subject ID"])
-
-        self.__disconnectTableWidget()
-        #Add subject id
-        subjectItem = QTableWidgetItem(bids_subject.get_subject_id())
-        subjectItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setItem(rowPosition, 0, subjectItem)
-        #Add subject optional keys
-        for i, key in enumerate(subject_description):
-            keyItem = QTableWidgetItem(subject_description.get(key, "n/a"))
-            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setItem(rowPosition, i + 1, keyItem)
-        self.__connectTableWidget()
-
-    def AddKeyBeforeSelected(self):
-        key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
-        if ok and key:
-            currentIndex = self.__selected_item.column()
-            self.insertColumn(currentIndex)
-            keyItem = QTableWidgetItem(key)
-            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setHorizontalHeaderItem(currentIndex, keyItem)
-
-            subjects = self.__bids_folder.get_bids_subjects()
-            for i, subject in enumerate(subjects):
-                if key not in subject.get_optional_keys():
-                    keyItem = QTableWidgetItem("n/a")
-                    keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.setItem(i, currentIndex, keyItem)
-                    #
-                    subject.add_optional_key_at(currentIndex - 1, key, keyItem.text())
-
-            self.__bids_folder.generate_participants_tsv()
-
-    def AddKeyAfterSelected(self):
-        key, ok = QInputDialog.getText(self, "Add Key", "Enter a key")
-        if ok and key:
-            currentIndex = self.__selected_item.column() + 1
-            self.insertColumn(currentIndex)
-            keyItem = QTableWidgetItem(key)
-            keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setHorizontalHeaderItem(currentIndex, keyItem)
-
-            subjects = self.__bids_folder.get_bids_subjects()
-            for i, subject in enumerate(subjects):
-                if key not in subject.get_optional_keys():
-                    keyItem = QTableWidgetItem("n/a")
-                    keyItem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.setItem(i, currentIndex, keyItem)
-                    #
-                    subject.add_optional_key_at(currentIndex - 1, key, keyItem.text())
-
-            self.__bids_folder.generate_participants_tsv()
-
-    def RemoveSelectedKey(self):
-        column_to_delete = self.__selected_item.column()
-        key_to_delete = self.horizontalHeaderItem(column_to_delete).text()
-
-        return_value = QMessageBox.warning(self, "Delete Key", "Are you sure you want to delete the key " + key_to_delete + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if return_value == QMessageBox.StandardButton.Yes:
-            #Remove for each subject in the data structures
-            subjects = self.__bids_folder.get_bids_subjects()
-            for subject in subjects:
-                subject.remove_optional_key(key_to_delete)
-
-            #remove the column corresponding to the selected item
-            self.removeColumn(column_to_delete)
-
-            #update the participants.tsv file
-            self.__bids_folder.generate_participants_tsv()
-
-    def DeleteSelectedSubject(self):
-        row_to_delete = self.__selected_item.row()
-        subject_id = self.item(row_to_delete, 0).text()
-
-        return_value = QMessageBox.warning(self, "Delete Subject", "Are you sure you want to delete the subject " + subject_id + "?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if return_value == QMessageBox.StandardButton.Yes:
-            #remove from the data structure
-            self.__bids_folder.delete_bids_subject(subject_id)
-            #remove the rown corresponding to the selected subject
-            self.removeRow(row_to_delete)
-            #update the participants.tsv file
-            self.__bids_folder.generate_participants_tsv()
-            #emit signal to update other UI components
-            self.subject_updated.emit()
-
-    def ItemChanged(self, item):
+        
         if item.column() == 0:
-            subject_id = self.__previous_cell_text
-            subject = self.__bids_folder.get_bids_subject(subject_id)
-            subject.set_subject_id(item.text())
-            self.__bids_folder.generate_participants_tsv()
-            self.subject_updated.emit()
+            # Subject ID change
+            old_subject_id = self._previous_cell_text
+            new_subject_id = item.text()
+            self._controller.update_subject_field(old_subject_id, "subject_id", new_subject_id)
         else:
+            # Optional key change
             subject_id = self.item(item.row(), 0).text()
-            key = self.horizontalHeaderItem(item.column()).text()
-            self.__bids_folder.get_bids_subject(subject_id).update_optional_key(key, item.text())
-            self.__bids_folder.generate_participants_tsv()
+            field_name = self.horizontalHeaderItem(item.column()).text()
+            new_value = item.text()
+            self._controller.update_subject_field(subject_id, field_name, new_value)
 
-    def ItemClicked(self, item):
-        self.__previous_cell_text = item.text()
+    def _on_item_clicked(self, item):
+        """Handle item click."""
+        self._previous_cell_text = item.text()
+
+    # Controller Signal Handlers
+    
+    def _on_subjects_loaded(self):
+        """Handle subjects loaded from controller."""
+        self._update_table_display()
+
+    def _on_subject_created(self, subject_id: str):
+        """Handle subject created from controller."""
+        self._update_table_display()
+        self.subject_updated.emit()
+
+    def _on_subject_updated(self, subject_id: str):
+        """Handle subject updated from controller."""
+        self.subject_updated.emit()
+
+    def _on_subject_deleted(self, subject_id: str):
+        """Handle subject deleted from controller."""
+        self._update_table_display()
+        self.subject_updated.emit()
+
+    def _on_keys_updated(self):
+        """Handle keys updated from controller."""
+        self._update_table_display()
+
+    def _on_data_changed(self):
+        """Handle data changed from controller."""
+        # Data has changed, potentially save to file if needed
+        pass
+
+    def _update_table_display(self):
+        """Update table display from controller data."""
+        if not self._controller:
+            return
+            
+        headers, rows = self._controller.get_table_data_matrix()
+        
+        if not headers or not rows:
+            self.setRowCount(0)
+            self.setColumnCount(0)
+            return
+        
+        # Disconnect signals during update
+        self._disconnect_table_widget()
+        
+        # Set table dimensions and headers
+        self.setRowCount(len(rows))
+        self.setColumnCount(len(headers))
+        self.setHorizontalHeaderLabels(headers)
+        
+        # Fill table with data
+        for row_idx, row_data in enumerate(rows):
+            for col_idx, cell_data in enumerate(row_data):
+                item = QTableWidgetItem(str(cell_data))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.setItem(row_idx, col_idx, item)
+        
+        # Reconnect signals
+        self._connect_table_widget()
+

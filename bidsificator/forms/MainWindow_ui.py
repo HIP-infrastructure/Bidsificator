@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'forms/MainWindow.ui'
+# Form implementation generated from reading ui file 'bidsificator/forms/MainWindow.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #

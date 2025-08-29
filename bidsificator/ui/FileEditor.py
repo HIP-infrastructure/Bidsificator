@@ -1,300 +1,251 @@
-from PyQt6.QtWidgets import (
-    QWidget,
-    QMessageBox,
-    QInputDialog,
-)
+from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor
 
-from ..core.BidsFolder import BidsFolder
 from ..forms.FileEditor_ui import Ui_FileEditor
+from ..controllers.FileEditorController import FileEditorController
+
 
 class FileEditor(QWidget, Ui_FileEditor):
-    __item_memory = None
-    __lock_for_update = False
-    _subject_data = None
-
+    """Pure view component for file editing using FileEditorController."""
+    
     def __init__(self):
         super(QWidget, self).__init__()
         self.setupUi(self)
-
-        self.FileListWidget.itemClicked.connect(self.update_file_details)
-        self.FileListWidget.itemSelectionChanged.connect(self.update_file_details)
-        self.ModalityComboBox.currentIndexChanged.connect(self.update_userinterface_for_modality)
-        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-
-        self.EditPushButton.clicked.connect(self.toggle_edit_fields)
-        self.CancelPushButton.clicked.connect(self.reset_edit_fields_from_memory)
-
-        self.ModalityComboBox.currentTextChanged.connect(self.textEdited)
-        self.SessionComboBox.currentTextChanged.connect(self.textEdited)
-        self.TaskComboBox.currentTextChanged.connect(self.textEdited)
-        self.ContrastAgentLineEdit.textEdited.connect(self.textEdited)
-        self.ContrastAgentLineEdit.editingFinished.connect(self.editingFinished)
-        self.AcquisitionLineEdit.textEdited.connect(self.textEdited)
-        self.AcquisitionLineEdit.editingFinished.connect(self.editingFinished)
-        self.ReconstructionLineEdit.textEdited.connect(self.textEdited)
-        self.ReconstructionLineEdit.editingFinished.connect(self.editingFinished)
-        self.PathLineEdit.textEdited.connect(self.textEdited)
-        self.PathLineEdit.editingFinished.connect(self.editingFinished)
-
-    def add_files_to_list(self, subject):
-        self._subject_data = subject
-        for file in subject["files"]:
-            self.add_file_to_list(file["file_name"])
         
-        # Auto-select first file if there are any
-        if self.FileListWidget.count() > 0:
-            self.FileListWidget.setCurrentRow(0)
+        # Initialize controller
+        self._controller = FileEditorController(self)
+        self._setup_controller_connections()
+        self._setup_ui_connections()
+
+    def _setup_controller_connections(self):
+        """Set up connections between controller and UI."""
+        self._controller.file_list_updated.connect(self._update_file_list_display)
+        self._controller.file_selected.connect(self._update_form_fields)
+        self._controller.edit_mode_changed.connect(self._update_edit_mode_ui)
+        self._controller.task_list_updated.connect(self._update_task_list)
+
+    def _setup_ui_connections(self):
+        """Set up UI signal connections."""
+        # File list interactions
+        self.FileListWidget.itemClicked.connect(self._on_file_list_clicked)
+        self.FileListWidget.itemSelectionChanged.connect(self._on_file_list_selection_changed)
+        
+        # Edit mode buttons
+        self.EditPushButton.clicked.connect(self._on_edit_button_clicked)
+        self.CancelPushButton.clicked.connect(self._on_cancel_button_clicked)
+        
+        # Form field changes
+        self.ModalityComboBox.currentIndexChanged.connect(self.update_userinterface_for_modality)
+        self.ModalityComboBox.currentTextChanged.connect(self._on_field_changed)
+        self.SessionComboBox.currentTextChanged.connect(self._on_field_changed)
+        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+        self.TaskComboBox.currentTextChanged.connect(self._on_field_changed)
+        self.ContrastAgentLineEdit.textEdited.connect(self._on_field_changed)
+        self.ContrastAgentLineEdit.editingFinished.connect(self._on_field_finished)
+        self.AcquisitionLineEdit.textEdited.connect(self._on_field_changed)
+        self.AcquisitionLineEdit.editingFinished.connect(self._on_field_finished)
+        self.ReconstructionLineEdit.textEdited.connect(self._on_field_changed)
+        self.ReconstructionLineEdit.editingFinished.connect(self._on_field_finished)
+        self.PathLineEdit.textEdited.connect(self._on_field_changed)
+        self.PathLineEdit.editingFinished.connect(self._on_field_finished)
+
+    # Public interface methods (for backward compatibility)
+    
+    def add_files_to_list(self, subject):
+        """Add files to list using controller."""
+        self._controller.add_files_to_list(subject)
 
     def append_to_list(self, subject):
-        if not self._subject_data:
-            self._subject_data = subject
-            self.add_file_to_list(subject["files"][0]["file_name"])
-        else:
-            if subject["subject_id"] != self._subject_data["subject_id"]:
-                self.clear_file_list()
-                self._subject_data = subject
-                self._subject_data["files"].append(subject["files"][0])
-                self.add_file_to_list(subject["files"][0]["file_name"])
-                raise Exception("Subject ID mismatch, all previous files were removed")
-            elif subject["files"][0] in self._subject_data["files"]:
-                raise Exception("File already exists")
-            else:
-                self._subject_data["files"].append(subject["files"][0])
-                self.add_file_to_list(subject["files"][0]["file_name"])
+        """Append subject to list using controller."""
+        try:
+            error_message = self._controller.append_to_list(subject)
+            if error_message:
+                raise Exception(error_message)
+        except Exception as e:
+            raise e
 
     def remove_selected_file_from_list(self):
-        selectedIndexes = self.FileListWidget.selectedIndexes()
-        if len(selectedIndexes) > 0:
-            index = selectedIndexes[0].row()
-            self.FileListWidget.takeItem(index)
-            self._subject_data["files"].pop(index)
-            self.update_file_details()
-
-    def add_file_to_list(self, file_name):
-        self.FileListWidget.addItem(file_name)
+        """Remove selected file using controller."""
+        self._controller.remove_selected_file()
 
     def clear_file_list(self):
-        self._subject_data = None
+        """Clear file list using controller."""
+        self._controller.clear_file_list()
+        
+    def add_file_to_list(self, file_name):
+        """Add single file name to UI list widget."""
+        self.FileListWidget.addItem(file_name)
+
+    # UI Event Handlers
+    
+    def _on_file_list_clicked(self):
+        """Handle file list click."""
+        self._select_current_file()
+
+    def _on_file_list_selection_changed(self):
+        """Handle file list selection change."""
+        self._select_current_file()
+
+    def _select_current_file(self):
+        """Select current file in controller."""
+        # Save current form data before changing selection
+        self._save_form_data()
+        
+        current_row = self.FileListWidget.currentRow()
+        if current_row >= 0:
+            self._controller.select_file(current_row)
+    
+    def _save_form_data(self):
+        """Save current form data to controller."""
+        form_data = {
+            "modality": self.ModalityComboBox.currentText(),
+            "session": self.SessionComboBox.currentText(),
+            "task": self.TaskComboBox.currentText(),
+            "contrast_agent": self.ContrastAgentLineEdit.text(),
+            "acquisition": self.AcquisitionLineEdit.text(),
+            "reconstruction": self.ReconstructionLineEdit.text()
+        }
+        self._controller.save_current_form_data(form_data)
+
+    def _on_edit_button_clicked(self):
+        """Handle edit button click."""
+        self._controller.toggle_edit_mode()
+
+    def _on_cancel_button_clicked(self):
+        """Handle cancel button click."""
+        self._controller.cancel_edit_changes()
+
+    def _on_field_changed(self):
+        """Handle form field change."""
+        if self._controller.edit_mode:
+            self._save_form_data_to_controller()
+
+    def _on_field_finished(self):
+        """Handle form field finished editing."""
+        if self._controller.edit_mode:
+            self._save_form_data_to_controller()
+
+    def _save_form_data_to_controller(self):
+        """Save current form data to controller."""
+        field_data = {
+            "modality": self.ModalityComboBox.currentText(),
+            "session": self.SessionComboBox.currentText(),
+            "task": self.TaskComboBox.currentText(),
+            "contrast_agent": self.ContrastAgentLineEdit.text(),
+            "acquisition": self.AcquisitionLineEdit.text(),
+            "reconstruction": self.ReconstructionLineEdit.text(),
+            "file_path": self.PathLineEdit.text()
+        }
+        self._controller.update_selected_file(field_data)
+
+    # Controller Signal Handlers
+    
+    def _update_file_list_display(self):
+        """Update file list display from controller."""
         self.FileListWidget.clear()
+        file_names = self._controller.get_file_names_for_list()
+        for file_name in file_names:
+            self.FileListWidget.addItem(file_name)
+        
+        # Auto-select first file if available
+        if file_names:
+            self.FileListWidget.setCurrentRow(0)
 
-    def update_file_details(self):
-        self.__lock_for_update = True
-        selectedIndexes = self.FileListWidget.selectedIndexes()
-        if len(selectedIndexes) > 0:
-            file = self._subject_data["files"][selectedIndexes[0].row()]
-            self.__item_memory = file
-            if "(anat)" in file["modality"]:
-                self.set_comboBox_text(self.ModalityComboBox, file["modality"])
-                self.set_comboBox_text(self.SessionComboBox, str("ses-" + file["session"]))
-                self.set_comboBox_text(self.TaskComboBox, "")
-                self.ContrastAgentLineEdit.setText(file["contrast_agent"])
-                self.AcquisitionLineEdit.setText(file["acquisition"])
-                self.ReconstructionLineEdit.setText(file["reconstruction"])
-                self.PathLineEdit.setText(file["file_path"])
-            elif "(ieeg)" in file["modality"]:
-                self.set_comboBox_text(self.ModalityComboBox, file["modality"])
-                self.set_comboBox_text(self.SessionComboBox, str("ses-" + file["session"]))
-                self.set_comboBox_text(self.TaskComboBox, file["task"])
-                self.ContrastAgentLineEdit.setText("")
-                self.AcquisitionLineEdit.setText(file["acquisition"])
-                self.ReconstructionLineEdit.setText("")
-                self.PathLineEdit.setText(file["file_path"])
-            else:
-                self.set_comboBox_text(self.ModalityComboBox, file["modality"])
-                self.set_comboBox_text(self.SessionComboBox, str("ses-" + file["session"]))
-                self.set_comboBox_text(self.TaskComboBox, file["task"])
-                self.ContrastAgentLineEdit.setText(file["contrast_agent"])
-                self.AcquisitionLineEdit.setText(file["acquisition"])
-                self.ReconstructionLineEdit.setText(file["reconstruction"])
-                self.PathLineEdit.setText(file["file_path"])
-        else:
-            self.set_comboBox_text(self.ModalityComboBox, "")
-            self.set_comboBox_text(self.SessionComboBox, "")
-            self.set_comboBox_text(self.TaskComboBox, "")
-            self.ContrastAgentLineEdit.setText("")
-            self.AcquisitionLineEdit.setText("")
-            self.ReconstructionLineEdit.setText("")
-            self.PathLineEdit.setText("")
-        self.__lock_for_update = False
+    def _update_form_fields(self, file_data):
+        """Update form fields from controller data."""
+        modality = file_data.get("modality", "")
+        
+        self.set_comboBox_text(self.ModalityComboBox, modality)
+        
+        session = file_data.get("session", "")
+        session_text = f"ses-{session}" if session else ""
+        self.set_comboBox_text(self.SessionComboBox, session_text)
+        
+        self.set_comboBox_text(self.TaskComboBox, file_data.get("task", ""))
+        self.ContrastAgentLineEdit.setText(file_data.get("contrast_agent", ""))
+        self.AcquisitionLineEdit.setText(file_data.get("acquisition", ""))
+        self.ReconstructionLineEdit.setText(file_data.get("reconstruction", ""))
+        self.PathLineEdit.setText(file_data.get("file_path", ""))
 
+        # Update UI visibility based on modality
+        self.update_userinterface_for_modality()
+
+    def _update_edit_mode_ui(self, edit_mode):
+        """Update UI for edit mode."""
+        button_text = "Cancel Edit" if edit_mode else "Edit"
+        self.EditPushButton.setText(button_text)
+        self.FileListWidget.setEnabled(not edit_mode)
+        
+        # Enable/disable form fields based on edit mode
+        self.ModalityComboBox.setEnabled(edit_mode)
+        self.SessionComboBox.setEnabled(edit_mode)
+        self.TaskComboBox.setEnabled(edit_mode)
+        self.ContrastAgentLineEdit.setEnabled(edit_mode)
+        self.AcquisitionLineEdit.setEnabled(edit_mode)
+        self.ReconstructionLineEdit.setEnabled(edit_mode)
+        self.PathLineEdit.setEnabled(edit_mode)
+
+    def _update_task_list(self, tasks):
+        """Update task list from controller."""
+        current_text = self.TaskComboBox.currentText()
+        self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
+        self.TaskComboBox.currentTextChanged.disconnect(self._on_field_changed)
+        
+        self.TaskComboBox.clear()
+        self.TaskComboBox.addItems(tasks)
+        
+        # Restore selection if possible
+        index = self.TaskComboBox.findText(current_text)
+        if index >= 0:
+            self.TaskComboBox.setCurrentIndex(index)
+            
+        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+        self.TaskComboBox.currentTextChanged.connect(self._on_field_changed)
+
+    # UI Utility Methods
+    
     def update_task_combobox_UI(self):
-        if "Other" in self.TaskComboBox.currentText():
-            task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
-            if task_name == "":
-                QMessageBox.warning(self, "Dataset Name empty", "Please enter a valid name for your task")
-                return
-            else:
-                self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
-                #Insert the new task in TaskComboBox
-                self.TaskComboBox.insertItem(self.TaskComboBox.count()-1, task_name)
-                self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
-                self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+        """Handle task combobox selection using controller."""
+        current_text = self.TaskComboBox.currentText()
+        if "Other" in current_text:
+            # Get current tasks
+            current_tasks = [self.TaskComboBox.itemText(i) for i in range(self.TaskComboBox.count())]
+            
+            # Use controller to handle task selection
+            final_task, updated_tasks = self._controller.handle_task_selection(current_text, current_tasks)
+            
+            if final_task:  # Task was successfully created
+                # Update will be handled by controller signal
+                pass
 
     def update_userinterface_for_modality(self):
-        # Skip if we're in the middle of updating file details
-        if self.__lock_for_update:
+        """Update UI visibility based on modality using controller."""
+        modality = self.ModalityComboBox.currentText()
+        
+        if not modality:
             return
             
-        if "(anat)" in self.ModalityComboBox.currentText():
-            #session
-            self.SessionLabel.show()
-            self.SessionComboBox.show()
-            #task
-            self.TaskLabel.hide()
-            self.TaskComboBox.hide()
-            #contrast
-            self.ContrastAgentLabel.show()
-            self.ContrastAgentLineEdit.show()
-            #acquisition
-            self.AcquisitionLabel.show()
-            self.AcquisitionLineEdit.show()
-            #reconstruction
-            self.ReconstructionLabel.show()
-            self.ReconstructionLineEdit.show()
-        elif "ieeg (ieeg)" in self.ModalityComboBox.currentText():
-            #session
-            self.SessionLabel.show()
-            self.SessionComboBox.show()
-            #task
-            self.TaskLabel.show()
-            self.TaskComboBox.show()
-            #contrast
-            self.ContrastAgentLabel.hide()
-            self.ContrastAgentLineEdit.hide()
-            #acquisition
-            self.AcquisitionLabel.show()
-            self.AcquisitionLineEdit.show()
-            #reconstruction
-            self.ReconstructionLabel.hide()
-            self.ReconstructionLineEdit.hide()
-        elif "photo (ieeg)" in self.ModalityComboBox.currentText():
-            #session
-            self.SessionLabel.show()
-            self.SessionComboBox.show()
-            #task
-            self.TaskLabel.hide()
-            self.TaskComboBox.hide()
-            #contrast
-            self.ContrastAgentLabel.hide()
-            self.ContrastAgentLineEdit.hide()
-            #acquisition
-            self.AcquisitionLabel.show()
-            self.AcquisitionLineEdit.show()
-            #reconstruction
-            self.ReconstructionLabel.hide()
-            self.ReconstructionLineEdit.hide()
-        else:
-            print("Error : [__UpdateModalityUI] Modality not recognized")
-
-    def toggle_edit_fields(self):
-        newStatus = not self.AcquisitionLineEdit.isEnabled()
-        if not newStatus and self.was_element_modified_UI():
-            index2 = self.FileListWidget.currentIndex().row()
-            file = {
-                "file_name": self.FileListWidget.currentItem().text(),
-                "file_path": self.PathLineEdit.text(),
-                "modality": self.ModalityComboBox.currentText(),
-                "task": self.TaskComboBox.currentText(),
-                "session": self.SessionComboBox.currentText().removeprefix("ses-"),
-                "contrast_agent": self.ContrastAgentLineEdit.text(),
-                "acquisition": self.AcquisitionLineEdit.text(),
-                "reconstruction": self.ReconstructionLineEdit.text()
-            }
-            self._subject_data["files"][index2] = file
-            self.__item_memory = file
-
-        newStatusLabel = "Editing" if newStatus else "Edit"
-        self.EditPushButton.setText(newStatusLabel)
-        self.FileListWidget.setEnabled(not newStatus)
-
-        self.ModalityComboBox.setEnabled(newStatus)
-        self.SessionComboBox.setEnabled(newStatus)
-        self.TaskComboBox.setEnabled(newStatus)
-        self.ContrastAgentLineEdit.setEnabled(newStatus)
-        self.AcquisitionLineEdit.setEnabled(newStatus)
-        self.ReconstructionLineEdit.setEnabled(newStatus)
-        self.PathLineEdit.setEnabled(newStatus)
-
-    def reset_edit_fields_from_memory(self):
-        self.set_comboBox_text(self.ModalityComboBox, self.__item_memory["modality"])
-        self.set_comboBox_text(self.SessionComboBox, str("ses-" + self.__item_memory["session"]))
-        self.set_comboBox_text(self.TaskComboBox, self.__item_memory["task"])
-        self.ContrastAgentLineEdit.setText(self.__item_memory['contrast_agent'])
-        self.AcquisitionLineEdit.setText(self.__item_memory['acquisition'])
-        self.ReconstructionLineEdit.setText(self.__item_memory['reconstruction'])
-        self.PathLineEdit.setText(self.__item_memory['file_path'])
-        #Clear focus to trigger editingFinished
-        self.ModalityComboBox.clearFocus()
-        self.SessionComboBox.clearFocus()
-        self.TaskComboBox.clearFocus()
-        self.ContrastAgentLineEdit.clearFocus()
-        self.AcquisitionLineEdit.clearFocus()
-        self.ReconstructionLineEdit.clearFocus()
-        self.PathLineEdit.clearFocus()
+        # Get UI requirements from controller
+        requirements = self._controller.get_modality_ui_requirements(modality)
+        
+        # Update visibility based on requirements
+        self.SessionLabel.setVisible(requirements.get('show_session', False))
+        self.SessionComboBox.setVisible(requirements.get('show_session', False))
+        self.TaskLabel.setVisible(requirements.get('show_task', False))
+        self.TaskComboBox.setVisible(requirements.get('show_task', False))
+        self.ContrastAgentLabel.setVisible(requirements.get('show_contrast', False))
+        self.ContrastAgentLineEdit.setVisible(requirements.get('show_contrast', False))
+        self.AcquisitionLabel.setVisible(requirements.get('show_acquisition', False))
+        self.AcquisitionLineEdit.setVisible(requirements.get('show_acquisition', False))
+        self.ReconstructionLabel.setVisible(requirements.get('show_reconstruction', False))
+        self.ReconstructionLineEdit.setVisible(requirements.get('show_reconstruction', False))
 
     def set_comboBox_text(self, comboBox, text):
+        """Set combobox text and clear focus."""
         index = comboBox.findText(text)
         if index >= 0:
             comboBox.setCurrentIndex(index)
         else:
             comboBox.setCurrentIndex(-1)
-
         comboBox.clearFocus()
 
-    def was_element_modified_UI(self):
-        if self.FileListWidget.currentItem() is None:
-            return False
-        if not self.__item_memory:
-            return False
-
-        file = {
-            "file_name": self.FileListWidget.currentItem().text(),
-            "file_path": self.PathLineEdit.text(),
-            "modality": self.ModalityComboBox.currentText(),
-            "task": self.TaskComboBox.currentText(),
-            "session": self.SessionComboBox.currentText().removeprefix("ses-"),
-            "contrast_agent": self.ContrastAgentLineEdit.text(),
-            "acquisition": self.AcquisitionLineEdit.text(),
-            "reconstruction": self.ReconstructionLineEdit.text()
-        }
-
-        same_file_name = self.__item_memory['file_name'] == file['file_name']
-        same_file_path = self.__item_memory['file_path'] == file['file_path']
-        same_modality = self.__item_memory['modality'] == file['modality']
-        same_task = self.__item_memory['task'] == file['task']
-        same_session = self.__item_memory['session'] == file['session']
-        same_contrast_agent = self.__item_memory['contrast_agent'] == file['contrast_agent']
-        same_acquisition = self.__item_memory['acquisition'] == file['acquisition']
-        same_reconstruction = self.__item_memory['reconstruction'] == file['reconstruction']
-
-        print(self.__item_memory['file_name'] + " == " + file['file_name'])
-        print("Same file name :" + str(same_file_name))
-        print(self.__item_memory['file_path'] + " == " + file['file_path'])
-        print("Same file path :" + str(same_file_path))
-        print(self.__item_memory['modality'] + " == " + file['modality'])
-        print("Same modality :" + str(same_modality))
-        print(self.__item_memory['task'] + " == " + file['task'])
-        print("Same task :" + str(same_task))
-        print(self.__item_memory['session'] + " == " + file['session'])
-        print("Same session :" + str(same_session))
-        print(self.__item_memory['contrast_agent'] + " == " + file['contrast_agent'])
-        print("Same contrast agent :" + str(same_contrast_agent))
-        print(self.__item_memory['acquisition'] + " == " + file['acquisition'])
-        print("Same acquisition :" + str(same_acquisition))
-        print(self.__item_memory['reconstruction'] + " == " + file['reconstruction'])
-        print("Same reconstruction :" + str(same_reconstruction))
-        print("--------")
-
-        return not(same_file_name and same_file_path and same_modality and same_task and same_session and same_contrast_agent and same_acquisition and same_reconstruction)
-
-    def textEdited(self, text):
-        #print("Text edited : " + text)
-        if not self.__lock_for_update:
-            self.CancelPushButton.setEnabled(self.was_element_modified_UI())
-
-    def editingFinished(self):
-        #print("Editing finished")
-        if not self.__lock_for_update:
-            self.CancelPushButton.setEnabled(self.was_element_modified_UI())

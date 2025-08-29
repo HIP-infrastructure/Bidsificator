@@ -4,165 +4,96 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bidsificator is a PyQt6 application for managing BIDS (Brain Imaging Data Structure) files through a graphical user interface. The project also includes a Flask API for programmatic access to BIDS dataset operations.
+Bidsificator is a PyQt6 application for managing BIDS (Brain Imaging Data Structure) files through a GUI. It helps organize neuroimaging data into the BIDS format with features for importing subjects, validating datasets, and editing metadata.
 
-## Development Commands
+## Development Setup
 
-### Environment Setup
 ```bash
-# Use poetry (installed via pipx) for dependency management
-# Set up Python environment (3.10, 3.11, or 3.12 supported)
-poetry env use $(pyenv which python3.10)  # or python3.11, python3.12
+# Setup environment with Poetry
+poetry env use $(pyenv which python3.11)  # Python 3.10-3.12 supported
 poetry install
-```
 
-### Running the Application
-```bash
-# Run the PyQt6 GUI application
+# Run the GUI application
 poetry run bidsificator
 
-# Run the Flask API server (debug mode)
+# Run the API server (debug mode)
 poetry run bidsificator-api
-```
 
-### UI Development
-```bash
-# Open Qt Designer to edit UI forms
+# Open Qt Designer
 poetry run make design
 
-# Rebuild Python UI files from Qt Designer .ui files
+# Rebuild UI from .ui files
 poetry run make build-ui
 ```
 
 ## Architecture
 
+### MVC Pattern
+The application follows Model-View-Controller architecture:
+
+- **Controllers** (`bidsificator/controllers/`): Business logic coordination
+  - `MainController`: Orchestrates all sub-controllers
+  - `DatasetController`: Dataset operations
+  - `ImportFilesController`: Single file imports
+  - `ImportSubjectsController`: Batch subject imports
+  - `FileEditorController`: Metadata editing
+  - `PatientTableController`: Patient table operations
+  - `OptionController`: Configuration management
+
+- **Models** (`bidsificator/models/`): Data management
+  - `DatasetModel`: Dataset state
+  - `ImportFileModel`: Import file state
+  - `ImportSessionModel`: Import session state
+  - `SubjectDataModel`: Subject data
+
+- **Views** (`bidsificator/ui/`): PyQt6 UI components
+  - `MainWindow`: Main application window
+  - `FileEditor`: File metadata editor
+  - `PatientTableWidget`: Subject display
+  - `OptionWindow`: Settings dialog
+
+- **Services** (`bidsificator/services/`): Reusable business logic
+  - `DataCrawlerService`: File system crawling
+  - `FileDetectionService`: File type detection
+  - `ImportService`: Import operations
+  - `ValidationService`: BIDS validation
+
 ### Core Components
 
-1. **PyQt6 GUI Application** (`bidsificator/ui/`)
-   - `MainWindow.py`: Main application window, coordinates all UI operations
-   - `FileEditor.py`: Editor for BIDS files
-   - `OptionWindow.py`: Configuration options interface
-   - `PatientTableWidget.py`: Widget for displaying patient/subject data
-   - UI forms are designed in Qt Designer (`forms/*.ui`) and compiled to Python (`forms/*_ui.py`)
+- **BIDS Classes** (`bidsificator/core/`):
+  - `BidsFolder`: BIDS dataset management
+  - `BidsSubject`: Subject-level operations
+  - `DataCrawler`: File discovery
+  - `validators`: BIDS compliance validation
 
-2. **Core BIDS Logic** (`bidsificator/core/`)
-   - `BidsFolder.py`: Manages BIDS dataset folder structure and operations
-   - `BidsSubject.py`: Handles individual BIDS subject data and file operations
-   - `BidsUtilityFunctions.py`: Utility functions for BIDS operations
-   - `DataCrawler.py`: Crawls directories to find and organize BIDS data based on configuration patterns
-   - `OptionFile.py`: Manages option/configuration files
-   - `PyEEGFormat/`: Platform-specific EEG format wrappers (auto-selected based on OS/architecture)
+- **Workers** (`bidsificator/workers/`): Background processing
+  - `BidsSubjectsProcess`: Subject processing
+  - `BidsFilesProcss`: File processing
+  - `ImportBidsFilesWorker`: File import worker
+  - `ImportBidsSubjectsWorker`: Subject import worker
 
-3. **Background Workers** (`bidsificator/workers/`)
-   - `ImportBidsFilesWorker.py`: Asynchronous file import operations
-   - `ImportBidsSubjectsWorker.py`: Asynchronous subject import operations
-   - `BidsFilesProcss.py`: BIDS file processing logic
-   - `BidsSubjectsProcess.py`: BIDS subject processing logic
+### UI Forms
+- Generated from `.ui` files in `bidsificator/forms/`
+- Use `poetry run make build-ui` to regenerate after changes
 
-4. **Flask API** (`bidsificator/api.py`)
-   - RESTful API for BIDS operations
-   - Swagger UI documentation at `/apidocs`
-   - Uses Flask-Caching for performance
-   - CORS-enabled for cross-origin requests
+### Configuration
+- Config files in `bidsificator/config/`:
+  - `config.yaml`: Active configuration
+  - `config.example.yaml`: Template
+  - Site-specific configs (e.g., `config.lyon.yaml`)
 
-5. **Configuration** (`bidsificator/config/`)
-   - YAML-based configuration files
-   - `config.yaml`: Main configuration (currently tracked with changes)
-   - `config.example.yaml`: Example configuration template
+## Key Features
 
-### Key Design Patterns
+1. **Dataset Management**: Create/open BIDS datasets, manage subjects and sessions
+2. **Import Operations**: Single file or batch subject imports with metadata
+3. **Validation**: BIDS compliance checking for datasets and subjects
+4. **File Detection**: Automatic detection of neuroimaging file types (EEG, MRI)
+5. **API Server**: Flask-based REST API for programmatic access
 
-- **MVC Pattern**: 
-  - **Models**: Data classes in `core/` (e.g., `OptionFile.py`, `BidsFolder.py`)
-  - **Views**: UI components in `ui/` (inherit from generated forms)
-  - **Controllers**: Business logic in `controllers/` (e.g., `OptionController.py`)
-  - **Validators**: Reusable validation logic in `core/validators.py`
-- **Worker Pattern**: Long-running operations use separate worker threads to keep UI responsive
-- **Configuration-Driven**: Data crawler and BIDS operations are configured via YAML files defining patterns and data types
-- **Platform Compatibility**: PyEEGFormat module dynamically loads platform-specific binaries based on OS and architecture
+## Dependencies
 
-### Dependencies
-
-- **UI**: PyQt6 for desktop GUI
-- **API**: Flask ecosystem (Flask, Flask-CORS, Flask-HTTPAuth, Flask-RESTful, Flasgger)
-- **BIDS**: numpy, dicom2nifti, bids_validator for BIDS compliance
-- **Build**: Poetry for dependency management, pyuic6 for UI compilation
-
-## Working with the Codebase
-
-ALWAYS: 
-- Every development plan MUST include updating CLAUDE.md as the final task
-- Always use PyQT's built-in-methods when possible
-
-When modifying UI:
-1. Edit `.ui` files in Qt Designer using `poetry run make design`
-2. Compile to Python using `poetry run make build-ui`
-3. Implement logic in corresponding `ui/*.py` files
-
-When working with BIDS operations:
-- Core logic is in `core/BidsFolder.py` and `core/BidsSubject.py`
-- Workers handle async operations to prevent UI blocking
-- Configuration patterns in YAML files define how data is discovered and organized
-
-## MVC Architecture Review & Guidelines
-
-### Current State (After Refactoring)
-The application now follows a proper MVC pattern:
-- **Models**: Core data classes (`OptionFile.py`, `BidsFolder.py`, `BidsSubject.py`)
-- **Views**: PyQt6 UI components (`ui/*.py` files inheriting from generated forms)
-- **Controllers**: Dedicated controller classes in `controllers/` directory
-- **Validators**: Extracted validation logic in `core/validators.py`
-
-### Refactored Components
-- **OptionWindow**: Now properly separated with:
-  - `OptionController`: Handles all business logic and model interactions (no observer pattern - not needed for single view)
-  - `OptionWindow`: Pure view, delegates all business logic to controller
-  - `validators.py`: Reusable validation functions for file extensions, paths, and patterns
-
-### Recommended Patterns
-When refactoring or adding new features:
-1. **Separate concerns**: Keep business logic out of UI classes
-2. **Use controllers**: Create intermediate controller classes for complex views
-3. **Implement validators**: Extract validation logic to separate modules
-4. **Dependency injection**: Pass models/configs to views, don't hardcode
-5. **Observer pattern**: Consider implementing for model-view synchronization
-
-### Refactoring Priority
-1. **High priority**: Extract validators and business logic from views
-2. **Medium priority**: Implement controller layer for complex windows
-3. **Low priority**: Full observer pattern implementation
-
-## Recent UI Changes (2025-08-27)
-
-### Multi-File Import Implementation
-The Import Files tab has been enhanced with intelligent batch import functionality:
-
-**New Features Implemented:**
-- **Multi-file selection**: Users can now select multiple files at once via "+" button
-- **Auto-detection**: Modality is automatically detected from filename and extension
-- **Smart acquisition numbering**: Files with identical properties get auto-incremented acquisition numbers (acq-01, acq-02, etc.)
-- **Batch processing**: Process dozens of files in seconds with intelligent defaults
-
-**Technical Implementation:**
-- `detect_modality_from_file()`: Two-stage detection (extension → category → specific modality)
-- `get_next_acquisition_number()`: Auto-increment logic for BIDS compliance
-- `add_multiple_files()`: Main multi-file import method replacing single-file workflow
-- `add_file_to_import_data()`: Enhanced file management with duplicate detection
-- `refresh_import_file_list()`: Updated display logic for batch imports
-
-**Supported File Types:**
-- **Anatomy**: `.nii`, `.nii.gz` with pattern detection (T1w, T2w, FLAIR, T1rho, T2*, CT)
-- **iEEG**: `.trc`, `.vhdr`, `.edf` files
-- **Photos**: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff` files
-
-**User Experience Improvements:**
-- One-click batch import workflow
-- Smart defaults from form fields applied to all files
-- Comprehensive error reporting with success/failure summary
-- Backward compatibility with single-file browse option
-
-**Previous Refactoring (Import Files Tab):**
-- Removed `AR_IsDicomFolderCheckBox` and `IF_FileEditorLayout`
-- Updated element naming (removed `AR_` prefix)
-- Simplified layout without nested group boxes
-- Uses `ImportFileListWidget` for display
+- PyQt6 for GUI
+- NumPy for data processing
+- dicom2nifti for DICOM conversion
+- bids_validator for compliance checking
+- Flask ecosystem for API server
