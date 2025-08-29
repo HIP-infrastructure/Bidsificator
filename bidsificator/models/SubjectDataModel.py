@@ -10,6 +10,8 @@ class SubjectData:
     """Data structure for a subject with files."""
     subject_id: str
     files: List[Dict[str, str]] = field(default_factory=list)
+    original_subject_id: Optional[str] = None  # For lookup table mapping
+    display_name: Optional[str] = None  # For UI display
     
     def __post_init__(self):
         """Validate data after initialization."""
@@ -53,7 +55,9 @@ class SubjectData:
         """Convert to dictionary format."""
         return {
             "subject_id": self.subject_id,
-            "files": self.files.copy()
+            "files": self.files.copy(),
+            "original_subject_id": self.original_subject_id,
+            "display_name": self.display_name
         }
     
     @classmethod
@@ -61,7 +65,9 @@ class SubjectData:
         """Create from dictionary format."""
         return cls(
             subject_id=data.get("subject_id", ""),
-            files=data.get("files", [])
+            files=data.get("files", []),
+            original_subject_id=data.get("original_subject_id"),
+            display_name=data.get("display_name")
         )
 
 
@@ -204,6 +210,15 @@ class SubjectDataModel:
         """
         return [subject.subject_id for subject in self._subjects]
     
+    def get_display_names(self) -> List[str]:
+        """
+        Get list of display names for UI (original [mapped] format).
+        
+        Returns:
+            List of display name strings
+        """
+        return [subject.display_name or subject.subject_id for subject in self._subjects]
+    
     def count(self) -> int:
         """Get number of subjects."""
         return len(self._subjects)
@@ -329,16 +344,17 @@ class SubjectDataModel:
         """
         return [subject.to_dict() for subject in self._subjects]
     
-    def crawl_and_load_subjects(self, config_path: str):
+    def crawl_and_load_subjects(self, config_path: str, subject_mapping: Dict[str, str] = None):
         """
         Use DataCrawlerService to load subjects.
         
         Args:
             config_path: Path to crawler configuration file
+            subject_mapping: Optional dictionary mapping original subject IDs to new names
         """
         from ..services.DataCrawlerService import DataCrawlerService
         
-        subjects_data = DataCrawlerService.crawl_and_process_subjects(config_path)
+        subjects_data = DataCrawlerService.crawl_and_process_subjects(config_path, subject_mapping)
         self.load_from_legacy_format(subjects_data)
     
     def remove_selected_subjects(self, selected_indices: List[int]) -> int:

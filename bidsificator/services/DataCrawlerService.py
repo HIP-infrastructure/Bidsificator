@@ -10,12 +10,13 @@ class DataCrawlerService:
     """Handles data crawling operations and subject data processing."""
     
     @classmethod
-    def crawl_and_process_subjects(cls, config_path: str) -> List[Dict[str, Any]]:
+    def crawl_and_process_subjects(cls, config_path: str, subject_mapping: Dict[str, str] = None) -> List[Dict[str, Any]]:
         """
         Crawl data using configuration and process into subject format.
         
         Args:
             config_path: Path to the configuration YAML file
+            subject_mapping: Optional dictionary mapping original subject IDs to new names
             
         Returns:
             List of subject dictionaries with processed file data
@@ -25,18 +26,19 @@ class DataCrawlerService:
         
         processed_subjects = []
         for subject in raw_subject_data:
-            processed_subject = cls._process_subject_data(subject)
+            processed_subject = cls._process_subject_data(subject, subject_mapping)
             processed_subjects.append(processed_subject)
             
         return processed_subjects
     
     @classmethod
-    def _process_subject_data(cls, subject: Dict[str, Any]) -> Dict[str, Any]:
+    def _process_subject_data(cls, subject: Dict[str, Any], subject_mapping: Dict[str, str] = None) -> Dict[str, Any]:
         """
         Process raw subject data into the expected format.
         
         Args:
             subject: Raw subject data from DataCrawler
+            subject_mapping: Optional dictionary mapping original subject IDs to new names
             
         Returns:
             Processed subject data with files list
@@ -71,9 +73,21 @@ class DataCrawlerService:
                 }
                 files.append(file_data)
         
+        # Apply subject mapping if available
+        original_subject_id = subject["subject_id"]
+        if subject_mapping and original_subject_id in subject_mapping:
+            mapped_subject_id = subject_mapping[original_subject_id]
+            # Create display name showing original [mapped] format
+            display_name = f"{original_subject_id} [{mapped_subject_id}]"
+        else:
+            mapped_subject_id = original_subject_id
+            display_name = original_subject_id  # No mapping, show original
+        
         # Create processed subject
         processed_subject = {
-            "subject_id": subject["subject_id"],
+            "subject_id": mapped_subject_id,
+            "original_subject_id": original_subject_id,  # Keep for traceability
+            "display_name": display_name,  # For UI display
             "files": files
         }
         

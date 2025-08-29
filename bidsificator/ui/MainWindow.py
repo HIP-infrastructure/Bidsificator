@@ -90,6 +90,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.IS_StartImportPushButton.clicked.connect(self.start_subjects_import)
         self.IS_SubjectListWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.IS_SubjectListWidget.customContextMenuRequested.connect(self.show_delete_import_subject_context_menu)
+        # Lookup table connections
+        self.CreateLutPushButton.clicked.connect(self.create_lookup_template)
+        self.BrowseLutPushButton.clicked.connect(self.browse_lookup_table)
+        self.lineEdit.textChanged.connect(self.on_lookup_table_path_changed)
         #    Buttons
         self.StartImportPushButton.clicked.connect(self.start_file_import)
         self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
@@ -131,6 +135,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         import_subjects_ctrl.subjects_loaded.connect(self._on_subjects_loaded)
         import_subjects_ctrl.selection_changed.connect(self._on_import_subject_selection_changed)
         import_subjects_ctrl.progress_updated.connect(self.IS_progressBar.setValue)  # Third tab progress bar
+        import_subjects_ctrl.lookup_table_updated.connect(self._on_lookup_table_updated)
         
     def _on_dataset_changed(self, dataset_path: str):
         """Handle dataset change from controller."""
@@ -169,14 +174,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _on_subjects_loaded(self):
         """Handle subjects loaded from import subjects controller."""
         self.IS_SubjectListWidget.clear()
-        subject_ids = self._main_controller.import_subjects_controller.get_subject_ids()
-        for subject_id in subject_ids:
-            self.IS_SubjectListWidget.addItem(subject_id)
+        # Use display names for third tab to show "OriginalID [MappedID]" format
+        display_names = self._main_controller.import_subjects_controller.get_display_names()
+        for display_name in display_names:
+            self.IS_SubjectListWidget.addItem(display_name)
             
     def _on_import_subject_selection_changed(self, index: int):
         """Handle import subject selection change from controller."""
         # This will be handled by the controller updating the file editor
         pass
+        
+    def _on_lookup_table_updated(self, message: str):
+        """Handle lookup table update message from controller."""
+        # Update status or provide visual feedback
+        # For now, just update the statusbar or show in console
+        print(f"Lookup table status: {message}")
 
     def open_db_options(self):
         self.__optionWindow = OptionWindow()
@@ -413,15 +425,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Update import subject file list using controller data."""
         selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
         if len(selectedIndexes) > 0:
-            subject_id = self.IS_SubjectListWidget.item(selectedIndexes[0].row()).text()
+            selected_row = selectedIndexes[0].row()
             
             # First, save current FileEditor data back to ImportSubjectsController
             self._sync_file_editor_to_import_controller()
             
             self.__ImportSubjectFileEditor.clear_file_list()
             
-            # Get subject data from controller
-            subject_data = self._main_controller.import_subjects_controller.get_subject_by_id(subject_id)
+            # Get subject data from controller using row index
+            subject_data = self._main_controller.import_subjects_controller.model.get_subject(selected_row)
             if subject_data:
                 # Convert dataclass to dictionary for FileEditor
                 from dataclasses import asdict
@@ -979,3 +991,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         print("Cleaning up worker")
         self.__worker.deleteLater()  # Clean up the worker thread
+    
+    def browse_lookup_table(self):
+        """Browse for CSV lookup table file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Lookup Table CSV File",
+            self.__browse_folder_path_memory,
+            "CSV files (*.csv *.txt);;All files (*.*)"
+        )
+        
+        if file_path:
+            self.__browse_folder_path_memory = os.path.dirname(file_path)
+            self.lineEdit.setText(file_path)
+            # The textChanged signal will trigger the controller update
+    
+    def on_lookup_table_path_changed(self, path: str):
+        """Handle lookup table path change."""
+        # Update controller when path changes
+        self._main_controller.import_subjects_controller.set_lookup_table(path.strip())
+    
+    def create_lookup_template(self):
+        """Create a lookup table template file."""
+        self._main_controller.import_subjects_controller.create_lookup_template()

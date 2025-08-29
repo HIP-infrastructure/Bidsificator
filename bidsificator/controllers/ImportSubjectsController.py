@@ -6,6 +6,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from ..models.SubjectDataModel import SubjectDataModel, SubjectData
 from ..services.DataCrawlerService import DataCrawlerService
+from ..services.SubjectLookupService import SubjectLookupService
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 
 
@@ -19,6 +20,7 @@ class ImportSubjectsController(QObject):
     subjects_loaded = pyqtSignal()  # Subject list updated
     selection_changed = pyqtSignal(int)  # Selected subject index changed
     file_list_updated = pyqtSignal()  # File list for selected subject updated
+    lookup_table_updated = pyqtSignal(str)  # Lookup table status message
     
     def __init__(self, dataset_path_provider, file_editor_controller, parent: Optional[QWidget] = None):
         """
@@ -36,6 +38,8 @@ class ImportSubjectsController(QObject):
         self._model = SubjectDataModel()
         self._worker: Optional[ImportBidsSubjectsWorker] = None
         self._config_path = 'bidsificator/config/config.yaml'
+        self._lookup_table_path: Optional[str] = None
+        self._subject_mapping: Dict[str, str] = {}
     
     @property
     def model(self) -> SubjectDataModel:
@@ -73,8 +77,8 @@ class ImportSubjectsController(QObject):
             self._config_path = config_path
         
         try:
-            # Use model to crawl and load subjects
-            self._model.crawl_and_load_subjects(self._config_path)
+            # Use model to crawl and load subjects with subject mapping
+            self._model.crawl_and_load_subjects(self._config_path, self._subject_mapping)
             
             # Emit signal for UI update
             self.subjects_loaded.emit()
@@ -103,6 +107,15 @@ class ImportSubjectsController(QObject):
             List of subject ID strings
         """
         return self._model.get_subject_ids()
+    
+    def get_display_names(self) -> List[str]:
+        """
+        Get list of display names for UI (original [mapped] format).
+        
+        Returns:
+            List of display name strings
+        """
+        return self._model.get_display_names()
     
     def get_selected_subject(self) -> Optional[SubjectData]:
         """
@@ -324,3 +337,152 @@ class ImportSubjectsController(QObject):
                 return True
         
         return False
+    
+    def set_lookup_table(self, csv_path: str) -> bool:
+        """
+        Set the lookup table for subject name mapping.
+        
+        Args:
+            csv_path: Path to CSV lookup table file
+            
+        Returns:
+            True if successful, False if validation failed
+        """
+        if not csv_path:
+            # Clear lookup table
+            self._lookup_table_path = None
+            self._subject_mapping = {}
+            self.lookup_table_updated.emit("Lookup table cleared")
+            return True
+        
+        # Validate CSV format first
+        is_valid, format_errors = SubjectLookupService.validate_csv_format(csv_path)
+        if not is_valid:
+            error_message = "CSV validation failed:\n" + "\n".join(format_errors)
+            QMessageBox.warning(
+                self._parent_widget,
+                "Invalid Lookup Table",
+                error_message
+            )
+            self.lookup_table_updated.emit("Invalid lookup table format")
+            return False
+        
+        # Parse the CSV file
+        mapping, parse_errors = SubjectLookupService.parse_lookup_table(csv_path)
+        
+        if parse_errors:
+            error_message = "CSV parsing failed:\n" + "\n".join(parse_errors[:10])  # Limit errors shown
+            if len(parse_errors) > 10:
+                error_message += f"\n... and {len(parse_errors) - 10} more errors"
+            
+            QMessageBox.warning(
+                self._parent_widget,
+                "Lookup Table Parsing Error",
+                error_message
+            )
+            self.lookup_table_updated.emit(f"Parsing failed: {len(parse_errors)} errors")
+            return False
+        
+        # Successfully parsed
+        self._lookup_table_path = csv_path
+        self._subject_mapping = mapping
+        
+        status_message = f"Loaded {len(mapping)} subject mappings"
+        self.lookup_table_updated.emit(status_message)
+        
+        # Show success message with preview
+        preview_list = list(mapping.items())[:5]  # Show first 5 mappings
+        preview_text = "\n".join([f"{orig} → {mapped}" for orig, mapped in preview_list])
+        if len(mapping) > 5:
+            preview_text += f"\n... and {len(mapping) - 5} more"
+        
+        QMessageBox.information(
+            self._parent_widget,
+            "Lookup Table Loaded",
+            f"Successfully loaded {len(mapping)} subject mappings.\n\nPreview:\n{preview_text}"
+        )
+        
+        return True
+    
+    def get_lookup_table_path(self) -> Optional[str]:
+        """Get current lookup table path."""
+        return self._lookup_table_path
+    
+    def has_lookup_table(self) -> bool:
+        """Check if lookup table is loaded."""
+        return bool(self._lookup_table_path and self._subject_mapping)
+    
+    def get_mapping_count(self) -> int:
+        """Get number of mappings in lookup table."""
+        return len(self._subject_mapping)
+    
+    def get_mapping_preview(self, limit: int = 10) -> List[Tuple[str, str]]:
+        """
+        Get preview of current mappings.
+        
+        Args:
+            limit: Maximum number of mappings to return
+            
+        Returns:
+            List of (original_id, mapped_name) tuples
+        """
+        return list(self._subject_mapping.items())[:limit]
+    
+    def create_lookup_template(self) -> bool:
+        """
+        Create a lookup table template file with file save dialog.
+        
+        Returns:
+            True if template was created successfully
+        """
+        from PyQt6.QtWidgets import QFileDialog
+        
+        # Get current subject IDs for pre-population (if available)
+        current_subject_ids = self.get_subject_ids() if self._model.count() > 0 else None
+        
+        # Show file save dialog
+        suggested_filename = "lookup_table.csv"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self._parent_widget,
+            "Save Lookup Table Template",
+            suggested_filename,
+            "CSV files (*.csv);;All files (*.*)"
+        )
+        
+        if not file_path:
+            # User cancelled
+            return False
+        
+        # Ensure .csv extension
+        if not file_path.lower().endswith('.csv'):
+            file_path += '.csv'
+        
+        # Create template file
+        success, error_message = SubjectLookupService.create_template_file(file_path, current_subject_ids)
+        
+        if success:
+            # Show success message
+            subject_count = len(current_subject_ids) if current_subject_ids else 3
+            if current_subject_ids:
+                message = f"Template created successfully with {subject_count} pre-populated subject IDs.\n\nFile saved to:\n{file_path}\n\nPlease fill in the Surname and Firstname columns."
+            else:
+                message = f"Template created successfully with example entries.\n\nFile saved to:\n{file_path}\n\nPlease replace the example data with your actual subject information."
+            
+            QMessageBox.information(
+                self._parent_widget,
+                "Template Created",
+                message
+            )
+            
+            # Update the lookup table path field to point to the new template
+            self.lookup_table_updated.emit(f"Template created: {subject_count} entries")
+            return True
+        else:
+            # Show error message
+            QMessageBox.warning(
+                self._parent_widget,
+                "Template Creation Failed",
+                f"Failed to create template file:\n\n{error_message}"
+            )
+            self.lookup_table_updated.emit("Template creation failed")
+            return False
