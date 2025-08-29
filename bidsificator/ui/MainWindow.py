@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 from PyQt6.QtGui import QFileSystemModel, QCursor
-from bids_validator import BIDSValidator
 
 from bidsificator.workers import ImportBidsSubjectsWorker
 
@@ -23,24 +21,49 @@ from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
+from ..services.FileDetectionService import FileDetectionService
+from ..services.ImportService import ImportService
+from ..services.ValidationService import ValidationService
+from ..services.DataCrawlerService import DataCrawlerService
+from ..controllers.MainController import MainController
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     __subject_data = []
     __worker = None
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
     __ImportSubjectFileEditor = None
-    __ImportFileFileEditor = None
+    __import_files_data = None  # Store files to import for current subject
     __optionWindow = None
 
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
-        # Create FileEditor
+        # Set up splitter with reasonable default sizes
+        # 25% for file tree, 75% for main content
+        self.mainSplitter.setSizes([300, 700])
+        
+        # BIDS validation state
+        self._is_valid_bids_dataset = False
+        self._validation_level = "NOT_BIDS"
+        self._validation_issues = []
+
+        # Create FileEditor for Import Subjects tab
         self.__ImportSubjectFileEditor = FileEditor()
         self.IS_FileEditorLayout.addWidget(self.__ImportSubjectFileEditor)
-        self.__ImportFileFileEditor = FileEditor()
-        self.IF_FileEditorLayout.addWidget(self.__ImportFileFileEditor)
+        # Initialize Import Files tab
+        self.__import_files_data = {"subject_id": "", "files": []}
+        self.setup_import_files_tab()
+        
+        # Initialize MVC Controller
+        self._main_controller = MainController(self)
+        self._setup_controller_connections()
+        
+        # Initialize PatientTableWidget controller
+        self.tableWidget.initialize_controller(self._get_dataset_path)
+        
+        # Connect PatientTableWidget signals to MainController so it stays in sync
+        self.tableWidget.subject_updated.connect(self._notify_main_controller_subjects_changed)
 
         # Connect Menu
         self.actionNew_Bids_Dataset.triggered.connect(self.create_dataset)
@@ -52,14 +75,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.CreateSubjectPushButton.clicked.connect(self.create_subject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
+        
+        # Setup file tree context menu
+        self.fileTreeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.fileTreeView.customContextMenuRequested.connect(self.show_file_tree_context_menu)
+        
+        # Enable multi-selection in file tree for subject operations
+        self.fileTreeView.setSelectionMode(self.fileTreeView.SelectionMode.ExtendedSelection)
+
         #    Second tab
         #       Add/Remove file
-        self.AR_ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
-        self.AR_BrowsePushButton.clicked.connect(self.browse_for_file_to_add)
-        self.AR_IsDicomFolderCheckBox.stateChanged.connect(self.update_browseFile_UI)
-        self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-        self.AR_AddPushButton.clicked.connect(self.add_file_to_list)
-        self.AR_RemovePushButton.clicked.connect(self.__ImportFileFileEditor.remove_selected_file_from_list)
+        self.ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
+        # Browse button removed from UI - files selected via "+" button only
+        # Make path field read-only for information display
+        self.BrowseLineEdit.setReadOnly(True)
+        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+        self.AddFileButton.clicked.connect(self.add_multiple_files)
+        self.RemoveFileButton.clicked.connect(self.remove_file_from_list)
+        # Import File List Widget connections
+        self.ImportFileListWidget.itemClicked.connect(self.on_import_file_selected)
+        self.ImportFileListWidget.itemSelectionChanged.connect(self.on_import_file_selected)
         #    Third tab
         self.IS_ParsePushButton.clicked.connect(self.parse_subject_to_import)
         self.IS_SubjectListWidget.itemClicked.connect(self.update_import_subject_fileList)
@@ -67,51 +102,123 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.IS_StartImportPushButton.clicked.connect(self.start_subjects_import)
         self.IS_SubjectListWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.IS_SubjectListWidget.customContextMenuRequested.connect(self.show_delete_import_subject_context_menu)
+        # Lookup table connections
+        self.CreateLutPushButton.clicked.connect(self.create_lookup_template)
+        self.BrowseLutPushButton.clicked.connect(self.browse_lookup_table)
+        self.lineEdit.textChanged.connect(self.on_lookup_table_path_changed)
         #    Buttons
         self.StartImportPushButton.clicked.connect(self.start_file_import)
         self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
 
         # Trigger UI for the first time
-        self.progressBar.setValue(0)
+        self.progressBar.setValue(0)  # Second tab progress bar
+        self.IS_progressBar.setValue(0)  # Third tab progress bar
         self.update_modality_UI()
+
+    def _get_dataset_path(self) -> str:
+        """Get current dataset path for PatientTableWidget."""
+        if hasattr(self, '_main_controller') and self._main_controller:
+            return self._main_controller.dataset_controller.dataset_path
+        return ""
+    
+    def _notify_main_controller_subjects_changed(self):
+        """Notify MainController that subjects have changed so it can emit its signal."""
+        if hasattr(self, '_main_controller') and self._main_controller:
+            # Refresh the subjects list in the DatasetController first
+            self._main_controller.dataset_controller.refresh_subjects()
+            # Then emit the signal to update the dropdown
+            self._main_controller.subjects_updated.emit()
+
+    def _setup_controller_connections(self):
+        """Set up connections between controllers and UI."""
+        # Dataset controller signals
+        self._main_controller.dataset_changed.connect(self._on_dataset_changed)
+        self._main_controller.subjects_updated.connect(self._on_subjects_updated)
+        
+        # Import files controller signals (Second tab)
+        import_files_ctrl = self._main_controller.import_files_controller
+        import_files_ctrl.file_list_changed.connect(self.refresh_import_file_list)
+        import_files_ctrl.selection_changed.connect(self._on_import_file_selection_changed)
+        import_files_ctrl.form_data_updated.connect(self._update_form_from_data)
+        import_files_ctrl.progress_updated.connect(self.progressBar.setValue)  # Second tab progress bar
+        
+        # Import subjects controller signals (Third tab)
+        import_subjects_ctrl = self._main_controller.import_subjects_controller
+        import_subjects_ctrl.subjects_loaded.connect(self._on_subjects_loaded)
+        import_subjects_ctrl.selection_changed.connect(self._on_import_subject_selection_changed)
+        import_subjects_ctrl.progress_updated.connect(self.IS_progressBar.setValue)  # Third tab progress bar
+        import_subjects_ctrl.lookup_table_updated.connect(self._on_lookup_table_updated)
+        
+    def _on_dataset_changed(self, dataset_path: str):
+        """Handle dataset change from controller."""
+        # Update validation state and tabs
+        self._update_validation_state()
+        self.load_treeView_UI(dataset_path)
+        self._update_tabs_based_on_validation()
+        
+        # Only load subjects and update UI if it's a valid dataset
+        if self._validation_level != "NOT_BIDS":
+            self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
+            self.update_subject_names_dropDown()
+        
+        # Show validation warning if necessary
+        self._show_validation_warning_if_needed()
+    
+    def _on_subjects_updated(self):
+        """Handle subjects update from controller - refreshes both table and dropdown."""
+        # Update the subject table (first tab)
+        dataset_path = self._get_dataset_path()
+        if dataset_path:
+            self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
+        
+        # Update the subject dropdown (second tab)
+        self.update_subject_names_dropDown()
+        
+    def _on_import_file_selection_changed(self, index: int):
+        """Handle import file selection change from controller."""
+        self.__current_selected_file_index = index
+        
+    def _update_form_from_data(self, form_data: dict):
+        """Update form fields from controller data."""
+        if form_data:
+            self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
+            self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
+            self.set_comboBox_text(self.SessionComboBox, form_data.get("session", ""))
+            self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
+            self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
+            self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
+            self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
+            
+    def _on_subjects_loaded(self):
+        """Handle subjects loaded from import subjects controller."""
+        self.IS_SubjectListWidget.clear()
+        # Use display names for third tab to show "OriginalID [MappedID]" format
+        display_names = self._main_controller.import_subjects_controller.get_display_names()
+        for display_name in display_names:
+            self.IS_SubjectListWidget.addItem(display_name)
+            
+    def _on_import_subject_selection_changed(self, index: int):
+        """Handle import subject selection change from controller."""
+        # This will be handled by the controller updating the file editor
+        pass
+        
+    def _on_lookup_table_updated(self, message: str):
+        """Handle lookup table update message from controller."""
+        # Update status or provide visual feedback
+        # For now, just update the statusbar or show in console
+        print(f"Lookup table status: {message}")
 
     def open_db_options(self):
         self.__optionWindow = OptionWindow()
         self.__optionWindow.show()
 
     def create_dataset(self):
-        folderPath = QFileDialog.getExistingDirectory(self, "Select a folder to save the BIDS dataset", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
-        if folderPath:
-            dataset_name = QInputDialog.getText(self, "Dataset Name", "Enter a name for the dataset")[0]
-            if dataset_name == "":
-                QMessageBox.warning(self, "Dataset Name empty", "Please enter a dataset name")
-                return
-
-            # Clean the dataset name and create a unique path and update the dataset name
-            dataset_path = folderPath + os.sep + BidsUtilityFunctions.clean_string(dataset_name)
-            dataset_path = BidsUtilityFunctions.get_unique_path(dataset_path)
-            dataset_name = os.path.basename(dataset_path).replace("_", " ")
-
-            # Generate useful paths
-            dataset_description_file_path = str(dataset_path) + os.sep +  "dataset_description.json"
-
-            bids_folder = BidsFolder(dataset_path)
-            bids_folder.create_folders()
-            bids_folder.generate_empty_dataset_description_file(dataset_name, dataset_description_file_path)
-            bids_folder.generate_participants_tsv()
-
-            self.load_treeView_UI(dataset_path)
-            self.tabWidget.setEnabled(True) # Enable the tabs only when a dataset is created
-            self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
-            self.update_subject_names_dropDown()
+        """Create a new BIDS dataset using the controller."""
+        self._main_controller.create_dataset()
 
     def open_dataset(self):
-        folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
-        if folderPath:
-            self.load_treeView_UI(folderPath)
-            self.tabWidget.setEnabled(True) # Enable the tabs only when a dataset is loaded
-            self.tableWidget.LoadSubjectsInTableWidget(folderPath)
-            self.update_subject_names_dropDown()
+        """Open an existing BIDS dataset using the controller."""
+        self._main_controller.open_dataset()
 
     def load_treeView_UI(self, initial_folder):
         # Define file system model at the root folder chosen by the user
@@ -137,76 +244,285 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fileTreeView.hideColumn(3)
         self.fileTreeView.header().hide()
 
+    def on_subject_changed(self):
+        """Handle subject selection change in Import Files tab"""
+        current_subject = self.SubjectComboBox.currentText()
+        
+        # If no files, just update subject
+        if not self.__import_files_data["files"]:
+            self.__import_files_data["subject_id"] = current_subject
+            return
+        
+        # If subject actually changed and there are files, prompt user
+        if self.__import_files_data["subject_id"] != current_subject:
+            # Prevent recursive calls when reverting subject
+            if hasattr(self, '_reverting_subject') and self._reverting_subject:
+                return
+                
+            reply = QMessageBox.question(
+                self,
+                "Subject Changed",
+                f"You're switching from '{self.__import_files_data['subject_id']}' to '{current_subject}'.\n\n"
+                f"What would you like to do with the {len(self.__import_files_data['files'])} files in the list?\n\n"
+                f"• YES: Update all files to use '{current_subject}'\n"
+                f"• NO: Cancel - keep '{self.__import_files_data['subject_id']}' selected",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes  # Default to updating files
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # Update all existing files to use new subject
+                for file_data in self.__import_files_data["files"]:
+                    file_data["intended_subject"] = current_subject
+                self.__import_files_data["subject_id"] = current_subject
+            else:
+                # Cancel - revert to original subject selection
+                self._reverting_subject = True
+                self.set_comboBox_text(self.SubjectComboBox, self.__import_files_data["subject_id"])
+                self._reverting_subject = False
+                # Keep everything as it was
+        else:
+            # Same subject, just update
+            self.__import_files_data["subject_id"] = current_subject
+            
+    def setup_import_files_tab(self):
+        """Initialize the Import Files tab"""
+        # Set up the list widget for displaying files
+        self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.SingleSelection)
+        # Track the currently selected file index for form persistence
+        self.__current_selected_file_index = -1
+        # Initially disable form elements since no files are loaded
+        self.set_import_form_enabled(False)
+        
+    def save_current_form_to_data(self):
+        """Save current form fields to the currently selected file's data"""
+        if self.__current_selected_file_index >= 0 and self.__current_selected_file_index < len(self.__import_files_data["files"]):
+            file_data = self.__import_files_data["files"][self.__current_selected_file_index]
+            
+            # Update the stored data with current form values
+            file_data["modality"] = self.ModalityComboBox.currentText()
+            file_data["session"] = self.SessionComboBox.currentText().removeprefix("ses-") if self.SessionComboBox.currentText() else ""
+            file_data["task"] = self.TaskComboBox.currentText()
+            file_data["contrast_agent"] = self.ContrastAgentLineEdit.text()
+            file_data["acquisition"] = self.AcquisitionLineEdit.text()
+            file_data["reconstruction"] = self.ReconstructionLineEdit.text()
+
+    def on_import_file_selected(self):
+        """Update form fields when a file is selected in the list"""
+        # Save current form data before switching
+        self.save_current_form_to_data()
+        
+        # Use current row if no selection (e.g., when called manually)
+        selected_items = self.ImportFileListWidget.selectedItems()
+        if not selected_items:
+            current_row = self.ImportFileListWidget.currentRow()
+            if current_row >= 0 and current_row < len(self.__import_files_data["files"]):
+                index = current_row
+            else:
+                self.__current_selected_file_index = -1
+                # No file selected - disable form and clear fields only if no files exist
+                if len(self.__import_files_data["files"]) == 0:
+                    self.set_import_form_enabled(False)
+                    self.clear_import_form_fields()
+                return
+        else:
+            # Get the index of selected file
+            index = self.ImportFileListWidget.row(selected_items[0])
+        
+        self.__current_selected_file_index = index
+        
+        if index >= 0 and index < len(self.__import_files_data["files"]):
+            file_data = self.__import_files_data["files"][index]
+            
+            # Enable form elements when a file is selected
+            self.set_import_form_enabled(True)
+            
+            # Update form fields with file metadata
+            self.BrowseLineEdit.setText(file_data["file_path"])
+            self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
+            self.set_comboBox_text(self.SessionComboBox, "ses-" + file_data["session"] if file_data["session"] else "")
+            self.set_comboBox_text(self.TaskComboBox, file_data["task"])
+            self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
+            self.AcquisitionLineEdit.setText(file_data["acquisition"])
+            self.ReconstructionLineEdit.setText(file_data["reconstruction"])
+        else:
+            # Index out of bounds - disable form and clear fields
+            self.__current_selected_file_index = -1
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+    
+    def remove_file_from_list(self):
+        """Remove selected file from the import list"""
+        selected_items = self.ImportFileListWidget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Selection", "Please select a file to remove")
+            return
+            
+        index = self.ImportFileListWidget.row(selected_items[0])
+        if index >= 0 and index < len(self.__import_files_data["files"]):
+            # Remove from data structure
+            self.__import_files_data["files"].pop(index)
+            # Remove from list widget
+            self.ImportFileListWidget.takeItem(index)
+            
+            # Update selection and form fields
+            self.update_selection_after_removal(index)
+
+    def update_selection_after_removal(self, removed_index):
+        """Update selection and form fields after removing an item"""
+        total_items = self.ImportFileListWidget.count()
+        
+        if total_items == 0:
+            # No items left - disable form and clear everything
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+            return
+        
+        # Determine which item to select next
+        if removed_index >= total_items:
+            # Removed the last item, select the new last item
+            new_selection = total_items - 1
+        else:
+            # Select the item that took the removed item's place
+            new_selection = removed_index
+        
+        # Set the new selection
+        self.ImportFileListWidget.setCurrentRow(new_selection)
+        
+        # Update form fields with the newly selected item
+        self.on_import_file_selected()
+
+    def clear_import_form_fields(self):
+        """Clear all import form fields"""
+        self.BrowseLineEdit.setText("No file selected")
+        self.ContrastAgentLineEdit.clear()
+        self.AcquisitionLineEdit.clear()
+        self.ReconstructionLineEdit.clear()
+        
+    def set_import_form_enabled(self, enabled):
+        """Enable or disable import form elements"""
+        # Form input elements
+        self.ModalityComboBox.setEnabled(enabled)
+        self.TaskComboBox.setEnabled(enabled)
+        self.SessionComboBox.setEnabled(enabled)
+        self.ContrastAgentLineEdit.setEnabled(enabled)
+        self.AcquisitionLineEdit.setEnabled(enabled)
+        self.ReconstructionLineEdit.setEnabled(enabled)
+        
+        # Remove file button (only enable if files exist)
+        self.RemoveFileButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
+        
+        # Import button (only enable if files exist)
+        self.StartImportPushButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
+
     def create_subject(self):
-        if not self.fileTreeView.model():
-            QMessageBox.warning(self, "No dataset selected", "Please open a BIDS dataset first")
-            return
-
-        subject_name = self.SubjectLineEdit.text()
+        """Create a new subject using the controller."""
+        subject_name = self.SubjectLineEdit.text().strip()
+        
         if not subject_name:
-            QMessageBox.warning(self, "Subject Name empty", "Please enter a subject name")
-            return
-
-        if not subject_name.startswith("sub-"):
-            QMessageBox.warning(self, "Subject Name not valid", "Subject name should start with 'sub-'")
-            return
-
-        self.tableWidget.CreateSubjectInTableWidget(subject_name)
-        self.update_subject_names_dropDown()
+            return  # Don't create empty subjects
+        
+        # Create subject using PatientTableWidget controller
+        if self.tableWidget._controller:
+            success, error = self.tableWidget._controller.create_subject(subject_name)
+            if success:
+                # Clear the input field after successful creation
+                self.SubjectLineEdit.clear()
+                # Update the dropdown will be handled by signals
+            else:
+                # Show error message if creation failed
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Create Subject Failed", error)
 
     def parse_subject_to_import(self):
-        self.__subject_data = DataCrawler.crawl_data('bidsificator/config/config.yaml')
-        for subject in self.__subject_data:
-            files = []
-            for data_type, data_info in subject["data"].items():
-                for file_path in data_info["file_paths"]:
-                    file_name = Path(file_path).name
-                    file = {
-                        "file_name": file_name,
-                        "file_path": file_path,
-                        "modality": data_info['modality'],
-                        "task": "",
-                        "session": "post",
-                        "contrast_agent": "",
-                        "acquisition": "",
-                        "reconstruction": ""
-                    }
-                    files.append(file)
-            subject["files"] = files
-            del subject["data"]
-
-        self.IS_SubjectListWidget.clear()
-        for subject in self.__subject_data:
-            self.IS_SubjectListWidget.addItem(subject["subject_id"])
+        """Parse subjects for import using the controller."""
+        self._main_controller.parse_subjects_to_import('bidsificator/config/config.yaml')
+        # UI update will be handled by controller signal
 
     def update_import_subject_fileList(self):
+        """Update import subject file list using controller data."""
         selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
         if len(selectedIndexes) > 0:
-            subject_id = self.IS_SubjectListWidget.item(selectedIndexes[0].row()).text()
+            selected_row = selectedIndexes[0].row()
+            
+            # First, save current FileEditor data back to ImportSubjectsController
+            self._sync_file_editor_to_import_controller()
+            
             self.__ImportSubjectFileEditor.clear_file_list()
-            for subject in self.__subject_data:
-                if subject["subject_id"] == subject_id:
-                    self.__ImportSubjectFileEditor.add_files_to_list(subject)
-                    return
+            
+            # Get subject data from controller using row index
+            subject_data = self._main_controller.import_subjects_controller.model.get_subject(selected_row)
+            if subject_data:
+                # Convert dataclass to dictionary for FileEditor
+                from dataclasses import asdict
+                legacy_format = asdict(subject_data)
+                self.__ImportSubjectFileEditor.add_files_to_list(legacy_format)
+    
+    def _sync_file_editor_to_import_controller(self):
+        """Sync FileEditor changes back to ImportSubjectsController."""
+        # Save any pending form changes first
+        if hasattr(self.__ImportSubjectFileEditor, '_save_form_data'):
+            self.__ImportSubjectFileEditor._save_form_data()
+        
+        # Get the current subject data from FileEditor controller
+        if (hasattr(self.__ImportSubjectFileEditor, '_controller') and 
+            hasattr(self.__ImportSubjectFileEditor._controller, '_current_subject_data')):
+            
+            modified_data = self.__ImportSubjectFileEditor._controller._current_subject_data
+            if modified_data and modified_data.get("subject_id"):
+                subject_id = modified_data.get("subject_id")
+                
+                # Update the ImportSubjectsController with modified data
+                self._main_controller.import_subjects_controller.update_subject_data(subject_id, modified_data)
 
     def update_subject_names_dropDown(self):
-        dataset_path = self.fileTreeView.model().rootDirectory().path()
-        subject_names = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f)) and not f.startswith(".") and f.startswith("sub-")]
+        """Update subject dropdown using controller data."""
+        if not self._main_controller.is_dataset_loaded():
+            return
+            
+        subject_names = self._main_controller.get_current_subjects()
 
-        self.AR_SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
-        self.AR_SubjectComboBox.clear()
-        self.AR_SubjectComboBox.addItems(subject_names)
+        # Temporarily disconnect signals to prevent unwanted dialogs during update
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.update_subject_details)
+        except TypeError:
+            pass  # Connection doesn't exist
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.on_subject_changed)
+        except TypeError:
+            pass  # Connection doesn't exist
+        
+        self.SubjectComboBox.clear()
+        self.SubjectComboBox.addItems(subject_names)
+        
+        # Sync import data with first available subject (or empty if no subjects)
+        if subject_names and not self.__import_files_data["files"]:
+            # Only update if no files exist to avoid unwanted changes
+            self.__import_files_data["subject_id"] = subject_names[0]
+            # Update controller as well
+            self._main_controller.import_files_controller.current_subject = subject_names[0]
+        elif not subject_names:
+            self.__import_files_data["subject_id"] = ""
+            self._main_controller.import_files_controller.current_subject = ""
+        
+        # Reconnect signals after update is complete
+        self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
+        self.SubjectComboBox.currentTextChanged.connect(self.on_subject_changed)
+        
+        # Populate session dropdown for the current subject
+        if subject_names:
+            self.update_subject_details()
 
     def update_subject_details(self):
-        dataset_path = self.fileTreeView.model().rootDirectory().path()
-        subject_name = self.AR_SubjectComboBox.currentText()
-        subject_path = os.path.join(dataset_path, subject_name)
-
-        session_names = [f for f in os.listdir(subject_path) if os.path.isdir(os.path.join(subject_path, f)) and not f.startswith(".") and f.startswith("ses-")]
-        self.AR_SessionComboBox.clear()
-        self.AR_SessionComboBox.addItems(session_names)
-        self.__ImportFileFileEditor.SessionComboBox.clear()
-        self.__ImportFileFileEditor.SessionComboBox.addItems(session_names)
+        """Update subject details using controller data."""
+        subject_name = self.SubjectComboBox.currentText()
+        
+        if not subject_name or not self._main_controller.is_dataset_loaded():
+            return
+            
+        session_names = self._main_controller.get_sessions_for_subject(subject_name)
+        self.SessionComboBox.clear()
+        self.SessionComboBox.addItems(session_names)
 
     def show_delete_import_subject_context_menu(self):
         # Create custom context menu
@@ -232,150 +548,161 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.__ImportSubjectFileEditor.clear_file_list()
 
     def update_modality_UI(self):
-        if "(anat)" in self.AR_ModalityComboBox.currentText():
+        if "(anat)" in self.ModalityComboBox.currentText():
             #session
-            self.AR_SessionLabel.show()
-            self.AR_SessionComboBox.show()
-            #task
-            self.AR_TaskLabel.hide()
-            self.AR_TaskComboBox.hide()
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task - show for all modalities
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
             #contrast
-            self.AR_ContrastAgentLabel.show()
-            self.AR_ContrastAgentLineEdit.show()
+            self.ContrastAgentLabel.show()
+            self.ContrastAgentLineEdit.show()
             #acquisition
-            self.AR_AcquisitionLabel.show()
-            self.AR_AcquisitionLineEdit.show()
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
             #reconstruction
-            self.AR_ReconstructionLabel.show()
-            self.AR_ReconstructionLineEdit.show()
-            #deal with folder/file import
-            self.AR_IsDicomFolderCheckBox.setEnabled(True)
-        elif "ieeg (ieeg)" in self.AR_ModalityComboBox.currentText():
+            self.ReconstructionLabel.show()
+            self.ReconstructionLineEdit.show()
+            # Note: DICOM folder checkbox removed from UI
+        elif "ieeg (ieeg)" in self.ModalityComboBox.currentText():
             #session
-            self.AR_SessionLabel.show()
-            self.AR_SessionComboBox.show()
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
             #task
-            self.AR_TaskLabel.show()
-            self.AR_TaskComboBox.show()
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
             #contrast
-            self.AR_ContrastAgentLabel.hide()
-            self.AR_ContrastAgentLineEdit.hide()
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
             #acquisition
-            self.AR_AcquisitionLabel.show()
-            self.AR_AcquisitionLineEdit.show()
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
             #reconstruction
-            self.AR_ReconstructionLabel.hide()
-            self.AR_ReconstructionLineEdit.hide()
-            #deal with folder/file import
-            self.AR_IsDicomFolderCheckBox.setChecked(False)
-            self.AR_IsDicomFolderCheckBox.setEnabled(False)
-        elif "photo (ieeg)" in self.AR_ModalityComboBox.currentText():
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
+        elif "photo (ieeg)" in self.ModalityComboBox.currentText():
             #session
-            self.AR_SessionLabel.show()
-            self.AR_SessionComboBox.show()
-            #task
-            self.AR_TaskLabel.hide()
-            self.AR_TaskComboBox.hide()
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task - show for all modalities
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
             #contrast
-            self.AR_ContrastAgentLabel.hide()
-            self.AR_ContrastAgentLineEdit.hide()
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
             #acquisition
-            self.AR_AcquisitionLabel.show()
-            self.AR_AcquisitionLineEdit.show()
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
             #reconstruction
-            self.AR_ReconstructionLabel.hide()
-            self.AR_ReconstructionLineEdit.hide()
-            #deal with folder/file import
-            self.AR_IsDicomFolderCheckBox.setChecked(False)
-            self.AR_IsDicomFolderCheckBox.setEnabled(False)
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
-    def update_browseFile_UI(self, state):
-        if state == 0: #unchecked
-            self.AR_BrowsePushButton.setText("Browse File")
-            self.AR_BrowseLineEdit.setText("")
-        elif state == 2: #checked
-            self.AR_BrowsePushButton.setText("Browse Folder")
-            self.AR_BrowseLineEdit.setText("")
-        else:
-            print("Error : [__UpdateBrowseFileUI] State not recognized")
+    # Method removed - DICOM checkbox no longer exists in UI
+    # def update_browseFile_UI(self, state):
 
+    def is_dicom_folder(self, folder_path):
+        """Check if a folder contains DICOM files"""
+        return FileDetectionService.is_dicom_folder(folder_path)
+    
     def browse_for_file_to_add(self):
-        modality = self.AR_ModalityComboBox.currentText()
-        filters = {
-            "(anat)": "Nifti files (*.nii *.nii.gz)",
-            "photo (ieeg)": "Image files (*.png *.jpg *.tif)",
-            "ieeg (ieeg)": "IEEG files (*.trc *.vhdr *.edf)"
-        }
+        modality = self.ModalityComboBox.currentText()
+        filters = FileDetectionService.get_file_filters()
 
-        if "(anat)" in modality and self.AR_IsDicomFolderCheckBox.isChecked(): # dicom folder
-            folderPath = QFileDialog.getExistingDirectory(self, "Select a folder", self.__browse_folder_path_memory)
-            if folderPath:
-                self.__browse_folder_path_memory = folderPath
-                self.AR_BrowseLineEdit.setText(folderPath)
-        elif any(key in modality for key in filters): # nifti, photo, or ieeg file
+        # For anatomy, allow both file and folder selection
+        if "(anat)" in modality:
+            # First try file selection
+            file_filter = filters["(anat)"]
+            file_path = QFileDialog.getOpenFileName(self, "Select a file (or Cancel to browse for DICOM folder)", 
+                                                  self.__browse_folder_path_memory, filter=file_filter)
+            if file_path[0]:
+                self.__browse_folder_path_memory = os.path.dirname(file_path[0])
+                self.BrowseLineEdit.setText(file_path[0])
+            else:
+                # User cancelled file selection, offer folder selection for DICOM
+                reply = QMessageBox.question(self, "DICOM Folder?", 
+                    "Do you want to select a DICOM folder instead?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.Yes:
+                    folder_path = QFileDialog.getExistingDirectory(self, "Select DICOM folder", 
+                                                                 self.__browse_folder_path_memory)
+                    if folder_path:
+                        if self.is_dicom_folder(folder_path):
+                            self.__browse_folder_path_memory = folder_path
+                            self.BrowseLineEdit.setText(folder_path + " [DICOM Folder]")
+                        else:
+                            QMessageBox.warning(self, "Not a DICOM folder", 
+                                "The selected folder doesn't appear to contain DICOM files.")
+        elif any(key in modality for key in filters): # photo or ieeg file
             file_filter = next(filter for key, filter in filters.items() if key in modality)
             file_path = QFileDialog.getOpenFileName(self, "Select a file", self.__browse_folder_path_memory, filter=file_filter)
             if file_path[0]:
                 self.__browse_folder_path_memory = os.path.dirname(file_path[0])
-                self.AR_BrowseLineEdit.setText(file_path[0])
+                self.BrowseLineEdit.setText(file_path[0])
         else:
             QMessageBox.warning(self, "Modality not recognized", "Please select a modality first")
 
     def update_task_combobox_UI(self):
-        if "Other" in self.AR_TaskComboBox.currentText():
+        if "Other" in self.TaskComboBox.currentText():
             task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
             if task_name == "":
                 QMessageBox.warning(self, "Dataset Name empty", "Please enter a valid name for your task")
                 return
             else:
-                self.AR_TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
-                #Insert the new task in AR_TaskComboBox
-                self.AR_TaskComboBox.insertItem(self.AR_TaskComboBox.count()-1, task_name)
-                self.AR_TaskComboBox.setCurrentIndex(self.AR_TaskComboBox.count()-2)
-                #Insert the new task in VE_TaskComboBox
-                self.__ImportFileFileEditor.TaskComboBox.insertItem(self.__ImportFileFileEditor.TaskComboBox.count(), task_name)
-                self.AR_TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+                self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
+                #Insert the new task in TaskComboBox
+                self.TaskComboBox.insertItem(self.TaskComboBox.count()-1, task_name)
+                self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
+                # Note: FileEditor TaskComboBox updates removed
+                self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
 
     def add_file_to_list(self):
         #Need to validate focus for ui elements in order to get all the values
-        self.AR_TaskComboBox.clearFocus()
-        self.AR_SessionComboBox.clearFocus()
-        self.AR_ContrastAgentLineEdit.clearFocus()
-        self.AR_AcquisitionLineEdit.clearFocus()
-        self.AR_ReconstructionLineEdit.clearFocus()
+        self.TaskComboBox.clearFocus()
+        self.SessionComboBox.clearFocus()
+        self.ContrastAgentLineEdit.clearFocus()
+        self.AcquisitionLineEdit.clearFocus()
+        self.ReconstructionLineEdit.clearFocus()
 
-        #Get file name
-        file_path = self.AR_BrowseLineEdit.text()
-        #Get only the filename
-        file_name = os.path.basename(file_path)
+        #Get file path and check if it's a DICOM folder
+        file_path_raw = self.BrowseLineEdit.text()
+        is_dicom_folder = "[DICOM Folder]" in file_path_raw
+        file_path = file_path_raw.replace(" [DICOM Folder]", "") if is_dicom_folder else file_path_raw
+        #Get file name (handle DICOM folders)
+        if is_dicom_folder:
+            file_name = f"{os.path.basename(file_path)} [DICOM Folder]"
+        else:
+            file_name = os.path.basename(file_path)
         #Get the modality
-        modality = self.AR_ModalityComboBox.currentText()
+        modality = self.ModalityComboBox.currentText()
         #According to modality get the task and relevant elements from ui
         if "(anat)" in modality:
             task = ""
-            session = self.AR_SessionComboBox.currentText()
-            contrast_agent = self.AR_ContrastAgentLineEdit.text()
-            acquisition = self.AR_AcquisitionLineEdit.text()
-            reconstruction = self.AR_ReconstructionLineEdit.text()
+            session = self.SessionComboBox.currentText()
+            contrast_agent = self.ContrastAgentLineEdit.text()
+            acquisition = self.AcquisitionLineEdit.text()
+            reconstruction = self.ReconstructionLineEdit.text()
         elif "ieeg (ieeg)" in modality:
-            task = self.AR_TaskComboBox.currentText()
-            session = self.AR_SessionComboBox.currentText()
+            task = self.TaskComboBox.currentText()
+            session = self.SessionComboBox.currentText()
             contrast_agent = ""
-            acquisition = self.AR_AcquisitionLineEdit.text()
+            acquisition = self.AcquisitionLineEdit.text()
             reconstruction = ""
         elif "photo (ieeg)" in modality:
             task = ""
-            session = self.AR_SessionComboBox.currentText()
+            session = self.SessionComboBox.currentText()
             contrast_agent = ""
-            acquisition = self.AR_AcquisitionLineEdit.text()
+            acquisition = self.AcquisitionLineEdit.text()
             reconstruction = ""
         else:
             print("Error : [__AddFileToList] Modality not recognized")
 
         subject = {
-            "subject_id": self.AR_SubjectComboBox.currentText(),
+            "subject_id": self.SubjectComboBox.currentText(),
             "files": [
                 {
                 "file_name": file_name,
@@ -390,77 +717,253 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ]
         }
 
+        # Check if file path is provided
+        if not file_path:
+            QMessageBox.warning(self, "No File", "Please browse for a file first")
+            return
+            
+        # Check for duplicates
+        for existing_file in self.__import_files_data["files"]:
+            if existing_file["file_path"] == file_path:
+                QMessageBox.warning(self, "Duplicate File", "This file is already in the list")
+                return
+        
+        # Files added to currently selected subject
+        current_subject = self.SubjectComboBox.currentText()
+        self.__import_files_data["subject_id"] = current_subject
+        
+        # Add file to data structure
+        file_data = {
+            "file_name": file_name,
+            "file_path": file_path,
+            "modality": modality,
+            "task": task,
+            "session": session.removeprefix("ses-") if session else "",
+            "contrast_agent": contrast_agent,
+            "acquisition": acquisition,
+            "reconstruction": reconstruction
+        }
+        self.__import_files_data["files"].append(file_data)
+        
+        # Add to list widget with simple filename display
+        self.ImportFileListWidget.addItem(file_name)
+        
+        # Clear browse field for next file
+        self.BrowseLineEdit.clear()
+
+    def detect_modality_from_file(self, file_path):
+        """Auto-detect modality from filename and extension"""
+        return FileDetectionService.detect_modality_from_file(file_path)
+
+    def get_next_acquisition_number(self, subject_id, session, modality, task):
+        """Auto-increment acquisition for files with same properties"""
+        return ImportService.get_next_acquisition_number(
+            self.__import_files_data["files"], session, modality, task
+        )
+
+    def add_multiple_files(self):
+        """Add multiple files using the controller."""
+        
         try:
-            self.__ImportFileFileEditor.append_to_list(subject)
+            # Always show all supported files for auto-detection
+            file_filter = "All supported files (*.nii *.nii.gz *.trc *.vhdr *.edf *.png *.jpg *.tif)"
+            
+            # Open file dialog
+            files, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Select files to import", 
+                self.__browse_folder_path_memory,
+                file_filter
+            )
+            
+            
+            if not files:
+                return
+                
+            # Update browse memory
+            self.__browse_folder_path_memory = os.path.dirname(files[0])
+        
+            # Get form values
+            current_subject = self.SubjectComboBox.currentText()
+            session = self.SessionComboBox.currentText()
+            task = self.TaskComboBox.currentText()
+            contrast_agent = self.ContrastAgentLineEdit.text()
+            acquisition = self.AcquisitionLineEdit.text()
+            reconstruction = self.ReconstructionLineEdit.text()
+            
+            # Add each file
+            successful_count = 0
+            failed_files = []
+            
+            for file_path in files:
+                file_name = os.path.basename(file_path)
+                
+                # Check for duplicates
+                duplicate_found = False
+                for existing_file in self.__import_files_data["files"]:
+                    if existing_file["file_path"] == file_path:
+                        failed_files.append(f"{file_name}: Already in list")
+                        duplicate_found = True
+                        break
+                
+                if duplicate_found:
+                    continue
+                
+                # Auto-detect modality for this file
+                detected_modality = self.detect_modality_from_file(file_path)
+                if not detected_modality:
+                    failed_files.append(f"{file_name}: Unsupported file type")
+                    continue
+                
+                
+                # Set task based on detected modality
+                if "(anat)" in detected_modality or "photo" in detected_modality:
+                    task_value = ""  # Anatomy and photos don't use tasks
+                else:
+                    task_value = task
+                
+                # Auto-increment acquisition number for files with same properties
+                auto_acquisition = self.get_next_acquisition_number(
+                    current_subject,
+                    session.removeprefix("ses-") if session else "",
+                    detected_modality,
+                    task_value
+                )
+                
+                    
+                file_data = {
+                    "file_name": file_name,
+                    "file_path": file_path,
+                    "modality": detected_modality,
+                    "task": task_value,
+                    "session": session.removeprefix("ses-") if session else "",
+                    "contrast_agent": contrast_agent if "(anat)" in detected_modality else "",
+                    "acquisition": auto_acquisition,
+                    "reconstruction": reconstruction if "(anat)" in detected_modality else "",
+                    "intended_subject": current_subject
+                }
+                
+                # Add to data structure
+                self.__import_files_data["subject_id"] = current_subject
+                self.__import_files_data["files"].append(file_data)
+                successful_count += 1
+            
+            # Update UI
+            self.refresh_import_file_list()
+            
+            # Show results
+            if successful_count > 0 or failed_files:
+                message = f"Successfully imported {successful_count} files"
+                if failed_files:
+                    message += f"\n\nFailed files:\n" + "\n".join(failed_files)
+                
+                QMessageBox.information(self, "Import Results", message)
+                
         except Exception as e:
-            QMessageBox.warning(self, "Error", str(e))
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
+
+    def add_file_to_import_data(self, file_data):
+        """Add file to import data structure"""
+        
+        current_subject = self.SubjectComboBox.currentText()
+        
+        # Store the intended subject with each file
+        file_data["intended_subject"] = current_subject
+        
+        # Check for duplicates
+        for existing_file in self.__import_files_data["files"]:
+            if existing_file["file_path"] == file_data["file_path"]:
+                return False  # Skip duplicate
+        
+        # Add file
+        self.__import_files_data["files"].append(file_data)
+        return True
+
+    def refresh_import_file_list(self):
+        """Refresh the ImportFileListWidget display"""
+        
+        self.ImportFileListWidget.clear()
+        
+        for file_data in self.__import_files_data["files"]:
+            # Show only filename - single subject tab
+            display_text = file_data['file_name']
+            self.ImportFileListWidget.addItem(display_text)
+        
+        # Auto-select first file if available
+        if self.__import_files_data["files"]:
+            self.ImportFileListWidget.setCurrentRow(0)
+            self.__current_selected_file_index = 0
+            # Enable form elements when files are present
+            self.set_import_form_enabled(True)
+            # Manually call file selection to populate form since setCurrentRow may not trigger signals
+            self.on_import_file_selected()
+        else:
+            self.__current_selected_file_index = -1
+            # Disable form elements when no files
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+
+    def browse_single_file_fallback(self):
+        """Single-file browse as fallback option"""
+        self.browse_for_file_to_add()
 
     def start_file_import(self):
-        # Check if a process is already running
-        if hasattr(self, '__worker') and self.__worker.isRunning():
-            print("[start_file_import] Import is already in progress")
-            return
-
-        # Get dataset path
-        dataset_path =  self.fileTreeView.model().rootDirectory().path()
-
-        # Create worker
-        name = self.__ImportFileFileEditor._subject_data["subject_id"]
-        files = self.__ImportFileFileEditor._subject_data["files"]
-        self.__worker = ImportBidsFilesWorker(dataset_path, name, files)
-
-        # Connect signals
-        self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
-        self.__worker.finished.connect(self.on_worker_finished)
-
-        # Start the worker thread
-        self.__worker.start()
+        """Start file import using the controller."""
+        # Save current form data before starting import
+        self.save_current_form_to_data()
+        
+        
+        # Reset progress bar for this tab
+        self.progressBar.setValue(0)
+        
+        # Sync MainWindow data to controller before starting import
+        self._sync_files_to_controller()
+        
+        # Use controller to start import
+        self._main_controller.start_file_import()
+    
+    def _sync_files_to_controller(self):
+        """Sync MainWindow file data to the controller."""
+        if hasattr(self, '_main_controller') and self._main_controller:
+            # Sync the current import data to the controller
+            subject_id = self.__import_files_data["subject_id"]
+            files = self.__import_files_data["files"]
+            
+            
+            # Set the data in the controller
+            self._main_controller.import_files_controller.set_files_data(subject_id, files)
 
     def start_subjects_import(self):
-        # Check if a process is already running
-        if hasattr(self, '__worker') and self.__worker.isRunning():
-            print("[start_subjects_import] Import is already in progress")
-            return
-
-        # Get dataset path
-        dataset_path =  self.fileTreeView.model().rootDirectory().path()
-
-        # Create worker
-        self.__worker = ImportBidsSubjectsWorker(dataset_path, self.__subject_data)
-
-        # Connect signals
-        self.__worker.update_progressbar_signal.connect(self.progressBar.setValue)
-        self.__worker.finished.connect(self.on_worker_finished)
-
-        # Start the worker thread
-        self.__worker.start()
+        """Start subjects import using the controller."""
+        
+        # Reset progress bar for this tab
+        self.IS_progressBar.setValue(0)
+        
+        # Save any pending FileEditor changes before import
+        self._save_file_editor_changes()
+        
+        self._main_controller.start_subjects_import()
+    
+    def _save_file_editor_changes(self):
+        """Save FileEditor changes back to ImportSubjectsController."""
+        # Make sure FileEditor saves its current form data
+        if hasattr(self.__ImportSubjectFileEditor, '_save_form_data'):
+            self.__ImportSubjectFileEditor._save_form_data()
+        
+        # Get the modified data from FileEditor controller
+        if hasattr(self.__ImportSubjectFileEditor._controller, '_current_subject_data'):
+            modified_data = self.__ImportSubjectFileEditor._controller._current_subject_data
+            if modified_data:
+                subject_id = modified_data.get("subject_id")
+                # Here we would sync back to ImportSubjectsController, but for now the change persistence
+                # in FileEditor should handle most of the persistence within the current subject
 
     def validate_bids_dataset(self):
-        if not self.fileTreeView.model():
-            QMessageBox.warning(self, "No Dataset found", "Please load a Dataset first")
-            return
-
-        dataset_path =  self.fileTreeView.model().rootDirectory().path()
-        subject_name = "/" + self.AR_SubjectComboBox.currentText()
-        print("Validating BIDS dataset at " + subject_name)
-
-        # Validate BIDS dataset at /subject_name
-        validator = BIDSValidator()
-
-        #Get all files path of subject_name except files starting with . (hidden files)
-        subject_path = dataset_path + subject_name
-        subject_files = [os.path.join(dp, f) for dp, dn, filenames in os.walk(subject_path) for f in filenames if not f.startswith(".")]
-        #strip dataset_path from the file path
-        subject_files = [file.replace(dataset_path, "") for file in subject_files]
-
-        res = True
-        for file in subject_files:
-            res = res and validator.is_bids(file)
-
-        if res:
-            QMessageBox.information(self, "Dataset compliant", self.AR_SubjectComboBox.currentText() + " is BIDS compliant")
-        else:
-            QMessageBox.warning(self, "Dataset not compliant", self.AR_SubjectComboBox.currentText() + " is not BIDS compliant")
+        """Validate BIDS dataset using the controller."""
+        subject_name = self.SubjectComboBox.currentText()
+        self._main_controller.validate_bids_dataset(subject_name)
 
     def set_comboBox_text(self, comboBox, text):
         index = comboBox.findText(text)
@@ -478,5 +981,434 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         print("Updating Subjects list in the user interface")
         self.tableWidget.LoadSubjectsInTableWidget(self.fileTreeView.model().rootDirectory().path())
         self.update_subject_names_dropDown()
+        
+        # Check which type of worker finished to show appropriate message
+        if isinstance(self.__worker, ImportBidsSubjectsWorker):
+            # Count total files from all subjects
+            total_files = sum(len(subject.get("files", [])) for subject in self.__subject_data)
+            subject_count = len(self.__subject_data)
+            QMessageBox.information(
+                self, 
+                "Import Complete", 
+                f"Successfully imported {subject_count} subjects with {total_files} files.\n\n"
+                "Check the dataset folder for the imported files."
+            )
+        else:
+            # Import Files worker (single subject)
+            file_count = len(self.__import_files_data["files"])
+            QMessageBox.information(
+                self, 
+                "Import Complete", 
+                f"Successfully imported {file_count} files.\n\n"
+                "Files remain in the list for review. You can:\n"
+                "• Check/modify any file settings\n" 
+                "• Remove files if needed\n"
+                "• Add more files\n"
+                "• Re-import if there were issues"
+            )
+        
         print("Cleaning up worker")
         self.__worker.deleteLater()  # Clean up the worker thread
+    
+    def browse_lookup_table(self):
+        """Browse for CSV lookup table file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Lookup Table CSV File",
+            self.__browse_folder_path_memory,
+            "CSV files (*.csv *.txt);;All files (*.*)"
+        )
+        
+        if file_path:
+            self.__browse_folder_path_memory = os.path.dirname(file_path)
+            self.lineEdit.setText(file_path)
+            # The textChanged signal will trigger the controller update
+    
+    def on_lookup_table_path_changed(self, path: str):
+        """Handle lookup table path change."""
+        # Update controller when path changes
+        self._main_controller.import_subjects_controller.set_lookup_table(path.strip())
+    
+    def create_lookup_template(self):
+        """Create a lookup table template file."""
+        self._main_controller.import_subjects_controller.create_lookup_template()
+
+    def show_file_tree_context_menu(self, position):
+        """Show context menu for file tree items."""
+        index = self.fileTreeView.indexAt(position)
+        if not index.isValid():
+            return
+        
+        # Get the file system model and file path
+        model = self.fileTreeView.model()
+        
+        # Get selected items (support multi-selection)
+        # Use selectedRows() to get unique rows instead of all column indexes
+        selected_indexes = self.fileTreeView.selectionModel().selectedRows()
+        if not selected_indexes:
+            selected_indexes = [index]
+        
+        # Categorize selected items into subjects and files
+        selected_subjects = []
+        selected_files = []
+        
+        for idx in selected_indexes:
+            file_path = model.filePath(idx)
+            file_name = model.fileName(idx)
+            
+            if model.isDir(idx):
+                # Check if it's a BIDS subject folder
+                if file_name.startswith("sub-"):
+                    selected_subjects.append({
+                        'name': file_name,
+                        'path': file_path,
+                        'index': idx
+                    })
+            else:
+                # It's a file - check if it's within a BIDS dataset
+                # We'll allow deleting any file that's selected
+                selected_files.append({
+                    'name': file_name,
+                    'path': file_path,
+                    'index': idx
+                })
+        
+        # If nothing relevant is selected, return
+        if not selected_subjects and not selected_files:
+            return
+        
+        # If mixed selection (both subjects and files), don't show menu
+        if selected_subjects and selected_files:
+            # Mixed selection not allowed - show warning
+            QMessageBox.information(
+                self,
+                "Mixed Selection",
+                "Please select either subjects or files, not both.\n\n"
+                "This prevents accidental deletions."
+            )
+            return
+        
+        # Check if dataset validation allows operations (simplified since tabs are disabled for NOT_BIDS)
+        if self._validation_level == "NOT_BIDS":
+            # This shouldn't happen since tabs are disabled, but just in case
+            QMessageBox.warning(
+                self,
+                "Operations Not Available",
+                "Please load a valid BIDS dataset to enable operations."
+            )
+            return
+        elif self._validation_level == "PARTIAL_BIDS":
+            # Show warning for partial BIDS but allow operation
+            reply = QMessageBox.question(
+                self,
+                "Partial BIDS Dataset",
+                "This dataset has validation issues. Continue with operation?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
+        # Create context menu
+        context_menu = QMenu(self)
+        
+        # Handle BIDS subject folders
+        if selected_subjects:
+            # Only subjects selected
+            if len(selected_subjects) == 1:
+                rename_action = context_menu.addAction("Rename Subject")
+                rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
+            
+            delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
+            delete_action = context_menu.addAction(delete_text)
+            delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
+        
+        # Handle files
+        elif selected_files:
+            # Only files selected
+            delete_text = "Delete File" if len(selected_files) == 1 else f"Delete {len(selected_files)} Files"
+            delete_action = context_menu.addAction(delete_text)
+            delete_action.triggered.connect(lambda: self.delete_files_from_tree(selected_files))
+        
+        # Show context menu
+        context_menu.popup(QCursor.pos())
+        
+    def rename_subject_from_tree(self, subject_info):
+        """Rename a BIDS subject from the file tree."""
+        old_subject_id = subject_info['name']
+        
+        # Prompt user for new subject ID
+        new_subject_id, ok = QInputDialog.getText(
+            self,
+            "Rename Subject",
+            f"Enter new name for subject '{old_subject_id}':",
+            text=old_subject_id
+        )
+        
+        if not ok or not new_subject_id.strip():
+            return
+        
+        new_subject_id = new_subject_id.strip()
+        
+        if new_subject_id == old_subject_id:
+            return  # No change
+        
+        # Validate new subject ID
+        is_valid, error = ValidationService.validate_subject_name(new_subject_id)
+        if not is_valid:
+            QMessageBox.warning(self, "Invalid Subject ID", error)
+            return
+        
+        # Check if dataset is loaded and get BidsFolder
+        if not self._main_controller.is_dataset_loaded():
+            QMessageBox.warning(self, "No Dataset", "No dataset is currently loaded")
+            return
+        
+        # Use the PatientTableController to rename the subject
+        if self.tableWidget._controller:
+            # First check if new subject ID already exists
+            dataset_path = self._get_dataset_path()
+            if not dataset_path:
+                QMessageBox.warning(self, "Error", "Could not get dataset path")
+                return
+                
+            bids_folder = BidsFolder(dataset_path)
+            if bids_folder.get_bids_subject(new_subject_id):
+                QMessageBox.warning(
+                    self, 
+                    "Duplicate Subject ID", 
+                    f"Subject ID '{new_subject_id}' already exists"
+                )
+                return
+            
+            # Perform the rename using the controller
+            success = self.tableWidget._controller.update_subject_field(
+                old_subject_id, "subject_id", new_subject_id
+            )
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Subject Renamed",
+                    f"Subject '{old_subject_id}' has been renamed to '{new_subject_id}'"
+                )
+                # UI update will be handled by the controller signals
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Rename Failed",
+                    f"Failed to rename subject '{old_subject_id}'"
+                )
+                
+    def delete_subjects_from_tree(self, subjects_info):
+        """Delete BIDS subjects from the file tree."""
+        if not subjects_info:
+            return
+        
+        # Check if dataset is loaded
+        if not self._main_controller.is_dataset_loaded():
+            QMessageBox.warning(self, "No Dataset", "No dataset is currently loaded")
+            return
+        
+        # Prepare confirmation message
+        if len(subjects_info) == 1:
+            subject_name = subjects_info[0]['name']
+            message = f"Are you sure you want to delete subject '{subject_name}'?\n\n" \
+                     f"This will permanently delete the subject folder and all its files."
+            title = "Delete Subject"
+        else:
+            subject_names = [s['name'] for s in subjects_info]
+            message = f"Are you sure you want to delete {len(subjects_info)} subjects?\n\n" \
+                     f"Subjects: {', '.join(subject_names)}\n\n" \
+                     f"This will permanently delete all subject folders and their files."
+            title = "Delete Multiple Subjects"
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # Default to No for safety
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Perform deletions using the PatientTableController
+        if not self.tableWidget._controller:
+            QMessageBox.critical(self, "Error", "Table controller not available")
+            return
+        
+        failed_deletions = []
+        successful_deletions = []
+        
+        for subject_info in subjects_info:
+            subject_id = subject_info['name']
+            success = self.tableWidget._controller.delete_subject(subject_id)
+            
+            if success:
+                successful_deletions.append(subject_id)
+            else:
+                failed_deletions.append(subject_id)
+        
+        # Show results
+        if successful_deletions and not failed_deletions:
+            if len(successful_deletions) == 1:
+                QMessageBox.information(
+                    self,
+                    "Subject Deleted",
+                    f"Subject '{successful_deletions[0]}' has been deleted successfully"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Subjects Deleted",
+                    f"{len(successful_deletions)} subjects have been deleted successfully"
+                )
+        elif failed_deletions:
+            error_msg = f"Failed to delete: {', '.join(failed_deletions)}"
+            if successful_deletions:
+                error_msg = f"Partial success. Successfully deleted: {', '.join(successful_deletions)}\n" + error_msg
+            QMessageBox.critical(self, "Deletion Failed", error_msg)
+        
+        # UI update will be handled by the controller signals
+    
+    def delete_files_from_tree(self, files_info):
+        """Delete files from the file tree."""
+        if not files_info:
+            return
+        
+        # Prepare confirmation message
+        if len(files_info) == 1:
+            file_name = files_info[0]['name']
+            message = f"Are you sure you want to delete the file '{file_name}'?\n\n" \
+                     f"This action cannot be undone."
+            title = "Delete File"
+        else:
+            file_names = [f['name'] for f in files_info[:5]]  # Show first 5 files
+            if len(files_info) > 5:
+                file_names.append(f"... and {len(files_info) - 5} more")
+            message = f"Are you sure you want to delete {len(files_info)} files?\n\n" \
+                     f"Files:\n{chr(10).join('• ' + name for name in file_names)}\n\n" \
+                     f"This action cannot be undone."
+            title = "Delete Multiple Files"
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # Default to No for safety
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Perform file deletions
+        import os
+        failed_deletions = []
+        successful_deletions = []
+        
+        for file_info in files_info:
+            file_path = file_info['path']
+            file_name = file_info['name']
+            
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    successful_deletions.append(file_name)
+                else:
+                    failed_deletions.append((file_name, "File not found"))
+            except PermissionError:
+                failed_deletions.append((file_name, "Permission denied"))
+            except Exception as e:
+                failed_deletions.append((file_name, str(e)))
+        
+        # Show results
+        if successful_deletions and not failed_deletions:
+            if len(successful_deletions) == 1:
+                QMessageBox.information(
+                    self,
+                    "File Deleted",
+                    f"File '{successful_deletions[0]}' has been deleted successfully"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Files Deleted",
+                    f"{len(successful_deletions)} files have been deleted successfully"
+                )
+        elif failed_deletions:
+            error_msg = "Failed to delete:\n"
+            for name, reason in failed_deletions:
+                error_msg += f"• {name}: {reason}\n"
+            if successful_deletions:
+                error_msg = f"Partial success. Successfully deleted {len(successful_deletions)} files.\n\n" + error_msg
+            QMessageBox.critical(self, "Deletion Failed", error_msg)
+    
+    def _update_validation_state(self):
+        """Update validation state from the dataset model."""
+        if hasattr(self, '_main_controller') and self._main_controller.is_dataset_loaded():
+            dataset_model = self._main_controller.dataset_controller.model
+            self._validation_level = dataset_model.validation_level
+            self._validation_issues = dataset_model.validation_issues
+            self._is_valid_bids_dataset = self._validation_level == "STRICT_BIDS"
+        else:
+            self._validation_level = "NOT_BIDS"
+            self._validation_issues = []
+            self._is_valid_bids_dataset = False
+    
+    def _show_validation_warning_if_needed(self):
+        """Show validation warning dialog if dataset is not fully BIDS compliant."""
+        if self._validation_level == "NOT_BIDS":
+            issues_text = "\n".join(f"• {issue}" for issue in self._validation_issues)
+            
+            reply = QMessageBox.question(
+                self,
+                "Not a BIDS Dataset",
+                f"This folder does not appear to be a valid BIDS dataset:\n\n"
+                f"{issues_text}\n\n"
+                f"Operations like renaming and deleting subjects/files will be restricted "
+                f"to prevent data corruption.\n\n"
+                f"Would you like to:\n"
+                f"• Click 'Yes' to load anyway (view-only mode)\n"
+                f"• Click 'No' to select a different folder",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.No:
+                # Try to open a different dataset
+                self._main_controller.open_dataset()
+                
+        elif self._validation_level == "PARTIAL_BIDS":
+            issues_text = "\n".join(f"• {issue}" for issue in self._validation_issues)
+            
+            QMessageBox.warning(
+                self,
+                "Partial BIDS Dataset",
+                f"This dataset has some BIDS structure but is missing required components:\n\n"
+                f"{issues_text}\n\n"
+                f"Some operations may be restricted. Consider fixing these issues "
+                f"to enable full functionality."
+            )
+    
+    
+    def _update_tabs_based_on_validation(self):
+        """Enable/disable tabs based on BIDS validation level."""
+        if self._validation_level == "NOT_BIDS":
+            # Disable entire tab widget for non-BIDS folders
+            self.tabWidget.setEnabled(False)
+        else:
+            # Enable tab widget and all tabs for valid BIDS datasets
+            self.tabWidget.setEnabled(True)
+            self.tabWidget.setTabEnabled(0, True)   # Dataset/subjects tab
+            self.tabWidget.setTabEnabled(1, True)   # Import Files tab
+            self.tabWidget.setTabEnabled(2, True)   # Import Subjects tab
+    
+    def refresh_validation_state(self):
+        """Force refresh of validation state - can be called manually."""
+        self._update_validation_state()
+        self._update_tabs_based_on_validation()

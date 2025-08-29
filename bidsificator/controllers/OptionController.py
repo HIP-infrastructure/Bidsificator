@@ -26,11 +26,11 @@ class OptionController:
     
     def get_anatomical_db_path(self) -> str:
         """Get the anatomical database path."""
-        return self.model.db_path.get('anatomical', '')
+        return self.model.data_paths.get('anatomical', self.model.data_paths.get('main', ''))
     
     def get_functional_db_path(self) -> str:
         """Get the functional database path."""
-        return self.model.db_path.get('functional', '')
+        return self.model.data_paths.get('functional', self.model.data_paths.get('main', ''))
     
     def set_anatomical_db_path(self, path: str) -> bool:
         """
@@ -45,11 +45,14 @@ class OptionController:
         if not path or not path.strip():
             return False
         
-        self.model.db_path['anatomical'] = path
-        
-        # If not using separated databases, update functional too
-        if not self.are_databases_separated():
-            self.model.db_path['functional'] = path
+        # Handle both single and dual database setups
+        if 'main' in self.model.data_paths:
+            self.model.data_paths['main'] = path
+        else:
+            self.model.data_paths['anatomical'] = path
+            # If not using separated databases, update functional too
+            if not self.are_databases_separated():
+                self.model.data_paths['functional'] = path
             
         return True
     
@@ -65,13 +68,22 @@ class OptionController:
         """
         if not path or not path.strip():
             return False
-            
-        self.model.db_path['functional'] = path
+        
+        # Convert to dual database setup if needed
+        if 'main' in self.model.data_paths:
+            # Convert from single to dual database
+            main_path = self.model.data_paths.pop('main')
+            self.model.data_paths['anatomical'] = main_path
+            self.model.data_paths['functional'] = path
+        else:
+            self.model.data_paths['functional'] = path
         return True
     
     def are_databases_separated(self) -> bool:
         """Check if anatomical and functional databases are separated."""
-        return self.model.db_path.get('anatomical', '') != self.model.db_path.get('functional', '')
+        if 'main' in self.model.data_paths:
+            return False  # Single database setup
+        return self.model.data_paths.get('anatomical', '') != self.model.data_paths.get('functional', '')
     
     def set_databases_separated(self, separated: bool):
         """
@@ -81,9 +93,12 @@ class OptionController:
             separated: True to use separate databases, False to use same
         """
         if not separated:
-            # Unify databases using anatomical path
+            # Convert to single database setup
             anat_path = self.get_anatomical_db_path()
-            self.model.db_path['functional'] = anat_path
+            if 'anatomical' in self.model.data_paths:
+                # Convert from dual to single
+                self.model.data_paths.clear()
+                self.model.data_paths['main'] = anat_path
     
     # Subject pattern management
     
@@ -111,11 +126,11 @@ class OptionController:
     
     def get_data_types(self) -> Dict:
         """Get all data types."""
-        return self.model.data_types
+        return self.model.file_types
     
     def get_data_type_names(self) -> List[str]:
         """Get list of data type names."""
-        return list(self.model.data_types.keys())
+        return list(self.model.file_types.keys())
     
     def get_data_type(self, name: str) -> Optional[Dict]:
         """
@@ -127,7 +142,7 @@ class OptionController:
         Returns:
             Dict with data type info or None if not found
         """
-        return self.model.data_types.get(name)
+        return self.model.file_types.get(name)
     
     def add_data_type(self, name: str, description: str = '', 
                       directory: str = '', file_extensions: List[str] = None) -> bool:
@@ -143,13 +158,13 @@ class OptionController:
         Returns:
             bool: True if successful, False if name already exists
         """
-        if name in self.model.data_types:
+        if name in self.model.file_types:
             return False
             
-        self.model.data_types[name] = {
+        self.model.file_types[name] = {
             'description': description,
-            'directory': directory,
-            'file_extensions': file_extensions or []
+            'folder': directory,
+            'extensions': file_extensions or []
         }
         
         return True
@@ -164,10 +179,10 @@ class OptionController:
         Returns:
             bool: True if successful, False if not found
         """
-        if name not in self.model.data_types:
+        if name not in self.model.file_types:
             return False
             
-        self.model.data_types.pop(name)
+        self.model.file_types.pop(name)
         return True
     
     def update_data_type_description(self, name: str, description: str) -> bool:
@@ -181,27 +196,31 @@ class OptionController:
         Returns:
             bool: True if successful, False if not found
         """
-        if name not in self.model.data_types:
+        if name not in self.model.file_types:
             return False
             
-        self.model.data_types[name]['description'] = description
+        self.model.file_types[name]['description'] = description
         return True
     
     def update_data_type_directory(self, name: str, directory: str) -> bool:
+        """Legacy method - redirects to update_data_type_folder."""
+        return self.update_data_type_folder(name, directory)
+    
+    def update_data_type_folder(self, name: str, folder: str) -> bool:
         """
-        Update the directory of a data type.
+        Update the folder of a data type.
         
         Args:
             name: The data type name
-            directory: New directory pattern
+            folder: New folder pattern
             
         Returns:
             bool: True if successful, False if not found
         """
-        if name not in self.model.data_types:
+        if name not in self.model.file_types:
             return False
             
-        self.model.data_types[name]['directory'] = directory
+        self.model.file_types[name]['folder'] = folder
         return True
     
     def update_data_type_extensions(self, name: str, extensions_str: str) -> tuple[bool, str]:
@@ -215,14 +234,14 @@ class OptionController:
         Returns:
             tuple: (success: bool, error_message: str)
         """
-        if name not in self.model.data_types:
+        if name not in self.model.file_types:
             return False, "Data type not found"
             
         if not FileExtensionValidator.is_valid_extensions(extensions_str):
             return False, 'Please enter valid file extensions separated by ", ".'
             
         extensions = FileExtensionValidator.parse_extensions(extensions_str)
-        self.model.data_types[name]['file_extensions'] = extensions
+        self.model.file_types[name]['extensions'] = extensions
         return True, ""
     
     def format_extensions_for_display(self, name: str) -> str:
@@ -238,7 +257,7 @@ class OptionController:
         data_type = self.get_data_type(name)
         if not data_type:
             return ""
-        return FileExtensionValidator.format_extensions(data_type.get('file_extensions', []))
+        return FileExtensionValidator.format_extensions(data_type.get('extensions', data_type.get('file_extensions', [])))
     
     # Persistence
     

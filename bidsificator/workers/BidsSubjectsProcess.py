@@ -6,18 +6,50 @@ import dicom2nifti
 from ..core.BidsFolder import BidsFolder
 
 
+def check_subject_conflicts(dataset_path: str, subjects_list: list) -> list[str]:
+    """
+    Check for existing subjects that would conflict with the import.
+    
+    Args:
+        dataset_path: Path to the BIDS dataset
+        subjects_list: List of subjects to import
+        
+    Returns:
+        List of subject IDs that already exist in the dataset
+    """
+    bids_folder = BidsFolder(dataset_path)
+    subject_ids = ["sub-" + subject['subject_id'] for subject in subjects_list]
+    return bids_folder.find_existing_subjects(subject_ids)
+
+
 def processBidsSubjects(
     conn,
     dataset_path: str,
     subjects_list: list,
     anatomical_modalities: set[str],
+    overwrite_existing: bool = False,
 ):
     temp_dir = "/tmp/mri_conversion"
     os.makedirs(temp_dir, exist_ok=True)
 
+    # Calculate total files across all subjects for overall progress
+    total_files = sum(len(subject['files']) for subject in subjects_list)
+    processed_files = 0
+    
+    
     bids_folder = BidsFolder(dataset_path)
     for subject in subjects_list:
-        bids_subject = bids_folder.add_bids_subject("sub-" + subject['subject_id'], subject_description={'age' : '123', 'sex' : 'M/F'})
+        try:
+            bids_subject = bids_folder.add_bids_subject(
+                "sub-" + subject['subject_id'], 
+                subject_description={'age' : '123', 'sex' : 'M/F'},
+                overwrite=overwrite_existing
+            )
+        except ValueError as e:
+            # Subject already exists and overwrite=False
+            print(f"Skipping subject {subject['subject_id']}: {e}")
+            continue
+        
         if bids_subject is None:
             conn.send(-1)  # Indicate error
             return
@@ -73,8 +105,10 @@ def processBidsSubjects(
             else:
                 print("modality not recognized : ", modality)
 
-            progress = round(100 * (float(index + 1) / len(subject['files'])))
-            conn.send(progress)  # Send progress to the main thread
+            # Update overall progress across all subjects
+            processed_files += 1
+            overall_progress = round(100 * (float(processed_files) / total_files))
+            conn.send(overall_progress)  # Send overall progress to the main thread
 
     bids_folder.generate_participants_tsv()
     shutil.rmtree(temp_dir)

@@ -73,9 +73,29 @@ class BidsFolder:
     def get_dataset_name(self) -> str:
         return self.__path.name
 
-    def add_bids_subject(self, subject_id: str, subject_description: dict):
-        if any(subject.get_subject_id() == subject_id for subject in self.__bids_subjects):
-            raise ValueError(f"A subject with ID {subject_id} already exists.")
+    def add_bids_subject(self, subject_id: str, subject_description: dict, overwrite: bool = False):
+        """
+        Add a new BIDS subject to the dataset.
+        
+        Args:
+            subject_id: The subject identifier
+            subject_description: Dictionary containing subject metadata
+            overwrite: If True, overwrites existing subject; if False, raises error for duplicates
+            
+        Returns:
+            BidsSubject: The created subject instance
+            
+        Raises:
+            ValueError: If subject already exists and overwrite=False
+        """
+        existing_subject = next((s for s in self.__bids_subjects if s.get_subject_id() == subject_id), None)
+        
+        if existing_subject:
+            if overwrite:
+                # Remove existing subject before creating new one
+                self.delete_bids_subject(subject_id)
+            else:
+                raise ValueError(f"A subject with ID {subject_id} already exists.")
 
         new_subject = BidsSubject(self.__path, subject_id, subject_description)
         self.__bids_subjects.append(new_subject)
@@ -96,6 +116,18 @@ class BidsFolder:
 
     def get_bids_subjects(self) -> Optional[BidsSubject]:
         return self.__bids_subjects
+    
+    def subject_exists(self, subject_id: str) -> bool:
+        """Check if a subject with the given ID already exists."""
+        return any(subject.get_subject_id() == subject_id for subject in self.__bids_subjects)
+    
+    def find_existing_subjects(self, subject_ids: list[str]) -> list[str]:
+        """Return a list of subject IDs that already exist in the dataset."""
+        existing_ids = []
+        for subject_id in subject_ids:
+            if self.subject_exists(subject_id):
+                existing_ids.append(subject_id)
+        return existing_ids
 
     def generate_participants_tsv(self, participants_tsv_path: str = ""):
         if not participants_tsv_path:
