@@ -1030,44 +1030,73 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Get the file system model and file path
         model = self.fileTreeView.model()
-        file_path = model.filePath(index)
-        file_name = model.fileName(index)
         
-        # Check if this is a BIDS subject folder (starts with "sub-" and is a directory)
-        if not (model.isDir(index) and file_name.startswith("sub-")):
-            return
-        
-        # Get selected subjects (support multi-selection)
+        # Get selected items (support multi-selection)
         # Use selectedRows() to get unique rows instead of all column indexes
         selected_indexes = self.fileTreeView.selectionModel().selectedRows()
         if not selected_indexes:
             selected_indexes = [index]
         
-        # Filter to only BIDS subject directories
+        # Categorize selected items into subjects and files
         selected_subjects = []
+        selected_files = []
+        
         for idx in selected_indexes:
-            if model.isDir(idx) and model.fileName(idx).startswith("sub-"):
-                selected_subjects.append({
-                    'name': model.fileName(idx),
-                    'path': model.filePath(idx),
+            file_path = model.filePath(idx)
+            file_name = model.fileName(idx)
+            
+            if model.isDir(idx):
+                # Check if it's a BIDS subject folder
+                if file_name.startswith("sub-"):
+                    selected_subjects.append({
+                        'name': file_name,
+                        'path': file_path,
+                        'index': idx
+                    })
+            else:
+                # It's a file - check if it's within a BIDS dataset
+                # We'll allow deleting any file that's selected
+                selected_files.append({
+                    'name': file_name,
+                    'path': file_path,
                     'index': idx
                 })
         
-        if not selected_subjects:
+        # If nothing relevant is selected, return
+        if not selected_subjects and not selected_files:
+            return
+        
+        # If mixed selection (both subjects and files), don't show menu
+        if selected_subjects and selected_files:
+            # Mixed selection not allowed - show warning
+            QMessageBox.information(
+                self,
+                "Mixed Selection",
+                "Please select either subjects or files, not both.\n\n"
+                "This prevents accidental deletions."
+            )
             return
         
         # Create context menu
         context_menu = QMenu(self)
         
-        # Add rename action (only for single selection)
-        if len(selected_subjects) == 1:
-            rename_action = context_menu.addAction("Rename Subject")
-            rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
+        # Handle BIDS subject folders
+        if selected_subjects:
+            # Only subjects selected
+            if len(selected_subjects) == 1:
+                rename_action = context_menu.addAction("Rename Subject")
+                rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
+            
+            delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
+            delete_action = context_menu.addAction(delete_text)
+            delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
         
-        # Add delete action (single or multiple selection)
-        delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
-        delete_action = context_menu.addAction(delete_text)
-        delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
+        # Handle files
+        elif selected_files:
+            # Only files selected
+            delete_text = "Delete File" if len(selected_files) == 1 else f"Delete {len(selected_files)} Files"
+            delete_action = context_menu.addAction(delete_text)
+            delete_action.triggered.connect(lambda: self.delete_files_from_tree(selected_files))
         
         # Show context menu
         context_menu.popup(QCursor.pos())
@@ -1212,3 +1241,77 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.critical(self, "Deletion Failed", error_msg)
         
         # UI update will be handled by the controller signals
+    
+    def delete_files_from_tree(self, files_info):
+        """Delete files from the file tree."""
+        if not files_info:
+            return
+        
+        # Prepare confirmation message
+        if len(files_info) == 1:
+            file_name = files_info[0]['name']
+            message = f"Are you sure you want to delete the file '{file_name}'?\n\n" \
+                     f"This action cannot be undone."
+            title = "Delete File"
+        else:
+            file_names = [f['name'] for f in files_info[:5]]  # Show first 5 files
+            if len(files_info) > 5:
+                file_names.append(f"... and {len(files_info) - 5} more")
+            message = f"Are you sure you want to delete {len(files_info)} files?\n\n" \
+                     f"Files:\n{chr(10).join('• ' + name for name in file_names)}\n\n" \
+                     f"This action cannot be undone."
+            title = "Delete Multiple Files"
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # Default to No for safety
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Perform file deletions
+        import os
+        failed_deletions = []
+        successful_deletions = []
+        
+        for file_info in files_info:
+            file_path = file_info['path']
+            file_name = file_info['name']
+            
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    successful_deletions.append(file_name)
+                else:
+                    failed_deletions.append((file_name, "File not found"))
+            except PermissionError:
+                failed_deletions.append((file_name, "Permission denied"))
+            except Exception as e:
+                failed_deletions.append((file_name, str(e)))
+        
+        # Show results
+        if successful_deletions and not failed_deletions:
+            if len(successful_deletions) == 1:
+                QMessageBox.information(
+                    self,
+                    "File Deleted",
+                    f"File '{successful_deletions[0]}' has been deleted successfully"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Files Deleted",
+                    f"{len(successful_deletions)} files have been deleted successfully"
+                )
+        elif failed_deletions:
+            error_msg = "Failed to delete:\n"
+            for name, reason in failed_deletions:
+                error_msg += f"• {name}: {reason}\n"
+            if successful_deletions:
+                error_msg = f"Partial success. Successfully deleted {len(successful_deletions)} files.\n\n" + error_msg
+            QMessageBox.critical(self, "Deletion Failed", error_msg)
