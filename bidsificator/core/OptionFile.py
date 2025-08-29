@@ -24,17 +24,29 @@ class OptionFile:
     def __init__(self, file_path: str):
         self.file_path = file_path
         if not Path(file_path).exists():
-            self.db_path = OrderedDict([
-                ('anatomical', ''),
-                ('functional', '')
+            self.data_paths = OrderedDict([
+                ('main', '')
             ])
             self.subject_pattern = ''
-            self.data_types = OrderedDict()
+            self.file_types = OrderedDict()
         else:
             data = self.__read_file(file_path)
-            self.db_path = data['db_path']
-            self.subject_pattern = data['subject_structure']['subject_pattern']
-            self.data_types = data['subject_structure']['data_types']
+            # Handle empty or invalid config file
+            if not data:
+                self.data_paths = OrderedDict([('main', '')])
+                self.subject_pattern = ''
+                self.file_types = OrderedDict()
+            # Support both old and new format during transition
+            elif 'data_paths' in data:
+                # New format
+                self.data_paths = data['data_paths']
+                self.subject_pattern = data['subject_pattern']
+                self.file_types = data['file_types']
+            else:
+                # Old format - convert to new format
+                self.data_paths = data['db_path']
+                self.subject_pattern = data['subject_structure']['subject_pattern']
+                self.file_types = data['subject_structure']['data_types']
 
     def __read_file(self, file_path: str):
         """Read the content of the file."""
@@ -46,10 +58,8 @@ class OptionFile:
         """Save the changes to the file."""
         with open(self.file_path, 'w') as file:
             self.data = OrderedDict([
-                ('db_path', self.db_path),
-                ('subject_structure', OrderedDict([
-                    ('subject_pattern', self.subject_pattern),
-                    ('data_types', self.data_types)
-                ]))
+                ('data_paths', self.data_paths),
+                ('subject_pattern', self.subject_pattern),
+                ('file_types', self.file_types)
             ])
             ordered_dump(self.data, file, default_flow_style=False)

@@ -181,7 +181,7 @@ class OptionWindow(QWidget, Ui_OptionsForm):
         
         if data_type:
             self.DescriptionLineEdit.setText(data_type.get('description', ''))
-            self.DirectoryLineEdit.setText(data_type.get('directory', ''))
+            self.DirectoryLineEdit.setText(data_type.get('folder', data_type.get('directory', '')))
             extensions_str = self.controller.format_extensions_for_display(selected_name)
             self.FileExtLineEdit.setText(extensions_str)
     
@@ -251,7 +251,7 @@ class OptionWindow(QWidget, Ui_OptionsForm):
         if selected_item:
             name = selected_item.text()
             directory = self.DirectoryLineEdit.text()
-            self.controller.update_data_type_directory(name, directory)
+            self.controller.update_data_type_folder(name, directory)
     
     def _on_extensions_edited(self):
         """Handle file extensions field editing."""

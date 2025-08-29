@@ -8,6 +8,7 @@ from ..models.SubjectDataModel import SubjectDataModel, SubjectData
 from ..services.DataCrawlerService import DataCrawlerService
 from ..services.SubjectLookupService import SubjectLookupService
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
+from ..workers.BidsSubjectsProcess import check_subject_conflicts
 
 
 class ImportSubjectsController(QObject):
@@ -218,14 +219,89 @@ class ImportSubjectsController(QObject):
             )
             return False
         
-        # Create and start worker
-        self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data)
+        # Check for subject conflicts before starting import
+        try:
+            existing_subjects = check_subject_conflicts(dataset_path, subjects_data)
+            overwrite_existing = False
+            
+            if existing_subjects:
+                # Show conflict resolution dialog
+                conflict_result = self._show_conflict_resolution_dialog(existing_subjects)
+                
+                if conflict_result == "cancel":
+                    return False  # User cancelled
+                elif conflict_result == "overwrite":
+                    overwrite_existing = True
+                elif conflict_result == "skip":
+                    overwrite_existing = False
+                    # Filter out conflicting subjects
+                    subjects_data = [s for s in subjects_data 
+                                   if f"sub-{s['subject_id']}" not in existing_subjects]
+                    
+                    if not subjects_data:
+                        QMessageBox.information(
+                            self._parent_widget,
+                            "No Subjects to Import",
+                            "All subjects already exist and were skipped."
+                        )
+                        return False
+        
+        except Exception as e:
+            QMessageBox.warning(
+                self._parent_widget,
+                "Error Checking Conflicts",
+                f"Failed to check for existing subjects: {str(e)}"
+            )
+            return False
+        
+        # Create and start worker with overwrite setting
+        self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data, overwrite_existing)
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
         self._worker.finished.connect(self._on_import_finished)
         self._worker.start()
         
         return True
     
+    def _show_conflict_resolution_dialog(self, existing_subjects: List[str]) -> str:
+        """
+        Show dialog to resolve subject conflicts.
+        
+        Args:
+            existing_subjects: List of existing subject IDs that conflict
+            
+        Returns:
+            String indicating user choice: "cancel", "overwrite", or "skip"
+        """
+        subject_list = '\n'.join([f"• {subject}" for subject in existing_subjects])
+        
+        msg = QMessageBox(self._parent_widget)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Subject Conflicts Detected")
+        
+        if len(existing_subjects) == 1:
+            msg.setText(f"The following subject already exists in the dataset:\n\n{subject_list}")
+        else:
+            msg.setText(f"The following {len(existing_subjects)} subjects already exist in the dataset:\n\n{subject_list}")
+        
+        msg.setInformativeText("How would you like to proceed?")
+        
+        # Add custom buttons
+        overwrite_btn = msg.addButton("Overwrite Existing", QMessageBox.ButtonRole.AcceptRole)
+        skip_btn = msg.addButton("Skip These Subjects", QMessageBox.ButtonRole.RejectRole) 
+        cancel_btn = msg.addButton("Cancel Import", QMessageBox.ButtonRole.NoRole)
+        
+        msg.setDefaultButton(skip_btn)
+        msg.exec()
+        
+        clicked_button = msg.clickedButton()
+        
+        if clicked_button == overwrite_btn:
+            return "overwrite"
+        elif clicked_button == skip_btn:
+            return "skip"
+        else:  # cancel or close
+            return "cancel"
+
     def _on_progress_updated(self, progress: int):
         """Handle progress update from worker."""
         self.progress_updated.emit(progress)
