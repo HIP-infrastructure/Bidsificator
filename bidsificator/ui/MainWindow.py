@@ -70,6 +70,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.CreateSubjectPushButton.clicked.connect(self.create_subject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
         self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
+        
+        # Setup file tree context menu
+        self.fileTreeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.fileTreeView.customContextMenuRequested.connect(self.show_file_tree_context_menu)
+        
+        # Enable multi-selection in file tree for subject operations
+        self.fileTreeView.setSelectionMode(self.fileTreeView.SelectionMode.ExtendedSelection)
 
         #    Second tab
         #       Add/Remove file
@@ -1014,3 +1021,194 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def create_lookup_template(self):
         """Create a lookup table template file."""
         self._main_controller.import_subjects_controller.create_lookup_template()
+
+    def show_file_tree_context_menu(self, position):
+        """Show context menu for file tree items."""
+        index = self.fileTreeView.indexAt(position)
+        if not index.isValid():
+            return
+        
+        # Get the file system model and file path
+        model = self.fileTreeView.model()
+        file_path = model.filePath(index)
+        file_name = model.fileName(index)
+        
+        # Check if this is a BIDS subject folder (starts with "sub-" and is a directory)
+        if not (model.isDir(index) and file_name.startswith("sub-")):
+            return
+        
+        # Get selected subjects (support multi-selection)
+        # Use selectedRows() to get unique rows instead of all column indexes
+        selected_indexes = self.fileTreeView.selectionModel().selectedRows()
+        if not selected_indexes:
+            selected_indexes = [index]
+        
+        # Filter to only BIDS subject directories
+        selected_subjects = []
+        for idx in selected_indexes:
+            if model.isDir(idx) and model.fileName(idx).startswith("sub-"):
+                selected_subjects.append({
+                    'name': model.fileName(idx),
+                    'path': model.filePath(idx),
+                    'index': idx
+                })
+        
+        if not selected_subjects:
+            return
+        
+        # Create context menu
+        context_menu = QMenu(self)
+        
+        # Add rename action (only for single selection)
+        if len(selected_subjects) == 1:
+            rename_action = context_menu.addAction("Rename Subject")
+            rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
+        
+        # Add delete action (single or multiple selection)
+        delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
+        delete_action = context_menu.addAction(delete_text)
+        delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
+        
+        # Show context menu
+        context_menu.popup(QCursor.pos())
+        
+    def rename_subject_from_tree(self, subject_info):
+        """Rename a BIDS subject from the file tree."""
+        old_subject_id = subject_info['name']
+        
+        # Prompt user for new subject ID
+        new_subject_id, ok = QInputDialog.getText(
+            self,
+            "Rename Subject",
+            f"Enter new name for subject '{old_subject_id}':",
+            text=old_subject_id
+        )
+        
+        if not ok or not new_subject_id.strip():
+            return
+        
+        new_subject_id = new_subject_id.strip()
+        
+        if new_subject_id == old_subject_id:
+            return  # No change
+        
+        # Validate new subject ID
+        is_valid, error = ValidationService.validate_subject_name(new_subject_id)
+        if not is_valid:
+            QMessageBox.warning(self, "Invalid Subject ID", error)
+            return
+        
+        # Check if dataset is loaded and get BidsFolder
+        if not self._main_controller.is_dataset_loaded():
+            QMessageBox.warning(self, "No Dataset", "No dataset is currently loaded")
+            return
+        
+        # Use the PatientTableController to rename the subject
+        if self.tableWidget._controller:
+            # First check if new subject ID already exists
+            dataset_path = self._get_dataset_path()
+            if not dataset_path:
+                QMessageBox.warning(self, "Error", "Could not get dataset path")
+                return
+                
+            bids_folder = BidsFolder(dataset_path)
+            if bids_folder.get_bids_subject(new_subject_id):
+                QMessageBox.warning(
+                    self, 
+                    "Duplicate Subject ID", 
+                    f"Subject ID '{new_subject_id}' already exists"
+                )
+                return
+            
+            # Perform the rename using the controller
+            success = self.tableWidget._controller.update_subject_field(
+                old_subject_id, "subject_id", new_subject_id
+            )
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Subject Renamed",
+                    f"Subject '{old_subject_id}' has been renamed to '{new_subject_id}'"
+                )
+                # UI update will be handled by the controller signals
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Rename Failed",
+                    f"Failed to rename subject '{old_subject_id}'"
+                )
+                
+    def delete_subjects_from_tree(self, subjects_info):
+        """Delete BIDS subjects from the file tree."""
+        if not subjects_info:
+            return
+        
+        # Check if dataset is loaded
+        if not self._main_controller.is_dataset_loaded():
+            QMessageBox.warning(self, "No Dataset", "No dataset is currently loaded")
+            return
+        
+        # Prepare confirmation message
+        if len(subjects_info) == 1:
+            subject_name = subjects_info[0]['name']
+            message = f"Are you sure you want to delete subject '{subject_name}'?\n\n" \
+                     f"This will permanently delete the subject folder and all its files."
+            title = "Delete Subject"
+        else:
+            subject_names = [s['name'] for s in subjects_info]
+            message = f"Are you sure you want to delete {len(subjects_info)} subjects?\n\n" \
+                     f"Subjects: {', '.join(subject_names)}\n\n" \
+                     f"This will permanently delete all subject folders and their files."
+            title = "Delete Multiple Subjects"
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # Default to No for safety
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Perform deletions using the PatientTableController
+        if not self.tableWidget._controller:
+            QMessageBox.critical(self, "Error", "Table controller not available")
+            return
+        
+        failed_deletions = []
+        successful_deletions = []
+        
+        for subject_info in subjects_info:
+            subject_id = subject_info['name']
+            success = self.tableWidget._controller.delete_subject(subject_id)
+            
+            if success:
+                successful_deletions.append(subject_id)
+            else:
+                failed_deletions.append(subject_id)
+        
+        # Show results
+        if successful_deletions and not failed_deletions:
+            if len(successful_deletions) == 1:
+                QMessageBox.information(
+                    self,
+                    "Subject Deleted",
+                    f"Subject '{successful_deletions[0]}' has been deleted successfully"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Subjects Deleted",
+                    f"{len(successful_deletions)} subjects have been deleted successfully"
+                )
+        elif failed_deletions:
+            error_msg = f"Failed to delete: {', '.join(failed_deletions)}"
+            if successful_deletions:
+                error_msg = f"Partial success. Successfully deleted: {', '.join(successful_deletions)}\n" + error_msg
+            QMessageBox.critical(self, "Deletion Failed", error_msg)
+        
+        # UI update will be handled by the controller signals
