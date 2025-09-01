@@ -1,5 +1,6 @@
 """Controller for batch subject import operations."""
 
+import os
 from typing import List, Dict, Any, Optional, Tuple
 from PyQt6.QtWidgets import QWidget, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -38,7 +39,15 @@ class ImportSubjectsController(QObject):
         self._file_editor_controller = file_editor_controller
         self._model = SubjectDataModel()
         self._worker: Optional[ImportBidsSubjectsWorker] = None
-        self._config_path = 'bidsificator/config/config.yaml'
+        # Use absolute path relative to the package location
+        self._config_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "config",
+                "config.yaml"
+            )
+        )
         self._lookup_table_path: Optional[str] = None
         self._subject_mapping: Dict[str, str] = {}
     

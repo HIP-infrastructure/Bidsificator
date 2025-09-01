@@ -436,7 +436,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def parse_subject_to_import(self):
         """Parse subjects for import using the controller."""
-        self._main_controller.parse_subjects_to_import('bidsificator/config/config.yaml')
+        # Use absolute path relative to the package location
+        config_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "config",
+                "config.yaml"
+            )
+        )
+        self._main_controller.parse_subjects_to_import(config_path)
         # UI update will be handled by controller signal
 
     def update_import_subject_fileList(self):
