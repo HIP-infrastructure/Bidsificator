@@ -875,8 +875,15 @@
     </property>
     <addaction name="actionDatabase_Configuration"/>
    </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionAbout"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuOptions"/>
+   <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionLoad_Bids_Dataset_Folder">
@@ -907,6 +914,11 @@
   <action name="actionDatabase_Configuration">
    <property name="text">
     <string>Database</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>About Bidsificator</string>
    </property>
   </action>
  </widget>
