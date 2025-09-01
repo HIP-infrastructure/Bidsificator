@@ -21,6 +21,7 @@ from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
+from ..ui.AboutDialog import AboutDialog
 from ..services.FileDetectionService import FileDetectionService
 from ..services.ImportService import ImportService
 from ..services.ValidationService import ValidationService
@@ -69,6 +70,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionNew_Bids_Dataset.triggered.connect(self.create_dataset)
         self.actionOpen_Bids_Dataset.triggered.connect(self.open_dataset)
         self.actionDatabase_Configuration.triggered.connect(self.open_db_options)
+        self.actionAbout.triggered.connect(self.show_about_dialog)
 
         # Connect UI
         #    First tab
@@ -211,6 +213,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def open_db_options(self):
         self.__optionWindow = OptionWindow()
         self.__optionWindow.show()
+    
+    def show_about_dialog(self):
+        """Show the About dialog."""
+        about_dialog = AboutDialog(self)
+        about_dialog.exec()
 
     def create_dataset(self):
         """Create a new BIDS dataset using the controller."""

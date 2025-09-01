@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.5.0"
+version = "1.5.2"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
@@ -30,6 +30,9 @@ bidsificator-api = "bidsificator.api:main"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.bidsificator]
+copyright = "© 2025 CHUV - Lausanne University Hospital"
 
 [tool.codespell]
 # Ref: https://github.com/codespell-project/codespell#using-a-config-file

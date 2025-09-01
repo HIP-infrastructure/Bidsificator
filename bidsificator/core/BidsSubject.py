@@ -209,13 +209,61 @@ class BidsSubject:
         PyIFile = wrapper.PyIFile(str(eeg_file_path).encode('utf-8'), False)
         sampling_frequency = PyIFile.get_sampling_frequency()
         trigger_count = PyIFile.get_trigger_count()
+        note_count = PyIFile.get_note_count()
+        
+        # Collect all events (triggers and notes) with their timestamps
+        events = []
+        
+        # Add triggers
+        for i in range(trigger_count):
+            trigger = PyIFile.get_trigger(i)
+            onset = trigger.Sample() / sampling_frequency
+            events.append({
+                'onset': onset,
+                'duration': 'n/a',
+                'trial_type': trigger.Sample(),
+                'response_time': trigger.Code(),
+                'stim_file': 'n/a',
+                'value': 'n/a',
+                'event_type': 'trigger',
+                'annots': 'n/a'
+            })
+        
+        # Add notes/annotations
+        for i in range(note_count):
+            note = PyIFile.get_note(i)
+            onset = note.Sample() / sampling_frequency
+            note_text = note.Description().decode('utf-8') if isinstance(note.Description(), bytes) else note.Description()
+            
+            events.append({
+                'onset': onset,
+                'duration': 'n/a',
+                'trial_type': 'n/a',
+                'response_time': 'n/a',
+                'stim_file': 'n/a',
+                'value': 'n/a',
+                'event_type': 'annotation',
+                'annots': note_text
+            })
+        
+        # Sort events chronologically by onset time
+        events.sort(key=lambda x: x['onset'])
+        
+        # Write to TSV file
         with open(tsv_file_path, 'w', newline='') as f:
             writer = csv.writer(f, delimiter='\t')
-            writer.writerow(["onset", "duration", "trial_type", "response_time", "stim_file", "value"])
-            for i in range(trigger_count):
-                trigger = PyIFile.get_trigger(i)
-                onset = trigger.Sample() / sampling_frequency
-                writer.writerow([onset, "n/a", trigger.Sample(), trigger.Code(), "n/a", "n/a"])
+            writer.writerow(["onset", "duration", "trial_type", "response_time", "stim_file", "value", "event_type", "annots"])
+            for event in events:
+                writer.writerow([
+                    event['onset'],
+                    event['duration'],
+                    event['trial_type'],
+                    event['response_time'],
+                    event['stim_file'],
+                    event['value'],
+                    event['event_type'],
+                    event['annots']
+                ])
 
     def generate_channels_file(self, eeg_file_path: str, file_entities: dict):
         base_file_path = str(Path(eeg_file_path).parent / BidsSubject.define_bids_functionnal_string(file_entities))
