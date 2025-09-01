@@ -1,6 +1,21 @@
-db_path:
-  anatomical: ''
-  functional: ''
-subject_structure:
-  subject_pattern: ''
-  data_types: {}
+# Bidsificator Configuration Template
+# Copy this file to config.yaml and customize for your data structure
+
+# Data source paths
+data_paths:
+  # Option 1: Single database (most common)
+  main: ""
+  
+  # Option 2: Separate databases (uncomment if needed)
+  # anatomical: ""
+  # functional: ""
+
+# How subjects are named (glob pattern)
+# Examples:
+#   - Lyon format: "*_*_*" (HOSPITAL_YEAR_PATIENT)
+#   - Grenoble format: "sub-*" (sub-ID)
+#   - Generic: "PAT_*" (PAT_ID)
+subject_pattern: ""
+
+# File types to find for each subject
+file_types: {}
