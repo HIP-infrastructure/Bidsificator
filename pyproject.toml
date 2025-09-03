@@ -12,6 +12,7 @@ pyqt6 = "^6.8.1"
 
 # bids
 numpy = "1.26"
+pandas = "^2.0.0"
 dicom2nifti = ">=2.4.10"
 bids_validator = ">=1.14.5"
 

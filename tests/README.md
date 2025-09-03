@@ -10,6 +10,12 @@ This directory contains test scripts for various components of the Bidsificator 
   poetry run python tests/test_schema.py
   ```
 
+### Core Classes Tests  
+- **`test_bids_subject_schema.py`** - Comprehensive test of the improved schema-driven BidsSubject
+  ```bash
+  poetry run python tests/test_bids_subject_schema.py
+  ```
+
 ### Converter System Tests
 - **`test_converters.py`** - Comprehensive test of the converter system
   ```bash
@@ -29,8 +35,14 @@ This directory contains test scripts for various components of the Bidsificator 
   poetry run python tests/debug_data_range.py <path_to_trc_file>
   ```
 
+- **`check_all_modalities.py`** - Check all BIDS modalities available in schema
+  ```bash
+  poetry run python tests/check_all_modalities.py
+  ```
+
 ## Usage Notes
 
 - All TRC-related tests require a TRC file path to be provided via command line argument or `TRC_TEST_FILE` environment variable
 - No hardcoded file paths are used in the tests
 - Tests are designed to be portable across different systems and datasets
+- Schema-driven tests automatically adapt to BIDS schema changes
