@@ -206,8 +206,8 @@ def test_improved_bids_subject():
             
             # Check if files were created
             json_file = test_data_path.with_suffix('.json')
-            channels_file = test_data_path.parent / 'sub-P001_task-test_ieeg_channels.tsv'
-            events_file = test_data_path.parent / 'sub-P001_task-test_ieeg_events.tsv'
+            channels_file = test_data_path.parent / 'sub-P001_task-test_channels.tsv'
+            events_file = test_data_path.parent / 'sub-P001_task-test_events.tsv'
             
             print(f"✅ JSON sidecar created: {json_file.exists()}")
             print(f"✅ Channels file created: {channels_file.exists()}")

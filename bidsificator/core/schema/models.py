@@ -37,7 +37,7 @@ class BidsEntity:
                 return True
             except ValueError:
                 return False
-        return bool(re.match(self.pattern, value))
+        return bool(re.fullmatch(self.pattern, value))
     
     def format_value(self, value: str) -> str:
         """Format value with entity prefix"""

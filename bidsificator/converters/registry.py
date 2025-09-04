@@ -30,11 +30,19 @@ class ConverterRegistry:
         """Register built-in converters - automatically discovers and registers all converters"""
         
         # TRC converters (multiple options for same source format)
+        # PyEEGFormat converter - higher priority, more reliable
+        try:
+            from .trc_to_edf_pyeeg import TrcToEdfConverterPyEEG
+            self.register(TrcToEdfConverterPyEEG())  # Primary choice (priority 10)
+        except ImportError as e:
+            print(f"Warning: Could not import PyEEGFormat TRC to EDF converter: {e}")
+            
+        # MNE-based converter as fallback
         try:
             from .trc_to_edf import TrcToEdfConverter
-            self.register(TrcToEdfConverter())  # Primary choice (priority 1)
+            self.register(TrcToEdfConverter())  # Fallback choice (priority 1)
         except ImportError as e:
-            print(f"Warning: Could not import TRC to EDF converter: {e}")
+            print(f"Warning: Could not import MNE TRC to EDF converter: {e}")
         
         try:
             from .trc_to_brainvision import TrcToBrainVisionConverter

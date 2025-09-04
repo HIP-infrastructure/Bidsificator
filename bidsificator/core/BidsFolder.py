@@ -155,7 +155,9 @@ class BidsFolder:
             writer = csv.writer(f, delimiter='\t')
             writer.writerow(["participant_id"] + all_optional_keys)
             for subject in self.__bids_subjects:
-                row = [subject.get_subject_id()]
+                # participant_id should have 'sub-' prefix for BIDS compliance
+                participant_id = f"sub-{subject.get_subject_id()}"
+                row = [participant_id]
                 for key in all_optional_keys:
                     row.append(subject.get_optional_keys().get(key, ""))
                 writer.writerow(row)

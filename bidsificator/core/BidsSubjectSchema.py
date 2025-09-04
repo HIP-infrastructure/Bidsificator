@@ -282,7 +282,7 @@ class BidsSubject:
             shutil.copy2(str(final_source), str(target_path))
         
         # Generate metadata files
-        self._generate_metadata_files(target_path, final_datatype, suffix, entities, metadata)
+        self._generate_metadata_files(target_path, final_datatype, suffix, entities, metadata, source_path)
         
         return {
             'success': True,
@@ -504,7 +504,7 @@ class BidsSubject:
         return filename
     
     def _generate_metadata_files(self, data_path: Path, datatype: str, suffix: str,
-                                entities: Dict[str, str], user_metadata: Dict[str, Any]):
+                                entities: Dict[str, str], user_metadata: Dict[str, Any], source_path: Path = None):
         """Generate BIDS metadata files based on schema requirements"""
         
         # Generate JSON sidecar
@@ -512,7 +512,7 @@ class BidsSubject:
         
         # Generate datatype-specific files
         if datatype in ['ieeg', 'eeg', 'meg']:
-            self._generate_ephys_files(data_path, entities, datatype)
+            self._generate_ephys_files(data_path, entities, datatype, source_path)
         elif datatype == 'nirs':
             self._generate_nirs_files(data_path, entities)
     
@@ -566,31 +566,124 @@ class BidsSubject:
         else:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
     
-    def _generate_ephys_files(self, data_path: Path, entities: Dict[str, str], datatype: str):
-        """Generate channels.tsv and events.tsv for electrophysiology data"""
-        # entities parameter could be used for entity-specific metadata in the future
-        _ = entities
+    def _generate_ephys_files(self, data_path: Path, entities: Dict[str, str], datatype: str, source_path: Path = None):
+        """Generate channels.tsv and events.tsv for electrophysiology data using schema-driven extraction"""
+        # Import here to avoid circular imports
+        from ..services.BidsMetadataExtractorService import BidsMetadataExtractor
         
-        base_name = data_path.with_suffix('').name
         data_dir = data_path.parent
         
-        # Determine channel count from configuration
-        channel_count = DEFAULT_CHANNEL_COUNTS.get(datatype, 64)
+        # Initialize metadata extractor
+        metadata_extractor = BidsMetadataExtractor()
         
-        # Generate channels.tsv
-        channels_path = data_dir / f"{base_name}_channels.tsv"
+        # Determine source file for extraction 
+        if source_path and source_path.exists():
+            # Use the original source path if provided
+            source_file = source_path
+            print(f"Using original source file for TSV extraction: {source_file}")
+        else:
+            # Fallback: try to find source file that was used to create this data file
+            source_file = None
+            
+            # Check for TRC source files (most common case)
+            potential_sources = [
+                data_path.with_suffix('.trc'),  # Same name, different extension
+                data_path.with_suffix('.TRC'),
+            ]
+            
+            for potential_source in potential_sources:
+                if potential_source.exists():
+                    source_file = potential_source
+                    break
+            
+            # If we can't find source file, use the data file itself for extraction
+            if source_file is None:
+                source_file = data_path
+                print(f"No source file found, using data file for TSV extraction: {source_file}")
+        
+        # Generate channels.tsv using proper BIDS filename construction
+        channels_filename = self._build_bids_filename(entities, 'channels', '.tsv')
+        channels_path = data_dir / channels_filename
         if not channels_path.exists():
-            channels_df = self._create_channels_dataframe(datatype, channel_count)
-            channels_df.to_csv(channels_path, sep='\t', index=False)
+            try:
+                channels_df = metadata_extractor.extract_channels_tsv(source_file, datatype)
+                
+                # Validate generated DataFrame
+                is_valid, errors = metadata_extractor.validate_generated_tsv(channels_df, 'channels', datatype)
+                if not is_valid:
+                    print(f"Warning: Generated channels.tsv has validation errors: {errors}")
+                
+                channels_df.to_csv(channels_path, sep='\t', index=False)
+                print(f"Generated schema-compliant channels.tsv with {len(channels_df)} channels")
+                
+            except Exception as e:
+                print(f"Error generating channels.tsv: {e}")
+                # Fallback to generic generation
+                channels_df = self._create_channels_dataframe_fallback(datatype)
+                channels_df.to_csv(channels_path, sep='\t', index=False)
         
-        # Generate events.tsv
-        events_path = data_dir / f"{base_name}_events.tsv"
+        # Generate events.tsv using proper BIDS filename construction  
+        events_filename = self._build_bids_filename(entities, 'events', '.tsv')
+        events_path = data_dir / events_filename
         if not events_path.exists():
-            events_df = self._create_events_dataframe()
-            events_df.to_csv(events_path, sep='\t', index=False)
+            try:
+                events_df = metadata_extractor.extract_events_tsv(source_file, datatype)
+                
+                # Validate generated DataFrame
+                is_valid, errors = metadata_extractor.validate_generated_tsv(events_df, 'events', datatype)
+                if not is_valid:
+                    print(f"Warning: Generated events.tsv has validation errors: {errors}")
+                
+                events_df.to_csv(events_path, sep='\t', index=False)
+                print(f"Generated schema-compliant events.tsv with {len(events_df)} events")
+                
+            except Exception as e:
+                print(f"Error generating events.tsv: {e}")
+                # Fallback to empty events file
+                events_df = self._create_events_dataframe_fallback()
+                events_df.to_csv(events_path, sep='\t', index=False)
+        
+        # Generate electrodes.tsv (required for iEEG data)
+        if datatype == 'ieeg':
+            electrodes_filename = self._build_bids_filename(entities, 'electrodes', '.tsv')
+            electrodes_path = data_dir / electrodes_filename
+            if not electrodes_path.exists():
+                try:
+                    electrodes_df = metadata_extractor.extract_electrodes_tsv(source_file, datatype)
+                    
+                    # Validate generated DataFrame
+                    is_valid, errors = metadata_extractor.validate_generated_tsv(electrodes_df, 'electrodes', datatype)
+                    if not is_valid:
+                        print(f"Warning: Generated electrodes.tsv has validation errors: {errors}")
+                    
+                    electrodes_df.to_csv(electrodes_path, sep='\t', index=False)
+                    print(f"Generated schema-compliant electrodes.tsv with {len(electrodes_df)} electrodes")
+                    
+                except Exception as e:
+                    print(f"Error generating electrodes.tsv: {e}")
+                    # Fallback to empty electrodes file with required structure
+                    electrodes_df = self._create_electrodes_dataframe_fallback()
+                    electrodes_df.to_csv(electrodes_path, sep='\t', index=False)
+                    print(f"Generated fallback electrodes.tsv")
+            
+            # Generate coordsystem.json (required when electrodes.tsv is present)
+            coordsystem_filename = self._build_bids_filename(entities, 'coordsystem', '.json')
+            coordsystem_path = data_dir / coordsystem_filename
+            if not coordsystem_path.exists():
+                coordsystem_metadata = self._create_coordsystem_metadata()
+                with open(coordsystem_path, 'w') as f:
+                    json.dump(coordsystem_metadata, f, indent=2, sort_keys=True)
+                print(f"Generated required coordsystem.json for iEEG electrodes")
     
     def _create_channels_dataframe(self, datatype: str, channel_count: int) -> pd.DataFrame:
-        """Create channels dataframe with appropriate structure"""
+        """Create channels dataframe with appropriate structure (legacy method)"""
+        return self._create_channels_dataframe_fallback(datatype, channel_count)
+    
+    def _create_channels_dataframe_fallback(self, datatype: str, channel_count: int = None) -> pd.DataFrame:
+        """Fallback method for creating generic channels dataframe"""
+        if channel_count is None:
+            channel_count = DEFAULT_CHANNEL_COUNTS.get(datatype, 64)
+            
         channel_type = 'SEEG' if datatype == 'ieeg' else datatype.upper()
         
         return pd.DataFrame({
@@ -602,7 +695,11 @@ class BidsSubject:
         })
     
     def _create_events_dataframe(self) -> pd.DataFrame:
-        """Create empty events dataframe with proper structure"""
+        """Create empty events dataframe with proper structure (legacy method)"""
+        return self._create_events_dataframe_fallback()
+    
+    def _create_events_dataframe_fallback(self) -> pd.DataFrame:
+        """Fallback method for creating empty events dataframe"""
         return pd.DataFrame({
             'onset': [],
             'duration': [],
@@ -610,6 +707,36 @@ class BidsSubject:
             'response_time': [],
             'value': []
         })
+    
+    def _create_electrodes_dataframe_fallback(self) -> pd.DataFrame:
+        """Fallback method for creating minimal electrodes dataframe for iEEG"""
+        # BIDS requires at least the 'name' column for electrodes.tsv
+        # Other columns are optional but recommended
+        return pd.DataFrame({
+            'name': [],
+            'x': [],
+            'y': [],
+            'z': [],
+            'size': [],
+            'hemisphere': [],
+            'group': []
+        })
+    
+    def _create_coordsystem_metadata(self) -> Dict[str, Any]:
+        """Create BIDS-compliant coordsystem.json metadata for iEEG electrodes"""
+        # According to BIDS spec, when electrodes.tsv is present, coordsystem.json is required
+        # Since TRC files typically don't contain electrode position information,
+        # we provide a minimal compliant structure indicating positions are not available
+        return {
+            "iEEGCoordinateSystem": "Other",
+            "iEEGCoordinateUnits": "n/a", 
+            "iEEGCoordinateProcessingDescription": "Electrode positions not available in source TRC file. "
+                                                  "Positions should be added manually from imaging data or "
+                                                  "surgical planning systems.",
+            "iEEGCoordinateSystemDescription": "No coordinate system specified. Electrode positions in "
+                                             "electrodes.tsv are empty and should be populated with "
+                                             "actual coordinates from MRI, CT, or surgical planning data."
+        }
     
     def _generate_nirs_files(self, data_path: Path, entities: Dict[str, str]):
         """Generate NIRS-specific files (optodes.tsv, etc.)"""

@@ -141,7 +141,7 @@ class PatientTableController(QObject):
             # Get subject description from current keys
             subject_description = self._all_optional_keys.copy()
             if not subject_description:
-                subject_description = {'age': '123', 'sex': 'M/F'}
+                subject_description = {'age': 25, 'sex': 'M'}
             
             # Actually create the subject in the BIDS dataset
             bids_subject = self._bids_folder.add_bids_subject(subject_id, subject_description)

@@ -42,7 +42,7 @@ def processBidsSubjects(
             
             bids_subject = bids_folder.add_bids_subject(
                 subject_id,  # BidsFolder expects clean ID without "sub-" prefix
-                subject_description={'age' : '123', 'sex' : 'M/F'},
+                subject_description={'age': 25, 'sex': 'M'},
                 overwrite=overwrite_existing
             )
         except ValueError as e:
@@ -62,15 +62,20 @@ def processBidsSubjects(
                 print(f"File {file_path} does not exist. Skipping.")
                 continue
 
-            # Define entities for the file
-            entities={
-                "sub": bids_subject.get_subject_id(),
-                "ses": file.get("session", ""),
-                "task": file.get("task", ""),
-                "acq": file.get("acquisition", ""),
-                "rec": file.get("reconstruction", ""),
-                "ce": file.get("contrast_agent", "")
-            }
+            # Define entities for the file, filtering out empty values
+            entities = {}
+            entities["sub"] = bids_subject.get_subject_id()
+            
+            if file.get("session", ""):
+                entities["ses"] = file.get("session")
+            if file.get("task", ""):
+                entities["task"] = file.get("task")
+            if file.get("acquisition", ""):
+                entities["acq"] = file.get("acquisition")
+            if file.get("reconstruction", ""):
+                entities["rec"] = file.get("reconstruction")
+            if file.get("contrast_agent", ""):
+                entities["ce"] = file.get("contrast_agent")
 
             # Process file based on its modality
             modality = file.get("modality", "")

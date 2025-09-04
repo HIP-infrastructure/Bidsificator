@@ -27,14 +27,20 @@ def processBidsFiles(
             continue
 
         # Define entities for the file
-        entities={
-            "sub": bids_subject.get_subject_id(),
-            "ses": file.get("session", ""),
-            "task": file.get("task", ""),
-            "acq": file.get("acquisition", ""),
-            "rec": file.get("reconstruction", ""),
-            "ce": file.get("contrast_agent", "")
-        }
+        # Build entities dict, filtering out empty values
+        entities = {}
+        entities["sub"] = bids_subject.get_subject_id()
+        
+        if file.get("session", ""):
+            entities["ses"] = file.get("session")
+        if file.get("task", ""):
+            entities["task"] = file.get("task")
+        if file.get("acquisition", ""):
+            entities["acq"] = file.get("acquisition")
+        if file.get("reconstruction", ""):
+            entities["rec"] = file.get("reconstruction")
+        if file.get("contrast_agent", ""):
+            entities["ce"] = file.get("contrast_agent")
 
         # Process file based on its modality
         modality = file.get("modality", "")
