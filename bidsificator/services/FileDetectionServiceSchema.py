@@ -43,13 +43,9 @@ class FileDetectionService:
     """Schema-driven file detection with conversion awareness."""
     
     def __init__(self, schema_manager: BidsSchemaManager = None):
-        self.schema_manager = schema_manager or BidsSchemaManager()
+        self.schema_manager = schema_manager or BidsSchemaManager.get_instance()
         self.converter_registry = ConverterRegistry()
         self._modality_cache: Dict[str, ModalityInfo] = {}
-        
-        # Ensure schema is loaded
-        if not self.schema_manager._raw_schema:
-            self.schema_manager.load_schema()
         
         self._build_modality_cache()
     

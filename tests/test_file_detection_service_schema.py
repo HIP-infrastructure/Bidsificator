@@ -17,9 +17,8 @@ def test_file_detection_service():
     print("TESTING SCHEMA-DRIVEN FILE DETECTION SERVICE")
     print("=" * 70)
     
-    # Setup
-    schema_manager = BidsSchemaManager()
-    schema_manager.load_schema()
+    # Setup - get singleton and create detector
+    schema_manager = BidsSchemaManager.get_instance()
     detector = FileDetectionService(schema_manager)
     
     print("✅ Schema loaded and detector initialized")

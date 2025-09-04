@@ -51,15 +51,64 @@ class BidsSubject:
         self.subject_path = self._build_subject_path()
         self.subject_path.mkdir(parents=True, exist_ok=True)
         
+        # Create default BIDS folder structure (matching old behavior)
+        self._create_default_folders()
+        
         # Initialize converter registry
         self.converter_registry = ConverterRegistry()
         
         # Track optional metadata for this subject
         self.optional_metadata: Dict[str, Any] = {}
     
+    # Backward compatibility methods for existing controllers
+    def get_subject_id(self) -> str:
+        """Get subject ID (backward compatibility)"""
+        return self.subject_id
+    
+    def get_optional_keys(self) -> dict:
+        """Get optional metadata keys (backward compatibility)"""
+        return self.optional_metadata
+    
+    def update_optional_key(self, key: str, value: str = "n/a"):
+        """Update optional metadata key (backward compatibility)"""
+        self.optional_metadata[key] = value
+    
+    def add_optional_key(self, key: str, value: str = "n/a"):
+        """Add optional metadata key (backward compatibility)"""
+        self.optional_metadata[key] = value
+    
+    def add_optional_key_at(self, position: int, key: str, value: str = "n/a"):
+        """Add optional metadata key at specific position (backward compatibility)"""
+        # Convert dict to list, insert at position, convert back
+        items = list(self.optional_metadata.items())
+        items.insert(position, (key, value))
+        self.optional_metadata = dict(items)
+    
+    def remove_optional_key(self, key: str):
+        """Remove optional metadata key (backward compatibility)"""
+        if key in self.optional_metadata:
+            del self.optional_metadata[key]
+        else:
+            print("Key not found:", key)
+    
     def _build_subject_path(self) -> Path:
         """Build subject directory path"""
         return self.dataset_path / self._format_entity('sub', self.subject_id)
+    
+    def _create_default_folders(self):
+        """Create default BIDS folder structure for backward compatibility.
+        
+        Creates ses-pre and ses-post folders with anat and ieeg subdirectories,
+        matching the old BidsSubject behavior.
+        """
+        # Create session folders with datatype subdirectories
+        sessions = ["ses-pre", "ses-post"]
+        datatypes = ["anat", "ieeg"]  # Default datatypes for iEEG datasets
+        
+        for session in sessions:
+            for datatype in datatypes:
+                folder_path = self.subject_path / session / datatype
+                folder_path.mkdir(parents=True, exist_ok=True)
     
     def _format_entity(self, entity_key: str, entity_value: str) -> str:
         """Format entity with prefix (e.g., 'sub-01')"""
@@ -215,12 +264,12 @@ class BidsSubject:
         if not dt:
             raise ValueError(f"Unknown datatype: {final_datatype}")
         
-        # Validate entities against schema
-        self._validate_entities(entities, dt)
-        
         # Auto-detect suffix if not provided
         if not suffix:
             suffix = self._detect_suffix(final_source, final_datatype)
+        
+        # Validate entities against schema (suffix-specific validation)
+        self._validate_entities_for_suffix(entities, final_datatype, suffix)
         
         # Build BIDS-compliant path
         target_path = self._build_target_path(entities, final_datatype, suffix, final_source.suffix)
@@ -245,6 +294,107 @@ class BidsSubject:
             'converter_used': analysis.converter_name
         }
     
+    def _validate_entities_for_suffix(self, entities: Dict[str, str], datatype: str, suffix: str):
+        """
+        Validate entities using suffix-specific requirements from BIDS schema.
+        
+        This finds the correct sub-rule for the given suffix and validates
+        based on that sub-rule's requirements, not broad datatype aggregation.
+        """
+        # Get the raw schema data to access sub-rules
+        raw_schema = self.schema._raw_schema
+        datatype_rule = raw_schema.get('rules', {}).get('files', {}).get('raw', {}).get(datatype)
+        
+        if not datatype_rule:
+            # Fallback to minimal validation if no rule found
+            if 'sub' not in entities:
+                raise ValueError(f"Required entity 'sub' missing for {datatype} suffix '{suffix}'")
+            return
+        
+        # Find which sub-rule contains this suffix
+        matching_subrule = None
+        for subrule_name, subrule in datatype_rule.items():
+            if isinstance(subrule, dict) and 'suffixes' in subrule:
+                if suffix in subrule['suffixes']:
+                    matching_subrule = subrule
+                    break
+        
+        if not matching_subrule:
+            # Suffix not found in any sub-rule, use minimal validation
+            if 'sub' not in entities:
+                raise ValueError(f"Required entity 'sub' missing for {datatype} suffix '{suffix}'")
+            return
+        
+        # Validate based on the matching sub-rule's requirements
+        subrule_entities = matching_subrule.get('entities', {})
+        
+        # Check required entities for this specific sub-rule
+        for entity_name, requirement in subrule_entities.items():
+            if requirement == 'required':
+                # Map schema entity name to BIDS key
+                entity_key = self._map_entity_name_to_key(entity_name)
+                if entity_key not in entities:
+                    raise ValueError(f"Required entity '{entity_key}' missing for {datatype} suffix '{suffix}'")
+        
+        # Validate that provided entities are allowed for this specific sub-rule
+        subrule_allowed_entities = set(subrule_entities.keys())
+        for entity_key in entities:
+            entity_name = self._map_entity_key_to_name(entity_key)
+            # 'subject' is always implicitly allowed (required for all BIDS files)
+            if entity_name != 'subject' and entity_name not in subrule_allowed_entities:
+                raise ValueError(f"Entity '{entity_key}' not allowed for {datatype} suffix '{suffix}'")
+    
+    def _map_entity_key_to_name(self, entity_key: str) -> str:
+        """Map BIDS entity key to schema entity name using schema data."""
+        # Handle special cases: BIDS key to raw schema name
+        if entity_key == 'sub':
+            return 'subject'
+        elif entity_key == 'ses':
+            return 'session'
+        elif entity_key == 'acq':
+            return 'acquisition'
+        elif entity_key == 'rec':
+            return 'reconstruction'
+        elif entity_key == 'ce':
+            return 'ceagent'
+            
+        # Use schema's entity definitions to get proper mapping
+        for entity_name, entity_def in self.schema.entities.items():
+            if hasattr(entity_def, 'key') and entity_def.key == entity_key:
+                return entity_name
+        
+        # If not found in schema, return the key as-is (might be the same)
+        return entity_key
+    
+    def _map_entity_name_to_key(self, entity_name: str) -> str:
+        """Map schema entity name to BIDS entity key using schema data."""
+        # Handle special cases: raw schema entity names to BIDS keys
+        if entity_name == 'subject':
+            return 'sub'
+        elif entity_name == 'session':
+            return 'ses'
+        elif entity_name == 'acquisition':
+            return 'acq'
+        elif entity_name == 'reconstruction':
+            return 'rec'
+        elif entity_name == 'ceagent':
+            return 'ce'
+            
+        # Use schema's entity definitions to get proper mapping
+        entity_def = self.schema.entities.get(entity_name)
+        if entity_def and hasattr(entity_def, 'key'):
+            return entity_def.key
+        
+        # Check if the entity_name itself is a key in the entities
+        # (for cases where the raw schema uses the key name directly)
+        for entity_def in self.schema.entities.values():
+            if entity_def.key == entity_name:
+                return entity_name
+        
+        # If not found in schema, return the name as-is (might be the same)
+        return entity_name
+    
+    
     def _convert_file(self, source_path: Path, converter) -> tuple[Path, Dict[str, Any]]:
         """
         Convert file to BIDS-compliant format
@@ -266,18 +416,32 @@ class BidsSubject:
             return final_path, conv_metadata
     
     def _validate_entities(self, entities: Dict[str, str], datatype_def):
-        """Validate entities against schema rules"""
-        # Check required entities
-        for req_entity in datatype_def.required_entities:
-            if req_entity not in entities:
-                raise ValueError(f"Required entity '{req_entity}' missing for datatype '{datatype_def.name}'")
+        """Validate entities against schema rules with entity key/name mapping"""
         
-        # Check allowed entities
+        # Map entity keys to schema names for validation
+        def map_entity_key_to_name(entity_key: str) -> str:
+            """Map BIDS filename entity keys to schema entity names"""
+            if entity_key == 'sub':
+                return 'subject'
+            elif entity_key == 'ses':
+                return 'session'
+            else:
+                return entity_key
+        
+        # Check required entities (map schema names back to keys)
+        for req_entity_name in datatype_def.required_entities:
+            # Map schema entity name to BIDS key for checking
+            req_entity_key = 'sub' if req_entity_name == 'subject' else ('ses' if req_entity_name == 'session' else req_entity_name)
+            if req_entity_key not in entities:
+                raise ValueError(f"Required entity '{req_entity_key}' missing for datatype '{datatype_def.name}'")
+        
+        # Check allowed entities (map keys to names for validation)
         for entity_key in entities:
-            if entity_key not in datatype_def.allowed_entities:
+            entity_name = map_entity_key_to_name(entity_key)
+            if entity_name not in datatype_def.allowed_entities:
                 raise ValueError(f"Entity '{entity_key}' not allowed for datatype '{datatype_def.name}'")
         
-        # Validate entity values
+        # Validate entity values using BIDS keys
         for entity_key, entity_value in entities.items():
             if not self.schema.validate_entity_value(entity_key, entity_value):
                 raise ValueError(f"Invalid value '{entity_value}' for entity '{entity_key}'")
@@ -541,3 +705,54 @@ class BidsSubject:
                 datatypes.append(item.name)
         
         return sorted(datatypes)
+    
+    def set_subject_id(self, new_subject_id: str):
+        """
+        Set a new subject ID for the BidsSubject instance.
+        This method updates the subject ID and renames the subject folder and all files recursively with the new subject ID.
+
+        Args:
+            new_subject_id (str): The new subject ID to be set (without 'sub-' prefix).
+        """
+        import os
+        
+        # Check if the new subject ID is different from the current one
+        if new_subject_id != self.subject_id:
+            old_subject_id = self.subject_id
+            old_folder_name = f"sub-{old_subject_id}"
+            new_folder_name = f"sub-{new_subject_id}"
+            
+            # Current subject path
+            old_subject_path = self.subject_path
+            new_subject_path = self.dataset_path / new_folder_name
+            
+            try:
+                # Rename all files recursively with the new subject ID
+                if old_subject_path.exists():
+                    for root, dirs, files in os.walk(old_subject_path):
+                        for file in files:
+                            if old_folder_name in file:
+                                old_file_path = os.path.join(root, file)
+                                new_file_name = file.replace(old_folder_name, new_folder_name)
+                                new_file_path = os.path.join(root, new_file_name)
+                                try:
+                                    os.rename(old_file_path, new_file_path)
+                                except OSError as e:
+                                    print(f"Error renaming file {old_file_path} to {new_file_path}: {e}")
+                                    raise
+                    
+                    # Rename the subject folder itself
+                    try:
+                        os.rename(str(old_subject_path), str(new_subject_path))
+                    except OSError as e:
+                        print(f"Error renaming folder {old_subject_path} to {new_subject_path}: {e}")
+                        raise
+                    
+                    # Update the internal state
+                    self.subject_id = new_subject_id
+                    self.subject_path = new_subject_path
+                else:
+                    print(f"Warning: Subject path does not exist: {old_subject_path}")
+            except Exception as e:
+                print(f"Error in set_subject_id: {e}")
+                raise

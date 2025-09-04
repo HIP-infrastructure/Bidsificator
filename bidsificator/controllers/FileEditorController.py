@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any
 from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from ..services.ValidationService import ValidationService
+from ..services.ValidationServiceSchema import ValidationService
 
 
 class FileEditorController(QObject):
@@ -293,7 +293,8 @@ class FileEditorController(QObject):
             return "", current_tasks  # Return empty to indicate cancellation
         
         # Validate task name
-        is_valid, error = ValidationService.validate_task_name(new_task)
+        validation_service = ValidationService()
+        is_valid, error = validation_service.validate_task_name(new_task)
         if not is_valid:
             QMessageBox.warning(
                 self._parent_widget,
@@ -376,21 +377,23 @@ class FileEditorController(QObject):
             return False, f"File does not exist: {file_data['file_path']}"
         
         # Validate BIDS naming components if present
+        validation_service = ValidationService()
+        
         session = file_data.get("session", "")
         if session:
-            is_valid, error = ValidationService.validate_session_name(session)
+            is_valid, error = validation_service.validate_session_name(session)
             if not is_valid:
                 return False, f"Invalid session: {error}"
         
         task = file_data.get("task", "")
         if task:
-            is_valid, error = ValidationService.validate_task_name(task)
+            is_valid, error = validation_service.validate_task_name(task)
             if not is_valid:
                 return False, f"Invalid task: {error}"
         
         acquisition = file_data.get("acquisition", "")
         if acquisition:
-            is_valid, error = ValidationService.validate_acquisition_name(acquisition)
+            is_valid, error = validation_service.validate_acquisition_name(acquisition)
             if not is_valid:
                 return False, f"Invalid acquisition: {error}"
         
@@ -401,11 +404,27 @@ class FileEditorController(QObject):
         Get UI requirements for a specific modality.
         
         Args:
-            modality: Modality string
+            modality: Datatype string (e.g., "ieeg", "anat")
             
         Returns:
             Dictionary with UI element visibility requirements
         """
-        from ..services.FileDetectionService import FileDetectionService
-        return FileDetectionService.get_modality_requirements(modality)
+        from ..services.FileDetectionServiceSchema import FileDetectionService
+        
+        detection_service = FileDetectionService()
+        modality_info = detection_service.get_modality_info(modality)
+        
+        if modality_info:
+            return modality_info.ui_requirements
+        else:
+            # Default requirements if modality not found
+            return {
+                'show_session': True,
+                'show_task': False,
+                'show_contrast': False,
+                'show_acquisition': True,
+                'show_reconstruction': False,
+                'show_direction': False,
+                'show_run': True
+            }
     

@@ -24,9 +24,8 @@ def test_improved_bids_subject():
     print("TESTING IMPROVED SCHEMA-DRIVEN BIDSSUBJECT")
     print("=" * 70)
     
-    # Setup
-    schema_manager = BidsSchemaManager()
-    schema_manager.load_schema()
+    # Setup - get singleton instance
+    schema_manager = BidsSchemaManager.get_instance()
     
     with tempfile.TemporaryDirectory() as temp_dir:
         dataset_path = Path(temp_dir) / "test_dataset"

@@ -4,7 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from .BidsSubject import BidsSubject
+from .BidsSubjectSchema import BidsSubject
+from .schema import BidsSchemaManager
 
 
 class BidsFolder:
@@ -14,6 +15,9 @@ class BidsFolder:
         self.__path = root_path
         self.__path.mkdir(parents=True, exist_ok=True)
         self.__bids_subjects = []
+        
+        # Initialize schema manager for schema-driven operations (singleton)
+        self.schema_manager = BidsSchemaManager.get_instance()
 
         #read participants.tsv if it exists and return a list of subject_id and their optional keys
         participants_tsv_path = self.__path / "participants.tsv"
@@ -23,7 +27,15 @@ class BidsFolder:
                 for row in reader:
                     subject_id = row["participant_id"]
                     subject_optional_keys = {k: v for k, v in row.items() if k != "participant_id"}
-                    self.__bids_subjects.append(BidsSubject(self.__path, subject_id, subject_optional_keys))
+                    
+                    # Extract subject ID without 'sub-' prefix for new BidsSubject constructor
+                    # Old constructor expected full folder name (sub-coucou11), new expects just ID (coucou11)
+                    clean_subject_id = subject_id.replace("sub-", "") if subject_id.startswith("sub-") else subject_id
+                    
+                    bids_subject = BidsSubject(clean_subject_id, self.__path, self.schema_manager)
+                    # Store optional metadata in the subject instance
+                    bids_subject.optional_metadata.update(subject_optional_keys)
+                    self.__bids_subjects.append(bids_subject)
 
     def create_folders(self):
         code_path = self.__path / "code"
@@ -97,7 +109,9 @@ class BidsFolder:
             else:
                 raise ValueError(f"A subject with ID {subject_id} already exists.")
 
-        new_subject = BidsSubject(self.__path, subject_id, subject_description)
+        new_subject = BidsSubject(subject_id, self.__path, self.schema_manager)
+        # Store optional metadata in the subject instance
+        new_subject.optional_metadata.update(subject_description)
         self.__bids_subjects.append(new_subject)
         return new_subject
 
@@ -107,7 +121,7 @@ class BidsFolder:
                 #Remove subject from list
                 self.__bids_subjects.remove(subject)
                 #Remove subject folder from disk
-                subject_to_delete = self.__path / subject_id
+                subject_to_delete = self.__path / f"sub-{subject_id}"
                 shutil.rmtree(subject_to_delete)
                 return
 

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QWidget, QFileDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ..models.ImportSessionModel import ImportSessionModel
-from ..services.FileDetectionService import FileDetectionService
+from ..services.FileDetectionServiceSchema import FileDetectionService
 from ..services.ImportService import ImportService
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 

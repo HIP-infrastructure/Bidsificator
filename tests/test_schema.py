@@ -13,12 +13,8 @@ def test_schema_loading():
     print("Testing BIDS schema loading...")
     
     try:
-        # Create schema manager
-        manager = BidsSchemaManager()
-        
-        # Load schema
-        print("Loading schema...")
-        manager.load_schema()
+        # Get schema manager singleton
+        manager = BidsSchemaManager.get_instance()
         
         # Test basic info
         print(f"BIDS Version: {manager.get_bids_version()}")

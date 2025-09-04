@@ -13,9 +13,21 @@ from .file_extensions import FileExtensionRegistry
 
 
 class BidsSchemaManager:
-    """Manages the embedded BIDS schema"""
+    """Manages the embedded BIDS schema (Singleton)"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, schema_path: Path = None):
+        if cls._instance is None:
+            cls._instance = super(BidsSchemaManager, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self, schema_path: Path = None):
+        # Only initialize once
+        if BidsSchemaManager._initialized:
+            return
+            
         if schema_path is None:
             # Default to embedded schema
             schema_path = Path(__file__).parent.parent.parent / "schema" / "bids_schema.json"
@@ -29,8 +41,22 @@ class BidsSchemaManager:
         self.file_registry: Optional[FileExtensionRegistry] = None
         self._parser = BidsSchemaParser()
         
+        BidsSchemaManager._initialized = True
+        
+    @classmethod 
+    def get_instance(cls) -> 'BidsSchemaManager':
+        """Get the singleton instance, loading schema if needed"""
+        if cls._instance is None:
+            cls._instance = cls()
+        cls._instance.load_schema()
+        return cls._instance
+        
     def load_schema(self) -> None:
-        """Load and parse the BIDS schema"""
+        """Load and parse the BIDS schema (only once)"""
+        # If schema is already loaded, don't reload
+        if self._raw_schema is not None:
+            return
+            
         try:
             with open(self.schema_path, 'r', encoding='utf-8') as f:
                 self._raw_schema = json.load(f)

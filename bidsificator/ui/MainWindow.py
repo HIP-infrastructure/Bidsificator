@@ -22,9 +22,9 @@ from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
 from ..ui.AboutDialog import AboutDialog
-from ..services.FileDetectionService import FileDetectionService
+from ..services.FileDetectionServiceSchema import FileDetectionService
 from ..services.ImportService import ImportService
-from ..services.ValidationService import ValidationService
+from ..services.ValidationServiceSchema import ValidationService
 from ..services.DataCrawlerService import DataCrawlerService
 from ..controllers.MainController import MainController
 
@@ -55,6 +55,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Initialize Import Files tab
         self.__import_files_data = {"subject_id": "", "files": []}
         self.setup_import_files_tab()
+        
+        # Populate modality dropdown with schema-driven values
+        self.populate_modality_dropdown()
         
         # Initialize MVC Controller
         self._main_controller = MainController(self)
@@ -301,6 +304,68 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Initially disable form elements since no files are loaded
         self.set_import_form_enabled(False)
         
+    def populate_modality_dropdown(self):
+        """Populate ModalityComboBox with available datatypes from schema"""
+        try:
+            from ..services.FileDetectionServiceSchema import FileDetectionService
+            
+            # Clear existing items (both static ones from UI and any previous dynamic ones)
+            self.ModalityComboBox.clear()
+            
+            # Get available datatypes from schema
+            detection_service = FileDetectionService()
+            available_datatypes = detection_service.get_all_datatypes()
+            
+            # Create display format mapping for UI compatibility
+            # The existing UI logic expects formats like "ieeg (ieeg)", "T1w (anat)", etc.
+            datatype_mapping = {
+                'anat': [
+                    ('T1w (anat)', 'T1w'),
+                    ('T2w (anat)', 'T2w'),
+                    ('T1rho (anat)', 'T1rho'),
+                    ('T2* (anat)', 'T2star'),
+                    ('FLAIR (anat)', 'FLAIR'),
+                    ('CT (anat)', 'CT')
+                ],
+                'ieeg': [
+                    ('ieeg (ieeg)', 'ieeg'),
+                    ('photo (ieeg)', 'photo')
+                ],
+                'func': [
+                    ('BOLD (func)', 'bold')
+                ],
+                'dwi': [
+                    ('DWI (dwi)', 'dwi')
+                ],
+                'fmap': [
+                    ('fieldmap (fmap)', 'fieldmap')
+                ],
+                'perf': [
+                    ('ASL (perf)', 'asl')
+                ],
+                'beh': [
+                    ('events (beh)', 'events')
+                ]
+            }
+            
+            # Add items for available datatypes
+            for datatype in sorted(available_datatypes):
+                if datatype in datatype_mapping:
+                    for display_name, suffix in datatype_mapping[datatype]:
+                        self.ModalityComboBox.addItem(display_name)
+                        
+        except Exception as e:
+            print(f"Warning: Could not populate modality dropdown from schema: {e}")
+            # Fallback to basic items if schema loading fails
+            fallback_items = [
+                "T1w (anat)",
+                "T2w (anat)", 
+                "ieeg (ieeg)",
+                "photo (ieeg)"
+            ]
+            for item in fallback_items:
+                self.ModalityComboBox.addItem(item)
+        
     def save_current_form_to_data(self):
         """Save current form fields to the currently selected file's data"""
         if self.__current_selected_file_index >= 0 and self.__current_selected_file_index < len(self.__import_files_data["files"]):
@@ -428,6 +493,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         if not subject_name:
             return  # Don't create empty subjects
+        
+        # Strip "sub-" prefix if user included it (case-insensitive)
+        if subject_name.lower().startswith("sub-"):
+            subject_name = subject_name[4:]
         
         # Create subject using PatientTableWidget controller
         if self.tableWidget._controller:
@@ -623,11 +692,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def is_dicom_folder(self, folder_path):
         """Check if a folder contains DICOM files"""
-        return FileDetectionService.is_dicom_folder(folder_path)
+        from pathlib import Path
+        service = FileDetectionService()
+        return service.is_dicom_folder(Path(folder_path))
     
     def browse_for_file_to_add(self):
         modality = self.ModalityComboBox.currentText()
-        filters = FileDetectionService.get_file_filters()
+        service = FileDetectionService()
+        filters = service.get_file_filters()
 
         # For anatomy, allow both file and folder selection
         if "(anat)" in modality:
@@ -769,7 +841,53 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def detect_modality_from_file(self, file_path):
         """Auto-detect modality from filename and extension"""
-        return FileDetectionService.detect_modality_from_file(file_path)
+        from pathlib import Path
+        
+        # Use the new schema-driven service
+        service = FileDetectionService()
+        result = service.detect_file(Path(file_path))
+        
+        if not result.detected_datatype:
+            return None
+            
+        # Map detected datatype to display format used by dropdown
+        # This matches the format expected by the UI logic
+        datatype_to_display = {
+            'ieeg': 'ieeg (ieeg)',  # Default for most ieeg files
+            'anat': 'T1w (anat)',   # Default for most anatomy files  
+            'func': 'BOLD (func)',
+            'dwi': 'DWI (dwi)',
+            'fmap': 'fieldmap (fmap)', 
+            'perf': 'ASL (perf)',
+            'beh': 'events (beh)'
+        }
+        
+        # For specific file types, try to be more precise
+        filename = Path(file_path).name.lower()
+        
+        if result.detected_datatype == 'ieeg':
+            # Check for photo files
+            if any(ext in filename for ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']):
+                return 'photo (ieeg)'
+            else:
+                return 'ieeg (ieeg)'
+        elif result.detected_datatype == 'anat':
+            # Try to detect specific anatomy types from filename
+            if 't2w' in filename:
+                return 'T2w (anat)'
+            elif 't1rho' in filename:
+                return 'T1rho (anat)'
+            elif 't2star' in filename or 't2*' in filename:
+                return 'T2* (anat)'
+            elif 'flair' in filename:
+                return 'FLAIR (anat)'
+            elif 'ct' in filename:
+                return 'CT (anat)'
+            else:
+                return 'T1w (anat)'  # Default
+        
+        # For other datatypes, use the mapping
+        return datatype_to_display.get(result.detected_datatype, None)
 
     def get_next_acquisition_number(self, subject_id, session, modality, task):
         """Auto-increment acquisition for files with same properties"""
@@ -1151,7 +1269,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
     def rename_subject_from_tree(self, subject_info):
         """Rename a BIDS subject from the file tree."""
-        old_subject_id = subject_info['name']
+        old_folder_name = subject_info['name']
+        # Strip "sub-" prefix to get clean subject ID
+        old_subject_id = old_folder_name.replace("sub-", "", 1) if old_folder_name.startswith("sub-") else old_folder_name
         
         # Prompt user for new subject ID
         new_subject_id, ok = QInputDialog.getText(
@@ -1166,11 +1286,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         new_subject_id = new_subject_id.strip()
         
+        # Strip "sub-" prefix if user included it (case-insensitive)
+        if new_subject_id.lower().startswith("sub-"):
+            new_subject_id = new_subject_id[4:]
+        
         if new_subject_id == old_subject_id:
             return  # No change
         
         # Validate new subject ID
-        is_valid, error = ValidationService.validate_subject_name(new_subject_id)
+        validation_service = ValidationService()
+        is_valid, error = validation_service.validate_subject_name(new_subject_id)
         if not is_valid:
             QMessageBox.warning(self, "Invalid Subject ID", error)
             return
@@ -1228,12 +1353,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Prepare confirmation message
         if len(subjects_info) == 1:
-            subject_name = subjects_info[0]['name']
+            subject_folder_name = subjects_info[0]['name']
+            subject_name = subject_folder_name.replace("sub-", "", 1) if subject_folder_name.startswith("sub-") else subject_folder_name
             message = f"Are you sure you want to delete subject '{subject_name}'?\n\n" \
                      f"This will permanently delete the subject folder and all its files."
             title = "Delete Subject"
         else:
-            subject_names = [s['name'] for s in subjects_info]
+            subject_names = []
+            for s in subjects_info:
+                folder_name = s['name']
+                clean_name = folder_name.replace("sub-", "", 1) if folder_name.startswith("sub-") else folder_name
+                subject_names.append(clean_name)
             message = f"Are you sure you want to delete {len(subjects_info)} subjects?\n\n" \
                      f"Subjects: {', '.join(subject_names)}\n\n" \
                      f"This will permanently delete all subject folders and their files."
@@ -1260,7 +1390,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         successful_deletions = []
         
         for subject_info in subjects_info:
-            subject_id = subject_info['name']
+            subject_folder_name = subject_info['name']
+            # Strip "sub-" prefix to get clean subject ID
+            subject_id = subject_folder_name.replace("sub-", "", 1) if subject_folder_name.startswith("sub-") else subject_folder_name
             success = self.tableWidget._controller.delete_subject(subject_id)
             
             if success:

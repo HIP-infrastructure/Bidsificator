@@ -9,6 +9,8 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 import re
 
+from ..bids_constants import ENTITY_ORDER
+
 
 class EntityFormat(Enum):
     """Format types for BIDS entities"""
@@ -77,8 +79,7 @@ class BidsDatatype:
         filename_parts = []
         
         # Add entities in BIDS order
-        entity_order = ["sub", "ses", "task", "acq", "ce", "rec", "dir", "run", "echo"]
-        for entity_key in entity_order:
+        for entity_key in ENTITY_ORDER:
             if entity_key in entities:
                 filename_parts.append(f"{entity_key}-{entities[entity_key]}")
         

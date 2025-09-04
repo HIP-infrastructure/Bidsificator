@@ -16,6 +16,9 @@ class FileEditor(QWidget, Ui_FileEditor):
         self._controller = FileEditorController(self)
         self._setup_controller_connections()
         self._setup_ui_connections()
+        
+        # Populate modality dropdown with schema-driven values
+        self.populate_modality_dropdown()
 
     def _setup_controller_connections(self):
         """Set up connections between controller and UI."""
@@ -184,6 +187,68 @@ class FileEditor(QWidget, Ui_FileEditor):
         self.AcquisitionLineEdit.setEnabled(edit_mode)
         self.ReconstructionLineEdit.setEnabled(edit_mode)
         self.PathLineEdit.setEnabled(edit_mode)
+        
+    def populate_modality_dropdown(self):
+        """Populate ModalityComboBox with available datatypes from schema"""
+        try:
+            from ..services.FileDetectionServiceSchema import FileDetectionService
+            
+            # Clear existing items (both static ones from UI and any previous dynamic ones)
+            self.ModalityComboBox.clear()
+            
+            # Get available datatypes from schema
+            detection_service = FileDetectionService()
+            available_datatypes = detection_service.get_all_datatypes()
+            
+            # Create display format mapping for UI compatibility
+            # The existing UI logic expects formats like "ieeg (ieeg)", "T1w (anat)", etc.
+            datatype_mapping = {
+                'anat': [
+                    ('T1w (anat)', 'T1w'),
+                    ('T2w (anat)', 'T2w'),
+                    ('T1rho (anat)', 'T1rho'),
+                    ('T2* (anat)', 'T2star'),
+                    ('FLAIR (anat)', 'FLAIR'),
+                    ('CT (anat)', 'CT')
+                ],
+                'ieeg': [
+                    ('ieeg (ieeg)', 'ieeg'),
+                    ('photo (ieeg)', 'photo')
+                ],
+                'func': [
+                    ('BOLD (func)', 'bold')
+                ],
+                'dwi': [
+                    ('DWI (dwi)', 'dwi')
+                ],
+                'fmap': [
+                    ('fieldmap (fmap)', 'fieldmap')
+                ],
+                'perf': [
+                    ('ASL (perf)', 'asl')
+                ],
+                'beh': [
+                    ('events (beh)', 'events')
+                ]
+            }
+            
+            # Add items for available datatypes
+            for datatype in sorted(available_datatypes):
+                if datatype in datatype_mapping:
+                    for display_name, suffix in datatype_mapping[datatype]:
+                        self.ModalityComboBox.addItem(display_name)
+                        
+        except Exception as e:
+            print(f"Warning: Could not populate modality dropdown from schema: {e}")
+            # Fallback to basic items if schema loading fails
+            fallback_items = [
+                "T1w (anat)",
+                "T2w (anat)", 
+                "ieeg (ieeg)",
+                "photo (ieeg)"
+            ]
+            for item in fallback_items:
+                self.ModalityComboBox.addItem(item)
 
     def _update_task_list(self, tasks):
         """Update task list from controller."""

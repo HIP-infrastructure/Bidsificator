@@ -87,18 +87,22 @@ class TrcToEdfConverter(FormatConverter):
         # Get sampling frequency (assume all signals have same sampling rate)
         sfreq = float(analog_signals[0].sampling_rate.magnitude)
         
-        # Create channel names and types
+        # Create channel names and types (EDF requires ≤16 character names)
         ch_names = []
         ch_types = []
         for i, sig in enumerate(analog_signals):
             n_channels = sig.shape[1] if len(sig.shape) > 1 else 1
             if hasattr(sig, 'name') and sig.name:
                 if n_channels == 1:
-                    ch_names.append(sig.name)
+                    # Truncate channel name to 16 characters for EDF compatibility
+                    clean_name = self._clean_channel_name(sig.name)
+                    ch_names.append(clean_name)
                     ch_types.append('eeg')  # Default to EEG
                 else:
                     for j in range(n_channels):
-                        ch_names.append(f"{sig.name}_{j}")
+                        # Truncate and add channel index
+                        base_name = self._clean_channel_name(sig.name, max_len=13)  # Leave space for _j
+                        ch_names.append(f"{base_name}_{j}")
                         ch_types.append('eeg')
             else:
                 if n_channels == 1:
@@ -120,15 +124,45 @@ class TrcToEdfConverter(FormatConverter):
         # Create MNE Raw object
         raw = mne.io.RawArray(data, info)
         
-        # Export to EDF format with manual physical range to avoid field length issues
-        # EDF has strict field length limitations, so we set a reasonable range in volts
-        max_range = 1e-2  # ±10mV should be sufficient for most EEG data in volts
-        raw.export(str(output_path), fmt='edf', physical_range=(-max_range, max_range), overwrite=True)
+        # Calculate appropriate physical range based on actual data
+        data_min = np.min(data)
+        data_max = np.max(data)
+        data_range = max(abs(data_min), abs(data_max))
+        
+        # Add 20% margin to handle any data spikes during conversion
+        physical_range = data_range * 1.2
+        
+        # Ensure minimum range for EDF format (at least ±1mV)
+        physical_range = max(physical_range, 1e-3)
+        
+        print(f"TRC data range: {data_min:.2e} to {data_max:.2e} V")
+        print(f"Setting EDF physical range: ±{physical_range:.2e} V")
+        
+        # Export to EDF format with calculated physical range
+        raw.export(str(output_path), fmt='edf', physical_range=(-physical_range, physical_range), overwrite=True)
         
         # Close the raw object to free memory
         raw.close()
         
         return output_path
+    
+    def _clean_channel_name(self, name: str, max_len: int = 16) -> str:
+        """Clean and truncate channel name for EDF compatibility"""
+        if not name:
+            return "UNKNOWN"
+            
+        # Remove problematic characters that might cause issues
+        clean_name = name.replace("'", "").replace(" ", "").replace("-", "").replace("+", "")
+        
+        # Truncate to maximum length
+        if len(clean_name) > max_len:
+            clean_name = clean_name[:max_len]
+        
+        # Ensure it's not empty after cleaning
+        if not clean_name:
+            clean_name = "CH"
+            
+        return clean_name
     
     def extract_metadata(self, source_path: Path) -> Dict[str, Any]:
         """Extract metadata from TRC file using MNE"""

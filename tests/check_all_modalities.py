@@ -6,9 +6,8 @@ Check all available modalities and their details in BIDS schema
 from bidsificator.core.schema import BidsSchemaManager
 
 def main():
-    # Load schema
-    manager = BidsSchemaManager()
-    manager.load_schema()
+    # Get schema manager singleton
+    manager = BidsSchemaManager.get_instance()
     
     print("=" * 80)
     print("BIDS SCHEMA MODALITIES SUMMARY")

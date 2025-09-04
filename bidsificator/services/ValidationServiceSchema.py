@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
 from bidsificator.core.schema import BidsSchemaManager
-from bidsificator.core.bids_constants import DEFAULT_METADATA_VALUES
+from bidsificator.core.bids_constants import DEFAULT_METADATA_VALUES, ENTITY_ORDER
 
 
 @dataclass
@@ -59,9 +59,7 @@ class ValidationService:
     
     def __init__(self, schema_manager: Optional[BidsSchemaManager] = None):
         """Initialize with optional schema manager"""
-        self.schema = schema_manager or BidsSchemaManager()
-        if not self.schema.entities:  # Schema not loaded
-            self.schema.load_schema()
+        self.schema = schema_manager or BidsSchemaManager.get_instance()
     
     def validate_dataset(self, dataset_path: str, 
                         subject_filter: Optional[str] = None) -> ValidationResult:
@@ -261,9 +259,8 @@ class ValidationService:
             info=info
         )
     
-    # Backward compatibility methods (for existing code)
     def validate_subject_name(self, subject_name: str) -> Tuple[bool, str]:
-        """Validate subject name (backward compatibility)"""
+        """Validate subject name using BIDS schema rules"""
         if not subject_name:
             return False, "Subject name cannot be empty"
         
@@ -274,8 +271,9 @@ class ValidationService:
         else:
             return False, f"Invalid subject name format: {subject_name}"
     
+    
     def validate_session_name(self, session_name: str) -> Tuple[bool, str]:
-        """Validate session name (backward compatibility)"""
+        """Validate session name using BIDS schema rules"""
         if not session_name:
             return True, ""  # Session is optional
         
@@ -287,7 +285,7 @@ class ValidationService:
             return False, f"Invalid session name format: {session_name}"
     
     def validate_task_name(self, task_name: str) -> Tuple[bool, str]:
-        """Validate task name (backward compatibility)"""
+        """Validate task name using BIDS schema rules"""
         if not task_name:
             return True, ""  # Task is optional for some datatypes
         
@@ -296,15 +294,34 @@ class ValidationService:
         else:
             return False, f"Invalid task name format: {task_name}"
     
+    def validate_acquisition_name(self, acquisition_name: str) -> Tuple[bool, str]:
+        """Validate acquisition name using BIDS schema rules"""
+        if not acquisition_name:
+            return True, ""  # Acquisition is optional
+        
+        if self.schema.validate_entity_value("acq", acquisition_name):
+            return True, ""
+        else:
+            return False, f"Invalid acquisition name format: {acquisition_name}"
+    
     def validate_bids_dataset(self, dataset_path: str, 
-                             subject_name: Optional[str] = None) -> Tuple[bool, str]:
-        """Validate BIDS dataset (backward compatibility)"""
+                            subject_name: Optional[str] = None) -> Tuple[bool, str]:
+        """Validate BIDS dataset using schema rules"""
         if subject_name:
             result = self.validate_subject(dataset_path, subject_name)
         else:
             result = self.validate_dataset(dataset_path)
         
         return result.is_valid, result.message
+    
+    def get_validation_summary(self, dataset_path: str) -> Dict[str, Any]:
+        """Get comprehensive validation summary using schema rules"""
+        result = self.validate_dataset(dataset_path)
+        return {
+            'is_valid': result.is_valid,
+            'errors': [{'message': e.message, 'path': e.path} for e in result.errors],
+            'warnings': [{'message': w.message, 'path': w.path} for w in result.warnings]
+        }
     
     # Private helper methods
     def _validate_dataset_root(self, dataset_path: Path) -> Tuple[List[ValidationError], 
@@ -660,12 +677,11 @@ class ValidationService:
         """Check if entities are in correct order (warning only)"""
         warnings = []
         
-        # This is a simplified check - could be enhanced with schema-defined order
+        # Check entity order using shared ENTITY_ORDER constant
         entity_keys = list(entities.keys())
-        expected_order = ['sub', 'ses', 'task', 'acq', 'ce', 'rec', 'dir', 'run', 'echo', 'recording', 'space']
         
         # Check if entities follow expected order
-        filtered_expected = [e for e in expected_order if e in entity_keys]
+        filtered_expected = [e for e in ENTITY_ORDER if e in entity_keys]
         if entity_keys != filtered_expected:
             warnings.append(ValidationError(
                 filename,
@@ -738,3 +754,4 @@ class ValidationService:
                 message += f" and {warning_count} warning(s)"
         
         return message
+

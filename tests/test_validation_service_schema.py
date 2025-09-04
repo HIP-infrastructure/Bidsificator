@@ -18,9 +18,8 @@ def test_validation_service():
     print("TESTING SCHEMA-DRIVEN VALIDATION SERVICE")
     print("=" * 70)
     
-    # Setup
-    schema_manager = BidsSchemaManager()
-    schema_manager.load_schema()
+    # Setup - get singleton and create validator
+    schema_manager = BidsSchemaManager.get_instance()
     validator = ValidationService(schema_manager)
     
     with tempfile.TemporaryDirectory() as temp_dir:

@@ -12,9 +12,19 @@ from .base import FormatConverter
 class ConverterRegistry:
     """Registry for all format converters"""
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        self.converters: Dict[str, List[FormatConverter]] = {}
-        self._register_default_converters()
+        if not self._initialized:
+            self.converters: Dict[str, List[FormatConverter]] = {}
+            self._register_default_converters()
+            ConverterRegistry._initialized = True
     
     def _register_default_converters(self):
         """Register built-in converters - automatically discovers and registers all converters"""

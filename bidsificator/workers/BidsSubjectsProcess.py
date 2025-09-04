@@ -1,7 +1,4 @@
 import os
-import shutil
-
-import dicom2nifti
 
 from ..core.BidsFolder import BidsFolder
 
@@ -29,8 +26,6 @@ def processBidsSubjects(
     anatomical_modalities: set[str],
     overwrite_existing: bool = False,
 ):
-    temp_dir = "/tmp/mri_conversion"
-    os.makedirs(temp_dir, exist_ok=True)
 
     # Calculate total files across all subjects for overall progress
     total_files = sum(len(subject['files']) for subject in subjects_list)
@@ -40,8 +35,13 @@ def processBidsSubjects(
     bids_folder = BidsFolder(dataset_path)
     for subject in subjects_list:
         try:
+            # Get the subject ID and strip "sub-" if it's already there
+            subject_id = subject['subject_id']
+            if subject_id.lower().startswith("sub-"):
+                subject_id = subject_id[4:]
+            
             bids_subject = bids_folder.add_bids_subject(
-                "sub-" + subject['subject_id'], 
+                subject_id,  # BidsFolder expects clean ID without "sub-" prefix
                 subject_description={'age' : '123', 'sex' : 'M/F'},
                 overwrite=overwrite_existing
             )
@@ -76,32 +76,45 @@ def processBidsSubjects(
             modality = file.get("modality", "")
             if modality == "ieeg (ieeg)":
                 try:
-                    new_file_path = bids_subject.add_functionnal_file(file_path, entities)
-                    bids_subject.generate_events_file(new_file_path, entities)
-                    bids_subject.generate_channels_file(new_file_path, entities)
-                    bids_subject.generate_task_file(new_file_path, entities)
+                    # Map modality to datatype for schema-driven BidsSubject
+                    result = bids_subject.add_file(
+                        source_path=file_path,
+                        datatype='ieeg',
+                        entities=entities,
+                        suffix='ieeg'
+                    )
+                    print(f"Added iEEG file: {result.get('target_path', file_path)}")
                 except Exception as e:
                     print(f"Error processing file {file_path}: {e}")
                     print(f"Skipping file")
             elif modality == "photo (ieeg)":
                 try:
-                    bids_subject.add_photo_file(file_path, entities["ses"], entities["acq"])
+                    # Photos are stored in ieeg datatype with photo suffix
+                    result = bids_subject.add_file(
+                        source_path=file_path,
+                        datatype='ieeg',
+                        entities=entities,
+                        suffix='photo'
+                    )
+                    print(f"Added photo file: {result.get('target_path', file_path)}")
                 except Exception as e:
                     print(f"Error processing photo file {file_path}: {e}")
                     print(f"Skipping file")
             elif modality in anatomical_modalities:
-                #If it's an anat folder, probably need to convert
-                if os.path.isdir(file_path):
-                    dicom2nifti.convert_directory(file_path, temp_dir, compression=False)
-                    file_names = [f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f))]
-                    #if one element in folder
-                    if len(file_names) == 1:
-                        file_path = temp_dir + os.sep + file_names[0]
-                        bids_subject.add_anatomical_file(file_path, entities, str(modality).replace(" (anat)", ""))
-                        os.remove(file_path)
-                else:
-                    bids_subject.add_anatomical_file(file_path, entities, str(modality).replace(" (anat)", ""))
-                print("adding anatomical file")
+                try:
+                    # Let BidsSubject.add_file() handle ALL conversions (including DICOM)
+                    # Map modality display name to suffix
+                    suffix = str(modality).replace(" (anat)", "")
+                    result = bids_subject.add_file(
+                        source_path=file_path,
+                        datatype='anat',
+                        entities=entities,
+                        suffix=suffix
+                    )
+                    print(f"Added anatomical file: {result.get('target_path', file_path)}")
+                except Exception as e:
+                    print(f"Error processing anatomical file {file_path}: {e}")
+                    print(f"Skipping file")
             else:
                 print("modality not recognized : ", modality)
 
@@ -111,5 +124,4 @@ def processBidsSubjects(
             conn.send(overall_progress)  # Send overall progress to the main thread
 
     bids_folder.generate_participants_tsv()
-    shutil.rmtree(temp_dir)
     conn.send(101)  # Indicate completion
