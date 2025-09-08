@@ -47,13 +47,22 @@ class BidsFolder:
         dataset_description = {
             "Name": dataset_name,
             "BIDSVersion": "1.2.0",
+            "DatasetType": "raw",
             "License": "n/a",
             "Authors": [],
             "Acknowledgements": "n/a",
             "HowToAcknowledge": "n/a",
             "Funding": [],
             "ReferencesAndLinks": [],
-            "DatasetDOI": "n/a"
+            "DatasetDOI": "n/a",
+            "GeneratedBy": [
+                {
+                    "Name": "Bidsificator",
+                    "Version": "unknown",
+                    "Description": "BIDS dataset created using Bidsificator"
+                }
+            ],
+            "SourceDatasets": []
         }
 
         with open(json_file_path, 'w') as f:
@@ -66,13 +75,22 @@ class BidsFolder:
         dataset_description_dict = {
             "Name": dataset_description_dict.get("Name", "n/a"),
             "BIDSVersion": dataset_description_dict.get("BIDSVersion", "n/a"),
+            "DatasetType": dataset_description_dict.get("DatasetType", "raw"),
             "License": dataset_description_dict.get("License", "n/a"),
             "Authors": dataset_description_dict.get("Authors", []),
             "Acknowledgements": dataset_description_dict.get("Acknowledgements", "n/a"),
             "HowToAcknowledge": dataset_description_dict.get("HowToAcknowledge", "n/a"),
             "Funding": dataset_description_dict.get("Funding", []),
             "ReferencesAndLinks": dataset_description_dict.get("ReferencesAndLinks", []),
-            "DatasetDOI": dataset_description_dict.get("DatasetDOI", "n/a")
+            "DatasetDOI": dataset_description_dict.get("DatasetDOI", "n/a"),
+            "GeneratedBy": dataset_description_dict.get("GeneratedBy", [
+                {
+                    "Name": "Bidsificator",
+                    "Version": "unknown",
+                    "Description": "BIDS dataset created using Bidsificator"
+                }
+            ]),
+            "SourceDatasets": dataset_description_dict.get("SourceDatasets", [])
         }
 
         with open(json_file_path, 'w') as f:

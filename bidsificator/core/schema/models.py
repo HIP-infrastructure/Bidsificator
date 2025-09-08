@@ -98,3 +98,17 @@ class BidsDatatype:
         if suffix and f"suffix_{suffix}" in self.metadata_requirements:
             base_metadata.update(self.metadata_requirements[f"suffix_{suffix}"])
         return base_metadata
+    
+    def get_recommended_metadata(self, suffix: str = None) -> Dict[str, Any]:
+        """Get recommended metadata fields"""
+        base_metadata = self.metadata_requirements.get("recommended", {})
+        if suffix and f"suffix_{suffix}_recommended" in self.metadata_requirements:
+            base_metadata.update(self.metadata_requirements[f"suffix_{suffix}_recommended"])
+        return base_metadata
+    
+    def get_all_metadata(self, suffix: str = None) -> Dict[str, Dict[str, Any]]:
+        """Get both required and recommended metadata fields"""
+        return {
+            "required": self.get_required_metadata(suffix),
+            "recommended": self.get_recommended_metadata(suffix)
+        }

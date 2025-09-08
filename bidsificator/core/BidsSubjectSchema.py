@@ -585,13 +585,12 @@ class BidsSubject:
     
     def _generate_json_sidecar(self, data_path: Path, datatype: str, suffix: str,
                               entities: Dict[str, str], user_metadata: Dict[str, Any]):
-        """Generate JSON sidecar with schema-required metadata"""
-        # Get required metadata from schema
+        """Generate JSON sidecar with schema-required and recommended metadata"""
+        # Get metadata from schema
         dt = self.schema.get_datatype(datatype)
-        required_metadata = dt.metadata_requirements.get('required', {})
-        
-        # suffix parameter could be used for suffix-specific metadata in the future
-        _ = suffix
+        metadata_specs = dt.get_all_metadata(suffix)
+        required_metadata = metadata_specs.get('required', {})
+        recommended_metadata = metadata_specs.get('recommended', {})
         
         # Start with empty metadata
         json_metadata = {}
@@ -606,8 +605,27 @@ class BidsSubject:
         for field_name, field_spec in required_metadata.items():
             if field_name not in json_metadata:
                 json_metadata[field_name] = self._get_default_metadata_value(
-                    field_name, field_spec, entities
+                    field_name, field_spec, entities, datatype, suffix
                 )
+        
+        # Add recommended fields with defaults if missing
+        for field_name, field_spec in recommended_metadata.items():
+            if field_name not in json_metadata:
+                json_metadata[field_name] = self._get_default_metadata_value(
+                    field_name, field_spec, entities, datatype, suffix
+                )
+        
+        # Add datatype-specific recommended fields from schema rules
+        if datatype == 'ieeg':
+            ieeg_recommended_fields = self._get_schema_recommended_fields(datatype)
+            for field_name in ieeg_recommended_fields:
+                if field_name not in json_metadata:
+                    default_value = self._get_default_metadata_value(
+                        field_name, {}, entities, datatype, suffix
+                    )
+                    # Only add field if default value is not None (None means omit field)
+                    if default_value is not None:
+                        json_metadata[field_name] = default_value
         
         # Write JSON file if there's metadata to write
         if json_metadata:
@@ -616,13 +634,40 @@ class BidsSubject:
                 json.dump(json_metadata, f, indent=2, sort_keys=True)
     
     def _get_default_metadata_value(self, field_name: str, field_spec: Dict[str, Any],
-                                   entities: Dict[str, str]) -> Any:
+                                   entities: Dict[str, str], datatype: str = None, suffix: str = None) -> Any:
         """Get appropriate default value for metadata field"""
         # field_spec could be used for type-specific defaults in the future
         _ = field_spec
         
-        # Special cases for known fields
-        if field_name == 'TaskName':
+        # Special cases for known fields from BIDS validation warnings
+        if field_name == 'SubjectArtefactDescription':
+            # For iEEG data, default to "n/a" indicating absence of major artifacts except cardiac and blinks
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name == 'iEEGPlacementScheme':
+            # iEEG electrode placement description
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name == 'iEEGElectrodeGroups':
+            # iEEG electrode grouping description
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name == 'iEEGGround':
+            # iEEG ground electrode description
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name.endswith('ChannelCount'):
+            # Channel count fields should default to 0 (numeric)
+            return 0
+        elif field_name in ['EpochLength', 'RecordingDuration']:
+            # Duration/length fields should be numeric - but for continuous recordings, 
+            # EpochLength should be omitted rather than set to a default
+            # Return None to indicate field should be omitted
+            return None
+        elif field_name == 'StimulusPresentation':
+            # Default stimulus presentation information
+            return {
+                "OperatingSystem": "unknown",
+                "SoftwareName": "unknown",
+                "SoftwareVersion": "unknown"
+            }
+        elif field_name == 'TaskName':
             return entities.get('task', DEFAULT_METADATA_VALUES['UNKNOWN'])
         elif field_name in ['SamplingFrequency', 'PowerLineFrequency']:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
@@ -632,6 +677,48 @@ class BidsSubject:
             return DEFAULT_METADATA_VALUES['UNKNOWN']
         else:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+    
+    def _get_schema_recommended_fields(self, datatype: str) -> List[str]:
+        """Extract recommended fields directly from BIDS schema rules"""
+        try:
+            # Import here to access schema file
+            schema_path = Path(__file__).parent.parent / "schema" / "bids_schema.json"
+            with open(schema_path, 'r') as f:
+                schema = json.load(f)
+            
+            # Extract recommended fields from schema rules
+            recommended_fields = []
+            sidecar_rules = schema.get("rules", {}).get("sidecars", {})
+            
+            if datatype in sidecar_rules:
+                datatype_rules = sidecar_rules[datatype]
+                
+                # Look for recommended fields in all rule categories
+                for rule_name, rule_data in datatype_rules.items():
+                    if isinstance(rule_data, dict) and "fields" in rule_data:
+                        fields = rule_data["fields"]
+                        
+                        for field_name, field_rule in fields.items():
+                            # Check if field is recommended
+                            if field_rule == "recommended":
+                                recommended_fields.append(field_name)
+                            elif isinstance(field_rule, dict) and field_rule.get("level") == "recommended":
+                                recommended_fields.append(field_name)
+            
+            return recommended_fields
+            
+        except Exception as e:
+            print(f"Warning: Could not load schema recommended fields for {datatype}: {e}")
+            # Fallback to known fields if schema loading fails
+            if datatype == 'ieeg':
+                return [
+                    'SubjectArtefactDescription', 'iEEGPlacementScheme', 'iEEGElectrodeGroups',
+                    'iEEGGround', 'ECGChannelCount', 'EMGChannelCount', 'MiscChannelCount', 
+                    'TriggerChannelCount', 'HardwareFilters', 'ElectrodeManufacturer',
+                    'ElectrodeManufacturersModelName', 'ECOGChannelCount', 'SEEGChannelCount',
+                    'EEGChannelCount', 'EOGChannelCount', 'RecordingDuration', 'RecordingType'
+                ]
+            return []
     
     def _generate_ephys_files(self, data_path: Path, entities: Dict[str, str], datatype: str, source_path: Path = None):
         """Generate channels.tsv and events.tsv for electrophysiology data using schema-driven extraction"""
@@ -709,6 +796,9 @@ class BidsSubject:
                 # Fallback to empty events file
                 events_df = self._create_events_dataframe_fallback()
                 events_df.to_csv(events_path, sep='\t', index=False)
+        
+        # Generate events.json companion file 
+        self._generate_events_json(events_path, entities, datatype)
         
         # Generate electrodes.tsv (required for iEEG data)
         if datatype == 'ieeg':
@@ -907,10 +997,55 @@ class BidsSubject:
             "iEEGCoordinateProcessingDescription": "Electrode positions not available in source TRC file. "
                                                   "Positions should be added manually from imaging data or "
                                                   "surgical planning systems.",
+            "iEEGCoordinateProcessingReference": "n/a",
             "iEEGCoordinateSystemDescription": "No coordinate system specified. Electrode positions in "
                                              "electrodes.tsv are empty and should be populated with "
                                              "actual coordinates from MRI, CT, or surgical planning data."
         }
+    
+    def _generate_events_json(self, events_tsv_path: Path, entities: Dict[str, str], datatype: str):
+        """Generate events.json companion file with column definitions and recommended metadata"""
+        # Create JSON path by replacing .tsv with .json
+        events_json_path = events_tsv_path.with_suffix('.json')
+        
+        # Read the events.tsv file to get column names
+        try:
+            events_df = pd.read_csv(events_tsv_path, sep='\t')
+            column_names = events_df.columns.tolist()
+        except Exception:
+            # Fallback to default columns if TSV can't be read
+            column_names = ['onset', 'duration', 'trial_type', 'response_time', 'value']
+        
+        # Create events.json metadata
+        events_metadata = {}
+        
+        # Add StimulusPresentation (recommended field that was missing)
+        events_metadata['StimulusPresentation'] = self._get_default_metadata_value(
+            'StimulusPresentation', {}, entities, datatype, 'events'
+        )
+        
+        # Define columns present in the TSV, but only define non-standard columns
+        # Standard BIDS columns (onset, duration, trial_type, response_time) are predefined by the spec
+        # and should not be redefined to avoid TSV_COLUMN_TYPE_REDEFINED warnings
+        standard_bids_columns = ['onset', 'duration', 'trial_type', 'response_time']
+        
+        for column in column_names:
+            if column not in standard_bids_columns:
+                # Only define non-standard columns to avoid type redefinition warnings
+                if column == 'value':
+                    events_metadata['value'] = {
+                        "Description": "Marker value associated with the event (for example, the value of a trigger sent to the acquisition system)."
+                    }
+                else:
+                    # Generic description for other non-standard columns
+                    events_metadata[column] = {
+                        "Description": f"Column {column} in events file."
+                    }
+        
+        # Write events.json file
+        with open(events_json_path, 'w') as f:
+            json.dump(events_metadata, f, indent=2, sort_keys=True)
+        print(f"Generated events.json companion file with {len(column_names)} column definitions")
     
     def _generate_nirs_files(self, data_path: Path, entities: Dict[str, str]):
         """Generate NIRS-specific files (optodes.tsv, etc.)"""
