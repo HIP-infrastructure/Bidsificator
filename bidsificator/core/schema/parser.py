@@ -131,60 +131,61 @@ class BidsSchemaParser:
         
         for modality, rules_dict in sidecar_rules.items():
             if modality in modality_to_datatype:
-                datatype = modality_to_datatype[modality]
+                datatypes = modality_to_datatype[modality]  # Now a list of datatypes
                 
-                for rule_name, rule_data in rules_dict.items():
-                    if isinstance(rule_data, dict) and "fields" in rule_data:
-                        fields = rule_data["fields"]
-                        
-                        # Extract field requirements
-                        for field_name, field_rule in fields.items():
-                            if field_name in metadata_objects:
-                                field_def = metadata_objects[field_name]
-                                
-                                # Parse requirement level
-                                if field_rule == "required":
-                                    metadata_requirements[datatype]["required"][field_name] = field_def
-                                elif field_rule == "recommended":
-                                    metadata_requirements[datatype]["recommended"][field_name] = field_def
-                                elif isinstance(field_rule, dict):
-                                    level = field_rule.get("level", "optional")
-                                    if level == "required":
+                # Apply rules to ALL datatypes for this modality (e.g., mri rules apply to anat, dwi, func, etc.)
+                for datatype in datatypes:
+                    for rule_name, rule_data in rules_dict.items():
+                        if isinstance(rule_data, dict) and "fields" in rule_data:
+                            fields = rule_data["fields"]
+                            
+                            # Extract field requirements
+                            for field_name, field_rule in fields.items():
+                                if field_name in metadata_objects:
+                                    field_def = metadata_objects[field_name]
+                                    
+                                    # Parse requirement level
+                                    if field_rule == "required":
                                         metadata_requirements[datatype]["required"][field_name] = field_def
-                                    elif level == "recommended":
+                                    elif field_rule == "recommended":
                                         metadata_requirements[datatype]["recommended"][field_name] = field_def
+                                    elif isinstance(field_rule, dict):
+                                        level = field_rule.get("level", "optional")
+                                        if level == "required":
+                                            metadata_requirements[datatype]["required"][field_name] = field_def
+                                        elif level == "recommended":
+                                            metadata_requirements[datatype]["recommended"][field_name] = field_def
+                                        else:
+                                            metadata_requirements[datatype]["optional"][field_name] = field_def
                                     else:
+                                        # Default to optional if not specified
                                         metadata_requirements[datatype]["optional"][field_name] = field_def
-                                else:
-                                    # Default to optional if not specified
-                                    metadata_requirements[datatype]["optional"][field_name] = field_def
         
         # Also extract coordinate system requirements from JSON rules
         self._extract_coordinate_system_requirements(schema, metadata_requirements, metadata_objects)
         
         return dict(metadata_requirements)
     
-    def _extract_modality_mappings(self, schema: dict) -> Dict[str, str]:
+    def _extract_modality_mappings(self, schema: dict) -> Dict[str, List[str]]:
         """Extract modality to datatype mappings from schema"""
         modalities = schema.get("rules", {}).get("modalities", {})
         
-        # For rules processing, we need to map each modality to its datatypes
-        # But since rules are keyed by modality, we'll create a reverse mapping
-        # for the specific case where modality name == datatype name
+        # Create mapping from rule keys (modalities) to list of datatypes they should apply to
+        # This handles both direct datatype rules and modality rules that apply to multiple datatypes
         mapping = {}
         
         for modality, mod_data in modalities.items():
             if isinstance(mod_data, dict) and "datatypes" in mod_data:
                 datatypes = mod_data["datatypes"]
-                # For rule processing, we map modality to its primary datatype when they match
-                if modality in datatypes:
-                    mapping[modality] = modality
+                # Map the modality to ALL of its constituent datatypes
+                # E.g., "mri" maps to ["anat", "dwi", "func", "fmap", "perf"]
+                mapping[modality] = datatypes
         
         # For sidecar and JSON rules, the keys are often datatypes themselves
         # So we also include direct datatype mappings
         datatypes = schema.get("objects", {}).get("datatypes", {})
         for datatype in datatypes.keys():
-            mapping[datatype] = datatype
+            mapping[datatype] = [datatype]  # Each datatype maps to itself as a list
             
         return mapping
     
@@ -197,28 +198,30 @@ class BidsSchemaParser:
         
         for modality, rules_dict in json_rules.items():
             if modality in modality_to_datatype:
-                datatype = modality_to_datatype[modality]
+                datatypes = modality_to_datatype[modality]  # Now a list of datatypes
                 
-                for rule_name, rule_data in rules_dict.items():
-                    if isinstance(rule_data, dict) and "fields" in rule_data:
-                        fields = rule_data["fields"]
-                        
-                        # Extract coordinate system field requirements
-                        for field_name, field_rule in fields.items():
-                            if field_name in metadata_objects:
-                                field_def = metadata_objects[field_name]
-                                
-                                # Parse requirement level
-                                if field_rule == "required":
-                                    metadata_requirements[datatype]["required"][field_name] = field_def
-                                elif isinstance(field_rule, dict):
-                                    level = field_rule.get("level", "optional")
-                                    if level == "required":
+                # Apply rules to ALL datatypes for this modality
+                for datatype in datatypes:
+                    for rule_name, rule_data in rules_dict.items():
+                        if isinstance(rule_data, dict) and "fields" in rule_data:
+                            fields = rule_data["fields"]
+                            
+                            # Extract coordinate system field requirements
+                            for field_name, field_rule in fields.items():
+                                if field_name in metadata_objects:
+                                    field_def = metadata_objects[field_name]
+                                    
+                                    # Parse requirement level
+                                    if field_rule == "required":
                                         metadata_requirements[datatype]["required"][field_name] = field_def
-                                    elif level == "recommended":
-                                        metadata_requirements[datatype]["recommended"][field_name] = field_def
-                                    else:
-                                        metadata_requirements[datatype]["optional"][field_name] = field_def
+                                    elif isinstance(field_rule, dict):
+                                        level = field_rule.get("level", "optional")
+                                        if level == "required":
+                                            metadata_requirements[datatype]["required"][field_name] = field_def
+                                        elif level == "recommended":
+                                            metadata_requirements[datatype]["recommended"][field_name] = field_def
+                                        else:
+                                            metadata_requirements[datatype]["optional"][field_name] = field_def
     
     def parse_metadata(self, schema: dict) -> Dict[str, Any]:
         """Extract metadata field definitions from schema.objects.metadata"""

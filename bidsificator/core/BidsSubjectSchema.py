@@ -604,9 +604,12 @@ class BidsSubject:
         # Ensure required fields exist (add defaults if missing)
         for field_name, field_spec in required_metadata.items():
             if field_name not in json_metadata:
-                json_metadata[field_name] = self._get_default_metadata_value(
+                default_value = self._get_default_metadata_value(
                     field_name, field_spec, entities, datatype, suffix
                 )
+                # Only add required field if default value is not None
+                if default_value is not None:
+                    json_metadata[field_name] = default_value
         
         # Add recommended fields with defaults if missing
         for field_name, field_spec in recommended_metadata.items():
@@ -617,6 +620,9 @@ class BidsSubject:
                 # Only add field if default value is not None (None means omit field)
                 if default_value is not None:
                     json_metadata[field_name] = default_value
+        
+        # Final cleanup: Remove any None values that might have been added from user metadata
+        json_metadata = {k: v for k, v in json_metadata.items() if v is not None}
         
         # Write JSON file if there's metadata to write
         if json_metadata:
@@ -665,6 +671,61 @@ class BidsSubject:
             # The BIDS spec requires this field when HED tags are used but leaves version choice to users
             # We use a stable, widely-compatible HED schema version as a reasonable default
             return self._get_default_hed_version()
+        
+        # MRI-specific metadata field handling
+        elif field_name in ['Manufacturer', 'ManufacturersModelName', 'DeviceSerialNumber', 'StationName']:
+            # Equipment identification fields - use 'n/a' when not available from source data
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name in ['SoftwareVersions', 'PulseSequenceType', 'ScanningSequence', 'SequenceVariant', 'SequenceName']:
+            # MRI sequence and software information - use 'n/a' when not available
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name in ['ReceiveCoilName', 'ReceiveCoilActiveElements', 'MatrixCoilMode', 'CoilCombinationMethod']:
+            # MRI coil information - use 'n/a' when not available
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name in ['InstitutionName', 'InstitutionAddress', 'InstitutionalDepartmentName']:
+            # Institution information - use 'n/a' when not available
+            return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
+        elif field_name == 'PulseSequenceDetails':
+            # Detailed sequence information - provide helpful default
+            return "Information not available from source data"
+        elif field_name == 'MRAcquisitionType':
+            # Default to '3D' for anatomical scans, which is most common
+            return "3D"
+            
+        # MRI numeric fields with conservative defaults for some
+        elif field_name in ['ParallelReductionFactorInPlane', 'ParallelReductionFactorOutOfPlane']:
+            # Conservative default: 1 (no parallel imaging acceleration when unknown)
+            return 1
+        
+        # MRI numeric fields - omit (return None) when not available to avoid type errors  
+        elif field_name in [
+            'MagneticFieldStrength', 'EchoTime', 'FlipAngle', 'DwellTime', 'InversionTime',
+            'EffectiveEchoSpacing', 'TotalReadoutTime', 'MixingTime',
+            'MTOffsetFrequency', 'MTPulseBandwidth', 'MTNumberOfPulses', 'MTPulseDuration',
+            'PartialFourier', 'MultibandAccelerationFactor', 'NumberShots',
+            'SpoilingRFPhaseIncrement', 'SpoilingGradientMoment', 'SpoilingGradientDuration'
+        ]:
+            # Numeric fields - omit when not available (prevents JSON schema validation errors)
+            return None
+            
+        # MRI boolean fields - conservative defaults for some, omit others
+        elif field_name == 'NonlinearGradientCorrection':
+            # Conservative default: false (assume no correction when unknown)
+            return False
+        elif field_name in ['MTState', 'SpoilingState']:
+            # Boolean fields - omit when unknown (prevents false/invalid assumptions)
+            return None
+            
+        # MRI array fields - omit when not available
+        elif field_name in ['TablePosition']:
+            # Array fields - omit when not available (prevents empty array issues)
+            return None
+            
+        # MRI enum fields - omit when not available to avoid invalid values
+        elif field_name in ['MTPulseShape', 'SpoilingType']:
+            # Enum fields - omit when not available (prevents invalid enum values)
+            return None
+            
         elif field_name in ['SamplingFrequency', 'PowerLineFrequency']:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
         elif field_name.endswith('Reference'):

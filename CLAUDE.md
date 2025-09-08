@@ -135,14 +135,44 @@ The application follows Model-View-Controller architecture:
 
 ### Debugging Schema Issues
 - **Check datatype count** - `len(manager.datatypes)` should be 14, not 0
-- **Verify metadata extraction** - `ieeg.get_recommended_metadata()` should return ~30 fields for iEEG
-- **Test metadata generation** - Use `BidsSubjectSchema._get_default_metadata_value()` to verify field handling
+- **Verify metadata extraction** - `ieeg.get_recommended_metadata()` should return ~30 fields for iEEG, `anat.get_recommended_metadata()` should return ~56 fields for anatomical MRI
+- **Test metadata generation** - Use `BidsSubject._get_default_metadata_value()` to verify field handling
 - **Parser debugging** - Check `parser.py` for missing field_rule cases like `field_rule == "recommended"`
+- **Modality-to-datatype mapping** - Critical fix: `_extract_modality_mappings()` must return `Dict[str, List[str]]` to handle modalities that apply to multiple datatypes (e.g., "mri" rules apply to anat, func, dwi, fmap, perf)
 
 ### BIDS Validation Error Patterns
-- **SIDECAR_KEY_RECOMMENDED** - Add recommended fields via schema-driven metadata extraction
+- **SIDECAR_KEY_RECOMMENDED** - Add recommended fields via schema-driven metadata extraction. **Strategy**: Use HYBRID approach - conservative defaults for some fields (ParallelReductionFactors → 1, NonlinearGradientCorrection → false), omit sequence-specific fields (MagneticFieldStrength, EchoTime, FlipAngle, DwellTime). **Critical**: Ensure modality-to-datatype mapping works.
+- **JSON_SCHEMA_VALIDATION_ERROR** - **Data type mismatch**. Return `None` to omit fields when data type cannot be satisfied. **Critical**: Filter `None` values before JSON serialization. Never set numeric/boolean/array fields to string values like `"n/a"`.
+- **EFFECTIVEECHOSPACING_LARGER_THAN_TOTALREADOUTTIME** - Field relationship validation error. Omit both fields when relationship cannot be ensured.
+- **HED_ERROR (INTERNAL_ERROR)** - Usually caused by `None` values in JSON fields that validator tries to process. Ensure proper field omission and HEDVersion when HED columns present.
 - **TSV_ADDITIONAL_COLUMNS_UNDEFINED** - Generate events.json with column definitions
 - **TSV_COLUMN_TYPE_REDEFINED** - Skip standard BIDS columns in events.json generation
-- **JSON_SCHEMA_VALIDATION_ERROR** - Return `None` for fields that should be omitted
-- **HED_ERROR** - Add `HEDVersion` field when HED columns are present, never skip HED validation
 - **README_FILE_MISSING** - Generate README automatically in `create_folders()`
+
+### Known Working Metadata Field Counts (After All Fixes)
+- **iEEG datatype**: ~30 recommended fields (electrophysiology-specific)
+- **anat datatype**: ~56 recommended fields (MRI equipment + acquisition parameters)
+- **func datatype**: ~56 recommended fields (inherits MRI fields + functional-specific)
+- **dwi datatype**: ~56 recommended fields (inherits MRI fields + diffusion-specific)
+- **Total schema datatypes**: 14 (when parser working correctly)
+
+### MRI Metadata Field Categories (for anat/func/dwi/fmap/perf)
+- **Equipment (strings)**: Manufacturer, ManufacturersModelName, DeviceSerialNumber, StationName → `"n/a"`
+- **Sequence (strings)**: SoftwareVersions, PulseSequenceType, ScanningSequence, SequenceVariant → `"n/a"`
+- **Coil (strings)**: ReceiveCoilName, ReceiveCoilActiveElements, MatrixCoilMode, CoilCombinationMethod → `"n/a"`
+- **Institution (strings)**: InstitutionName, InstitutionAddress, InstitutionalDepartmentName → `"n/a"`
+- **Conservative defaults (numeric)**: ParallelReductionFactorInPlane, ParallelReductionFactorOutOfPlane → `1` (no acceleration when unknown)
+- **Conservative defaults (boolean)**: NonlinearGradientCorrection → `false` (no correction when unknown)
+- **Acquisition (numeric - omit)**: MagneticFieldStrength, EchoTime, FlipAngle, DwellTime → **OMIT** (`None`) - sequence-specific, no reasonable defaults
+- **Advanced (numeric - omit)**: EffectiveEchoSpacing, TotalReadoutTime, InversionTime, MixingTime → **OMIT** (`None`)
+- **Boolean fields (omit)**: MTState, SpoilingState → **OMIT** (`None`) - avoid false assumptions
+- **Array fields**: TablePosition → **OMIT** (`None`)
+- **Enum fields**: MTPulseShape, SpoilingType → **OMIT** (`None`)
+- **Special strings**: MRAcquisitionType → `"3D"` (for anat), PulseSequenceDetails → `"Information not available..."`
+
+### Critical Data Type Rules
+- **String fields** can use `"n/a"` as default value
+- **Numeric, boolean, array, enum fields** MUST return `None` (omit) when unknown to prevent `JSON_SCHEMA_VALIDATION_ERROR`
+- **Never set numeric fields to string values** like `"n/a"` - causes schema validation failures
+- **JSON serialization**: Always filter out `None` values before writing JSON (`{k: v for k, v in metadata.items() if v is not None}`)
+- **Relationship validation**: Some fields have interdependencies (e.g., EffectiveEchoSpacing < TotalReadoutTime)
