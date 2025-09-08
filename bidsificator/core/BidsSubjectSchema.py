@@ -44,9 +44,16 @@ class BidsSubject:
         self.dataset_path = Path(dataset_path)
         self.schema = schema_manager
         
-        # Validate subject ID using schema
-        if not self.schema.validate_entity_value('sub', subject_id):
-            raise ValueError(f"Invalid subject ID '{subject_id}' according to BIDS schema")
+        # Sanitize and validate subject ID using schema
+        sanitized_subject_id = self._sanitize_subject_id(subject_id)
+        if sanitized_subject_id != subject_id:
+            print(f"Sanitized subject ID: '{subject_id}' → '{sanitized_subject_id}'")
+        
+        if not self.schema.validate_entity_value('sub', sanitized_subject_id):
+            raise ValueError(f"Invalid subject ID '{sanitized_subject_id}' according to BIDS schema")
+        
+        # Use sanitized ID
+        self.subject_id = sanitized_subject_id
         
         self.subject_path = self._build_subject_path()
         self.subject_path.mkdir(parents=True, exist_ok=True)
@@ -59,6 +66,28 @@ class BidsSubject:
         
         # Track optional metadata for this subject
         self.optional_metadata: Dict[str, Any] = {}
+    
+    def _sanitize_subject_id(self, subject_id: str) -> str:
+        """
+        Sanitize subject ID to comply with BIDS specification.
+        
+        BIDS allows only [a-zA-Z0-9]+ for entity labels.
+        This converts common invalid characters to valid ones:
+        - Underscores (_) become empty (CHUV_001 → CHUV001)
+        - Hyphens (-) become empty (test-123 → test123)
+        """
+        import re
+        # Remove underscores and hyphens - most common violations
+        sanitized = re.sub(r'[_-]', '', subject_id)
+        
+        # Remove any other non-alphanumeric characters
+        sanitized = re.sub(r'[^a-zA-Z0-9]', '', sanitized)
+        
+        # Ensure not empty
+        if not sanitized:
+            sanitized = 'subject001'
+        
+        return sanitized
     
     # Backward compatibility methods for existing controllers
     def get_subject_id(self) -> str:
@@ -343,6 +372,44 @@ class BidsSubject:
             # 'subject' is always implicitly allowed (required for all BIDS files)
             if entity_name != 'subject' and entity_name not in subrule_allowed_entities:
                 raise ValueError(f"Entity '{entity_key}' not allowed for {datatype} suffix '{suffix}'")
+    
+    def get_required_entities_for_suffix(self, datatype: str, suffix: str) -> List[str]:
+        """
+        Get required entities for a specific datatype/suffix combination.
+        
+        This uses the same schema traversal logic as _validate_entities_for_suffix
+        but returns the required entity keys instead of validating them.
+        """
+        # Get the raw schema data to access sub-rules
+        raw_schema = self.schema._raw_schema
+        datatype_rule = raw_schema.get('rules', {}).get('files', {}).get('raw', {}).get(datatype)
+        
+        if not datatype_rule:
+            return ['sub']  # Fallback to minimal requirement
+        
+        # Find which sub-rule contains this suffix
+        matching_subrule = None
+        for subrule_name, subrule in datatype_rule.items():
+            if isinstance(subrule, dict) and 'suffixes' in subrule:
+                if suffix in subrule['suffixes']:
+                    matching_subrule = subrule
+                    break
+        
+        if not matching_subrule:
+            return ['sub']  # Fallback if no matching rule
+        
+        # Extract required entities from the matching sub-rule
+        required_entities = ['sub']  # Subject always required
+        subrule_entities = matching_subrule.get('entities', {})
+        
+        for entity_name, requirement in subrule_entities.items():
+            if requirement == 'required':
+                # Map schema entity name to BIDS key
+                entity_key = self._map_entity_name_to_key(entity_name)
+                if entity_key not in required_entities:
+                    required_entities.append(entity_key)
+        
+        return required_entities
     
     def _map_entity_key_to_name(self, entity_key: str) -> str:
         """Map BIDS entity key to schema entity name using schema data."""

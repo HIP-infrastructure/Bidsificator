@@ -1078,7 +1078,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Save any pending FileEditor changes before import
         self._save_file_editor_changes()
         
-        self._main_controller.start_subjects_import()
+        # Get task value from the TaskComboBox
+        task = self.IS_TaskComboBox.currentText()
+        
+        self._main_controller.start_subjects_import(task)
     
     def _save_file_editor_changes(self):
         """Save FileEditor changes back to ImportSubjectsController."""

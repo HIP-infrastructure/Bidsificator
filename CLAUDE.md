@@ -97,3 +97,4 @@ The application follows Model-View-Controller architecture:
 - dicom2nifti for DICOM conversion
 - bids_validator for compliance checking
 - Flask ecosystem for API server
+- Always use the schema driven system that we defined

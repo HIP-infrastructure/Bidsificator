@@ -3,6 +3,7 @@ import os
 from ..core.BidsFolder import BidsFolder
 
 
+
 def check_subject_conflicts(dataset_path: str, subjects_list: list) -> list[str]:
     """
     Check for existing subjects that would conflict with the import.
@@ -25,6 +26,7 @@ def processBidsSubjects(
     subjects_list: list,
     anatomical_modalities: set[str],
     overwrite_existing: bool = False,
+    task: str = "Rest",
 ):
 
     # Calculate total files across all subjects for overall progress
@@ -68,17 +70,34 @@ def processBidsSubjects(
             
             if file.get("session", ""):
                 entities["ses"] = file.get("session")
-            if file.get("task", ""):
-                entities["task"] = file.get("task")
+            
+            # Process file based on its modality - use existing hardcoded approach for consistency
+            modality = file.get("modality", "")
+            
+            # Use schema to determine if task is required for specific modality types
+            # This is the schema-driven improvement while keeping existing patterns
+            if modality == "ieeg (ieeg)":
+                required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'ieeg')
+                if 'task' in required_entities:
+                    entities["task"] = task
+            elif modality == "photo (ieeg)":  
+                required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'photo')
+                if 'task' in required_entities:
+                    entities["task"] = task
+            elif modality in anatomical_modalities:
+                # Anatomical files - extract suffix and check schema
+                suffix = modality.split('(')[0].strip()  # e.g., "T1w (anat)" -> "T1w"
+                required_entities = bids_subject.get_required_entities_for_suffix('anat', suffix)
+                if 'task' in required_entities:
+                    entities["task"] = task
+                
             if file.get("acquisition", ""):
                 entities["acq"] = file.get("acquisition")
             if file.get("reconstruction", ""):
                 entities["rec"] = file.get("reconstruction")
             if file.get("contrast_agent", ""):
                 entities["ce"] = file.get("contrast_agent")
-
-            # Process file based on its modality
-            modality = file.get("modality", "")
+            
             if modality == "ieeg (ieeg)":
                 try:
                     # Map modality to datatype for schema-driven BidsSubject
