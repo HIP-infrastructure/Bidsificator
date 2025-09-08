@@ -42,6 +42,9 @@ class BidsFolder:
         code_path.mkdir(parents=True, exist_ok=True)
         derivatives_path = self.__path / "derivatives"
         derivatives_path.mkdir(parents=True, exist_ok=True)
+        
+        # Generate required README file for BIDS compliance
+        self.generate_readme_file()
 
     def generate_empty_dataset_description_file(self, dataset_name: str, json_file_path: str):
         dataset_description = {
@@ -95,6 +98,46 @@ class BidsFolder:
 
         with open(json_file_path, 'w') as f:
             json.dump(dataset_description_dict, f, indent=4)
+
+    def generate_readme_file(self, readme_path: str = ""):
+        """Generate a README file for BIDS compliance"""
+        if not readme_path:
+            readme_path = self.__path / "README"
+        
+        readme_content = f"""# {self.get_dataset_name()}
+
+## Dataset Description
+
+This BIDS dataset was created using Bidsificator.
+
+## Data Acquisition
+
+Please provide information about data acquisition parameters, equipment used, and experimental procedures.
+
+## Participants
+
+Please provide information about the participants included in this dataset.
+
+## Code and Analysis
+
+Analysis code and processing scripts can be found in the `code/` directory.
+
+## Notes
+
+Please update this README file with specific information about your dataset, including:
+- Detailed description of the experimental paradigm
+- Information about data collection procedures  
+- Preprocessing steps applied
+- Any relevant methodological details
+- Contact information for questions
+
+## License
+
+Please specify the license under which this data is shared.
+"""
+        
+        with open(readme_path, 'w') as f:
+            f.write(readme_content)
 
     def rename_dataset(self, new_dataset_name: str):
         self.__path.rename(self.__path.parent / new_dataset_name)
