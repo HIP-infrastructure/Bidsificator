@@ -712,8 +712,15 @@ class BidsSubject:
         
         # Generate electrodes.tsv (required for iEEG data)
         if datatype == 'ieeg':
-            electrodes_filename = self._build_bids_filename(entities, 'electrodes', '.tsv')
-            electrodes_path = data_dir / electrodes_filename
+            # Use schema-driven approach with inheritance awareness
+            # If data files are session-specific, electrodes should be too for proper inheritance
+            electrodes_entities = self._get_inheritance_aware_entities(entities, datatype, 'electrodes')
+            
+            # Use schema-driven directory selection based on inheritance-aware entities
+            electrodes_dir = self._get_directory_for_entities(electrodes_entities, datatype)
+            
+            electrodes_filename = self._build_bids_filename(electrodes_entities, 'electrodes', '.tsv')
+            electrodes_path = electrodes_dir / electrodes_filename
             if not electrodes_path.exists():
                 try:
                     electrodes_df = metadata_extractor.extract_electrodes_tsv(source_file, datatype)
@@ -734,13 +741,113 @@ class BidsSubject:
                     print(f"Generated fallback electrodes.tsv")
             
             # Generate coordsystem.json (required when electrodes.tsv is present)
-            coordsystem_filename = self._build_bids_filename(entities, 'coordsystem', '.json')
-            coordsystem_path = data_dir / coordsystem_filename
+            # Use same inheritance-aware entities as electrodes for consistency
+            coordsystem_entities = self._get_inheritance_aware_entities(entities, datatype, 'coordsystem')
+            coordsystem_dir = self._get_directory_for_entities(coordsystem_entities, datatype)
+            
+            coordsystem_filename = self._build_bids_filename(coordsystem_entities, 'coordsystem', '.json')
+            coordsystem_path = coordsystem_dir / coordsystem_filename
             if not coordsystem_path.exists():
                 coordsystem_metadata = self._create_coordsystem_metadata()
                 with open(coordsystem_path, 'w') as f:
                     json.dump(coordsystem_metadata, f, indent=2, sort_keys=True)
                 print(f"Generated required coordsystem.json for iEEG electrodes")
+    
+    def _filter_entities_for_suffix(self, entities: Dict[str, str], datatype: str, suffix: str) -> Dict[str, str]:
+        """
+        Filter entities based on schema requirements for specific datatype/suffix.
+        
+        This schema-driven method ensures we only include entities that are
+        required for the specific suffix, preventing BIDS warnings about
+        excessive specificity (e.g., task/acq in electrodes.tsv).
+        
+        Args:
+            entities: Full entity dictionary
+            datatype: BIDS datatype (e.g., 'ieeg', 'eeg')  
+            suffix: BIDS suffix (e.g., 'electrodes', 'channels', 'events')
+            
+        Returns:
+            Filtered entities containing only schema-required entities
+        """
+        try:
+            # Query schema for required entities for this specific suffix
+            required_entities = self.get_required_entities_for_suffix(datatype, suffix)
+            
+            # Filter entities to include only those required by schema
+            filtered_entities = {key: value for key, value in entities.items() 
+                               if key in required_entities}
+            
+            return filtered_entities
+            
+        except Exception as e:
+            # Fallback: if schema query fails, use original entities
+            print(f"Warning: Could not filter entities for {datatype}/{suffix}: {e}")
+            return entities
+    
+    def _get_directory_for_entities(self, entities: Dict[str, str], datatype: str) -> Path:
+        """
+        Get appropriate directory path based on entities using schema-driven logic.
+        
+        BIDS specification requires:
+        - Files with session entities go in session directories
+        - Files without session entities go at subject level
+        
+        Args:
+            entities: Filtered entities dictionary
+            datatype: BIDS datatype (e.g., 'ieeg', 'eeg')
+            
+        Returns:
+            Path to the appropriate directory
+        """
+        # Start with subject path
+        directory_path = self.subject_path
+        
+        # Add session directory if session entity is present
+        if 'ses' in entities:
+            session_dir = self._format_entity('ses', entities['ses'])
+            directory_path = directory_path / session_dir
+        
+        # Add datatype directory
+        directory_path = directory_path / datatype
+        
+        # Ensure directory exists
+        directory_path.mkdir(parents=True, exist_ok=True)
+        
+        return directory_path
+    
+    def _get_inheritance_aware_entities(self, data_entities: Dict[str, str], datatype: str, suffix: str) -> Dict[str, str]:
+        """
+        Get entities for metadata files considering BIDS inheritance principle.
+        
+        For proper inheritance, metadata files (like electrodes.tsv) should be placed
+        at the same level or higher than the data files they describe. This means:
+        - If data files are session-specific, electrodes should be session-specific
+        - If data files are subject-level, electrodes can be subject-level
+        
+        Args:
+            data_entities: Entities from the data file that needs metadata
+            datatype: BIDS datatype (e.g., 'ieeg')
+            suffix: Metadata suffix (e.g., 'electrodes', 'coordsystem')
+            
+        Returns:
+            Entities for metadata file ensuring proper inheritance
+        """
+        # Start with schema requirements for this suffix
+        schema_required = self._filter_entities_for_suffix(data_entities, datatype, suffix)
+        
+        # For inheritance-critical files, preserve session context when data is session-specific
+        inheritance_critical_suffixes = ['electrodes', 'coordsystem']
+        
+        if suffix in inheritance_critical_suffixes:
+            # If data file has session and subject, keep both for proper inheritance
+            if 'ses' in data_entities and 'sub' in data_entities:
+                return {
+                    'sub': data_entities['sub'],
+                    'ses': data_entities['ses']
+                }
+        
+        # Use schema-only filtering for other cases
+        return schema_required
     
     def _create_channels_dataframe(self, datatype: str, channel_count: int) -> pd.DataFrame:
         """Create channels dataframe with appropriate structure (legacy method)"""
