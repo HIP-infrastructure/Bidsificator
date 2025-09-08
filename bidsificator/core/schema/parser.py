@@ -145,6 +145,8 @@ class BidsSchemaParser:
                                 # Parse requirement level
                                 if field_rule == "required":
                                     metadata_requirements[datatype]["required"][field_name] = field_def
+                                elif field_rule == "recommended":
+                                    metadata_requirements[datatype]["recommended"][field_name] = field_def
                                 elif isinstance(field_rule, dict):
                                     level = field_rule.get("level", "optional")
                                     if level == "required":

@@ -611,21 +611,12 @@ class BidsSubject:
         # Add recommended fields with defaults if missing
         for field_name, field_spec in recommended_metadata.items():
             if field_name not in json_metadata:
-                json_metadata[field_name] = self._get_default_metadata_value(
+                default_value = self._get_default_metadata_value(
                     field_name, field_spec, entities, datatype, suffix
                 )
-        
-        # Add datatype-specific recommended fields from schema rules
-        if datatype == 'ieeg':
-            ieeg_recommended_fields = self._get_schema_recommended_fields(datatype)
-            for field_name in ieeg_recommended_fields:
-                if field_name not in json_metadata:
-                    default_value = self._get_default_metadata_value(
-                        field_name, {}, entities, datatype, suffix
-                    )
-                    # Only add field if default value is not None (None means omit field)
-                    if default_value is not None:
-                        json_metadata[field_name] = default_value
+                # Only add field if default value is not None (None means omit field)
+                if default_value is not None:
+                    json_metadata[field_name] = default_value
         
         # Write JSON file if there's metadata to write
         if json_metadata:
@@ -669,6 +660,11 @@ class BidsSubject:
             }
         elif field_name == 'TaskName':
             return entities.get('task', DEFAULT_METADATA_VALUES['UNKNOWN'])
+        elif field_name == 'HEDVersion':
+            # HEDVersion field format is defined in BIDS schema but no default value is provided
+            # The BIDS spec requires this field when HED tags are used but leaves version choice to users
+            # We use a stable, widely-compatible HED schema version as a reasonable default
+            return self._get_default_hed_version()
         elif field_name in ['SamplingFrequency', 'PowerLineFrequency']:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
         elif field_name.endswith('Reference'):
@@ -678,47 +674,19 @@ class BidsSubject:
         else:
             return DEFAULT_METADATA_VALUES['NOT_AVAILABLE']
     
-    def _get_schema_recommended_fields(self, datatype: str) -> List[str]:
-        """Extract recommended fields directly from BIDS schema rules"""
-        try:
-            # Import here to access schema file
-            schema_path = Path(__file__).parent.parent / "schema" / "bids_schema.json"
-            with open(schema_path, 'r') as f:
-                schema = json.load(f)
-            
-            # Extract recommended fields from schema rules
-            recommended_fields = []
-            sidecar_rules = schema.get("rules", {}).get("sidecars", {})
-            
-            if datatype in sidecar_rules:
-                datatype_rules = sidecar_rules[datatype]
-                
-                # Look for recommended fields in all rule categories
-                for rule_name, rule_data in datatype_rules.items():
-                    if isinstance(rule_data, dict) and "fields" in rule_data:
-                        fields = rule_data["fields"]
-                        
-                        for field_name, field_rule in fields.items():
-                            # Check if field is recommended
-                            if field_rule == "recommended":
-                                recommended_fields.append(field_name)
-                            elif isinstance(field_rule, dict) and field_rule.get("level") == "recommended":
-                                recommended_fields.append(field_name)
-            
-            return recommended_fields
-            
-        except Exception as e:
-            print(f"Warning: Could not load schema recommended fields for {datatype}: {e}")
-            # Fallback to known fields if schema loading fails
-            if datatype == 'ieeg':
-                return [
-                    'SubjectArtefactDescription', 'iEEGPlacementScheme', 'iEEGElectrodeGroups',
-                    'iEEGGround', 'ECGChannelCount', 'EMGChannelCount', 'MiscChannelCount', 
-                    'TriggerChannelCount', 'HardwareFilters', 'ElectrodeManufacturer',
-                    'ElectrodeManufacturersModelName', 'ECOGChannelCount', 'SEEGChannelCount',
-                    'EEGChannelCount', 'EOGChannelCount', 'RecordingDuration', 'RecordingType'
-                ]
-            return []
+    def _get_default_hed_version(self) -> str:
+        """
+        Get a default HED schema version that's compatible with current BIDS version.
+        
+        The BIDS schema defines HEDVersion format but provides no default value.
+        We select a stable HED version that's known to work with BIDS v1.10.0.
+        
+        Returns:
+            str: HED schema version string in format required by BIDS
+        """
+        # HED 8.2.0 is a stable version compatible with BIDS 1.10.0
+        # This follows the hed_version format defined in the BIDS schema
+        return "8.2.0"
     
     def _generate_ephys_files(self, data_path: Path, entities: Dict[str, str], datatype: str, source_path: Path = None):
         """Generate channels.tsv and events.tsv for electrophysiology data using schema-driven extraction"""
@@ -1029,10 +997,21 @@ class BidsSubject:
         # and should not be redefined to avoid TSV_COLUMN_TYPE_REDEFINED warnings
         standard_bids_columns = ['onset', 'duration', 'trial_type', 'response_time']
         
+        # Check if dataset has HED columns and add HEDVersion if needed
+        has_hed_column = 'HED' in column_names
+        if has_hed_column and 'HEDVersion' not in events_metadata:
+            # Add HEDVersion field when HED columns are present (required by BIDS spec)
+            events_metadata['HEDVersion'] = self._get_default_hed_version()
+        
         for column in column_names:
             if column not in standard_bids_columns:
+                # Properly handle HED column by defining it in events.json
+                if column == 'HED':
+                    events_metadata['HED'] = {
+                        "Description": "Hierarchical Event Descriptor (HED) tags for event annotation."
+                    }
                 # Only define non-standard columns to avoid type redefinition warnings
-                if column == 'value':
+                elif column == 'value':
                     events_metadata['value'] = {
                         "Description": "Marker value associated with the event (for example, the value of a trigger sent to the acquisition system)."
                     }
