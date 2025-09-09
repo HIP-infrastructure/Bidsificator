@@ -129,13 +129,13 @@ class SubjectLookupService:
             center_name: Medical center name
             
         Returns:
-            Cleaned center name (max 8 chars, alphanumeric only)
+            Cleaned center name (max 8 chars, alphanumeric and hyphens)
         """
         if not center_name:
             return ""
         
-        # Remove special characters, keep only alphanumeric
-        cleaned = re.sub(r'[^a-zA-Z0-9]', '', center_name.strip())
+        # Remove special characters, keep only alphanumeric and hyphens
+        cleaned = re.sub(r'[^a-zA-Z0-9-]', '', center_name.strip())
         
         # Capitalize and limit length
         if cleaned:
@@ -152,7 +152,7 @@ class SubjectLookupService:
             numeric_id: Raw numeric identifier
             
         Returns:
-            Cleaned numeric ID (3-digit padded: "001", "042", etc.)
+            Cleaned numeric ID (padded to at least 3 digits)
         """
         if not numeric_id:
             return ""
@@ -163,12 +163,13 @@ class SubjectLookupService:
         if not digits:
             return ""
         
-        # Convert to int and back to remove leading zeros, then pad to 3 digits
+        # Convert to int and back to remove leading zeros, then pad appropriately
         try:
             num = int(digits)
-            if num < 1 or num > 999:  # Reasonable range
+            if num < 1 or num > 99999:  # Support up to 5-digit IDs
                 return ""
-            return str(num).zfill(3)  # "001", "042", "123", etc.
+            # Pad to at least 3 digits, but keep more if needed
+            return str(num).zfill(3 if num < 1000 else len(str(num)))
         except ValueError:
             return ""
     
