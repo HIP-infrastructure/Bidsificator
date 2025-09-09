@@ -175,8 +175,14 @@ class FileEditor(QWidget, Ui_FileEditor):
 
     def _update_edit_mode_ui(self, edit_mode):
         """Update UI for edit mode."""
-        button_text = "Cancel Edit" if edit_mode else "Edit"
-        self.EditPushButton.setText(button_text)
+        # Update button text and visibility
+        if edit_mode:
+            self.EditPushButton.setText("Save")
+            self.CancelPushButton.setEnabled(True)
+        else:
+            self.EditPushButton.setText("Edit")
+            self.CancelPushButton.setEnabled(False)
+            
         self.FileListWidget.setEnabled(not edit_mode)
         
         # Enable/disable form fields based on edit mode
