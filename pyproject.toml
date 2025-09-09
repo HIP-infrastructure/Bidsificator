@@ -40,7 +40,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.codespell]
 # Ref: https://github.com/codespell-project/codespell#using-a-config-file
-skip = '.git*,*.lock'
+skip = '.git*,*.lock,./bidsificator/schema/bids_schema.json'
 check-hidden = true
 # ignore-regex = ''
 # ignore-words-list = ''
