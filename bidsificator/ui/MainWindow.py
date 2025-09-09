@@ -1078,8 +1078,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Save any pending FileEditor changes before import
         self._save_file_editor_changes()
         
-        # Get task value from the TaskComboBox
-        task = self.IS_TaskComboBox.currentText()
+        # Get task value from the FileEditor's TaskComboBox
+        task = self.__ImportSubjectFileEditor.TaskComboBox.currentText()
         
         self._main_controller.start_subjects_import(task)
     

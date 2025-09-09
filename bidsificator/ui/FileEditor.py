@@ -289,9 +289,16 @@ class FileEditor(QWidget, Ui_FileEditor):
         
         if not modality:
             return
+        
+        # Extract datatype from modality string (e.g., "ieeg (ieeg)" -> "ieeg")
+        if '(' in modality and ')' in modality:
+            # Extract the datatype from parentheses
+            datatype = modality.split('(')[1].rstrip(')')
+        else:
+            datatype = modality
             
         # Get UI requirements from controller
-        requirements = self._controller.get_modality_ui_requirements(modality)
+        requirements = self._controller.get_modality_ui_requirements(datatype)
         
         # Update visibility based on requirements
         self.SessionLabel.setVisible(requirements.get('show_session', False))
