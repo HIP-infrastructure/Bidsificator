@@ -1,0 +1,313 @@
+"""
+BIDS Schema Mapper for TSV Files
+
+Maps BIDS schema requirements to TSV file generation, ensuring compliance
+with BIDS specification for channels, events, and other tabular data files.
+"""
+
+from typing import Dict, List, Any, Optional, Set
+from pathlib import Path
+import pandas as pd
+from dataclasses import dataclass
+
+from .schema_manager import BidsSchemaManager
+
+
+@dataclass
+class ColumnDefinition:
+    """Definition of a BIDS TSV column from schema"""
+    name: str
+    description: str
+    data_type: str  # 'string', 'number', 'boolean', 'integer'
+    requirement_level: str  # 'required', 'recommended', 'optional'
+    format: Optional[str] = None  # 'label', 'index', etc.
+    enum: Optional[List[str]] = None  # Allowed values
+
+
+class BidsSchemaMapper:
+    """Maps BIDS schema requirements to TSV file generation"""
+    
+    def __init__(self):
+        self.schema_manager = BidsSchemaManager.get_instance()
+        self._column_cache = {}
+    
+    def get_tsv_column_requirements(self, suffix: str, datatype: str = None) -> Dict[str, ColumnDefinition]:
+        """
+        Get column requirements for a specific TSV file type
+        
+        Args:
+            suffix: TSV file suffix ('channels', 'events', etc.)
+            datatype: BIDS datatype ('ieeg', 'eeg', 'meg', etc.) for context
+            
+        Returns:
+            Dictionary mapping column names to their definitions
+        """
+        cache_key = f"{suffix}_{datatype or 'generic'}"
+        if cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+        
+        columns = {}
+        raw_schema = self.schema_manager._raw_schema
+        
+        # Get column definitions from schema
+        schema_columns = raw_schema.get('objects', {}).get('columns', {})
+        
+        if suffix == 'channels':
+            columns.update(self._get_channels_columns(schema_columns, datatype))
+        elif suffix == 'events':
+            columns.update(self._get_events_columns(schema_columns, datatype))
+        elif suffix == 'electrodes':
+            columns.update(self._get_electrodes_columns(schema_columns, datatype))
+        # Add more TSV types as needed
+        
+        self._column_cache[cache_key] = columns
+        return columns
+    
+    def _get_channels_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
+        """Get columns for channels.tsv files"""
+        columns = {}
+        
+        # Core channels.tsv columns based on BIDS schema
+        column_mappings = {
+            'name__channels': 'name',
+            'type__channels': 'type', 
+            'units': 'units',
+            'sampling_frequency': 'sampling_frequency',
+            'status': 'status',
+            'group__channel': 'group',
+            # Add reference-related columns
+        }
+        
+        for schema_key, bids_key in column_mappings.items():
+            if schema_key in schema_columns:
+                col_def = schema_columns[schema_key]
+                columns[bids_key] = ColumnDefinition(
+                    name=bids_key,
+                    description=col_def.get('description', ''),
+                    data_type=col_def.get('type', 'string'),
+                    requirement_level=col_def.get('requirement_level', 'optional'),
+                    format=col_def.get('format'),
+                    enum=col_def.get('enum')
+                )
+        
+        # Add modality-specific columns
+        if datatype in ['ieeg', 'seeg', 'ecog']:
+            # For intracranial recordings, add reference info
+            if 'reference' not in columns:
+                columns['reference'] = ColumnDefinition(
+                    name='reference',
+                    description='Specification of the reference electrode(s)',
+                    data_type='string',
+                    requirement_level='recommended'
+                )
+            
+            # Add filtering information
+            for filter_type in ['low_cutoff', 'high_cutoff']:
+                if filter_type not in columns:
+                    columns[filter_type] = ColumnDefinition(
+                        name=filter_type,
+                        description=f'{filter_type.replace("_", " ").title()} filter frequency in Hz',
+                        data_type='number',
+                        requirement_level='optional'
+                    )
+        
+        return columns
+    
+    def _get_events_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
+        """Get columns for events.tsv files"""
+        columns = {}
+        
+        # Core events.tsv columns (from BIDS schema)
+        core_event_columns = ['onset', 'duration', 'trial_type', 'response_time', 'stim_file']
+        
+        for col_name in core_event_columns:
+            if col_name in schema_columns:
+                col_def = schema_columns[col_name]
+                columns[col_name] = ColumnDefinition(
+                    name=col_name,
+                    description=col_def.get('description', ''),
+                    data_type=col_def.get('type', 'string'),
+                    requirement_level=col_def.get('requirement_level', 'optional'),
+                    format=col_def.get('format'),
+                    enum=col_def.get('enum')
+                )
+        
+        # Ensure required columns are present
+        if 'onset' not in columns:
+            columns['onset'] = ColumnDefinition(
+                name='onset',
+                description='Onset time of event in seconds',
+                data_type='number',
+                requirement_level='required'
+            )
+        
+        if 'duration' not in columns:
+            columns['duration'] = ColumnDefinition(
+                name='duration', 
+                description='Duration of event in seconds',
+                data_type='number',
+                requirement_level='required'
+            )
+        
+        # Add BIDS arbitrary columns commonly used for EEG/iEEG
+        # 'value' column for trigger codes (demoted to arbitrary but widely used)
+        columns['value'] = ColumnDefinition(
+            name='value',
+            description='Event value (e.g., trigger code, stimulus identifier)',
+            data_type='string',
+            requirement_level='optional'
+        )
+        
+        return columns
+    
+    def _get_electrodes_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
+        """Get columns for electrodes.tsv files (for iEEG)"""
+        columns = {}
+        
+        # Core electrode columns
+        electrode_columns = {
+            'name': 'Electrode name',
+            'x': 'X coordinate', 
+            'y': 'Y coordinate',
+            'z': 'Z coordinate',
+            'size': 'Surface area or volume',
+            'hemisphere': 'Hemisphere (L/R)',
+            'group': 'Electrode group'
+        }
+        
+        for col_name, description in electrode_columns.items():
+            data_type = 'number' if col_name in ['x', 'y', 'z', 'size'] else 'string'
+            columns[col_name] = ColumnDefinition(
+                name=col_name,
+                description=description,
+                data_type=data_type,
+                requirement_level='required' if col_name == 'name' else 'optional'
+            )
+        
+        return columns
+    
+    def validate_tsv_dataframe(self, df: pd.DataFrame, suffix: str, datatype: str = None) -> List[str]:
+        """
+        Validate a TSV DataFrame against BIDS schema requirements
+        
+        Args:
+            df: DataFrame to validate
+            suffix: TSV file suffix ('channels', 'events', etc.)
+            datatype: BIDS datatype for context
+            
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        errors = []
+        requirements = self.get_tsv_column_requirements(suffix, datatype)
+        
+        # Check required columns are present
+        required_cols = {name for name, col_def in requirements.items() 
+                        if col_def.requirement_level == 'required'}
+        missing_cols = required_cols - set(df.columns)
+        
+        for col in missing_cols:
+            errors.append(f"Required column '{col}' missing from {suffix}.tsv")
+        
+        # Check data types for existing columns
+        for col_name in df.columns:
+            if col_name in requirements:
+                col_def = requirements[col_name]
+                expected_type = col_def.data_type
+                
+                # Basic type checking
+                if expected_type == 'number':
+                    if not pd.api.types.is_numeric_dtype(df[col_name]):
+                        non_numeric = df[col_name].dropna()
+                        if len(non_numeric) > 0 and not all(str(x).replace('.', '').replace('-', '').isdigit() or str(x) == 'n/a' for x in non_numeric):
+                            errors.append(f"Column '{col_name}' should contain numeric values")
+                
+                # Check enum constraints if present  
+                if col_def.enum:
+                    invalid_values = set(df[col_name].dropna()) - set(col_def.enum + ['n/a'])
+                    if invalid_values:
+                        errors.append(f"Column '{col_name}' contains invalid values: {invalid_values}")
+        
+        return errors
+    
+    def create_compliant_dataframe(self, data: List[Dict[str, Any]], suffix: str, datatype: str = None) -> pd.DataFrame:
+        """
+        Create a BIDS-compliant DataFrame from raw data
+        
+        Args:
+            data: List of dictionaries with raw data
+            suffix: TSV file suffix ('channels', 'events', etc.)
+            datatype: BIDS datatype for context
+            
+        Returns:
+            BIDS-compliant DataFrame
+        """
+        if not data:
+            # Return empty DataFrame with proper columns
+            requirements = self.get_tsv_column_requirements(suffix, datatype)
+            return pd.DataFrame({col_name: [] for col_name in requirements.keys()})
+        
+        df = pd.DataFrame(data)
+        requirements = self.get_tsv_column_requirements(suffix, datatype)
+        
+        # Ensure all required columns are present
+        for col_name, col_def in requirements.items():
+            if col_name not in df.columns:
+                if col_def.requirement_level == 'required':
+                    # Add with n/a default for required missing columns
+                    df[col_name] = 'n/a'
+                elif col_def.requirement_level == 'recommended':
+                    # Add recommended columns with appropriate defaults
+                    default_value = self._get_default_value(col_def.data_type)
+                    df[col_name] = default_value
+        
+        # Apply data type conversions
+        for col_name in df.columns:
+            if col_name in requirements:
+                col_def = requirements[col_name]
+                df[col_name] = self._convert_column_type(df[col_name], col_def)
+        
+        # Reorder columns to match BIDS specification order
+        if suffix == 'channels':
+            # BIDS channels.tsv has a specific column order
+            bids_order = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff', 'sampling_frequency', 
+                         'status', 'group', 'reference', 'description', 'notch', 'status_description']
+            ordered_columns = [col for col in bids_order if col in df.columns]
+            extra_columns = [col for col in df.columns if col not in bids_order]
+        else:
+            # For other TSV types, use schema order
+            ordered_columns = [col for col in requirements.keys() if col in df.columns]
+            extra_columns = [col for col in df.columns if col not in requirements]
+        
+        df = df[ordered_columns + extra_columns]
+        
+        return df
+    
+    def _get_default_value(self, data_type: str) -> Any:
+        """Get appropriate default value for a data type"""
+        defaults = {
+            'string': 'n/a',
+            'number': 0,
+            'integer': 0,
+            'boolean': False
+        }
+        return defaults.get(data_type, 'n/a')
+    
+    def _convert_column_type(self, series: pd.Series, col_def: ColumnDefinition) -> pd.Series:
+        """Convert series to appropriate data type"""
+        if col_def.data_type == 'number':
+            # Convert to numeric, keeping 'n/a' as string
+            try:
+                return pd.to_numeric(series)
+            except (ValueError, TypeError):
+                return series  # Keep original if conversion fails
+        elif col_def.data_type == 'integer':
+            # Convert to integer where possible
+            numeric = pd.to_numeric(series, errors='coerce')
+            return numeric.fillna(series)  # Keep original for non-numeric
+        elif col_def.data_type == 'boolean':
+            # Convert to boolean
+            return series.map(lambda x: x if pd.isna(x) or x == 'n/a' else bool(x))
+        
+        # Default to string
+        return series.astype(str)

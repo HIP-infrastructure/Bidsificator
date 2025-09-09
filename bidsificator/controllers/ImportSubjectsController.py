@@ -1,6 +1,7 @@
 """Controller for batch subject import operations."""
 
 import os
+import tempfile
 from typing import List, Dict, Any, Optional, Tuple
 from PyQt6.QtWidgets import QWidget, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -10,6 +11,8 @@ from ..services.DataCrawlerService import DataCrawlerService
 from ..services.SubjectLookupService import SubjectLookupService
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..workers.BidsSubjectsProcess import check_subject_conflicts
+from ..core.schema import BidsSchemaManager
+from ..core.BidsSubjectSchema import BidsSubject
 
 
 class ImportSubjectsController(QObject):
@@ -23,6 +26,7 @@ class ImportSubjectsController(QObject):
     selection_changed = pyqtSignal(int)  # Selected subject index changed
     file_list_updated = pyqtSignal()  # File list for selected subject updated
     lookup_table_updated = pyqtSignal(str)  # Lookup table status message
+    required_entities_changed = pyqtSignal(dict)  # Required entities for UI updated
     
     def __init__(self, dataset_path_provider, file_editor_controller, parent: Optional[QWidget] = None):
         """
@@ -50,6 +54,7 @@ class ImportSubjectsController(QObject):
         )
         self._lookup_table_path: Optional[str] = None
         self._subject_mapping: Dict[str, str] = {}
+        self._schema_manager = BidsSchemaManager.get_instance()
     
     @property
     def model(self) -> SubjectDataModel:
@@ -92,6 +97,10 @@ class ImportSubjectsController(QObject):
             
             # Emit signal for UI update
             self.subjects_loaded.emit()
+            
+            # Emit required entities for dynamic UI
+            required_entities = self.get_required_entities_for_import()
+            self.required_entities_changed.emit(required_entities)
             
             # Update file editor with first subject if available
             if self._model.count() > 0:
@@ -174,10 +183,13 @@ class ImportSubjectsController(QObject):
         
         return False
     
-    def start_batch_import(self) -> bool:
+    def start_batch_import(self, task: str = "Rest") -> bool:
         """
         Start the batch import process.
         
+        Args:
+            task: BIDS task entity value to apply to all imported files
+            
         Returns:
             True if started successfully
         """
@@ -263,8 +275,8 @@ class ImportSubjectsController(QObject):
             )
             return False
         
-        # Create and start worker with overwrite setting
-        self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data, overwrite_existing)
+        # Create and start worker with overwrite setting and task
+        self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data, overwrite_existing, task)
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
         self._worker.finished.connect(self._on_import_finished)
         self._worker.start()
@@ -392,6 +404,57 @@ class ImportSubjectsController(QObject):
             SubjectData instance or None if not found
         """
         return self._model.get_subject_by_id(subject_id)
+    
+    def get_required_entities_for_import(self) -> Dict[str, List[str]]:
+        """
+        Analyze imported files and determine which entities are required.
+        
+        Returns:
+            Dictionary mapping entity keys to their possible values from schema
+        """
+        if self._model.is_empty():
+            return {}
+        
+        # Collect all unique datatype/suffix combinations from imported files
+        datatype_suffix_pairs = set()
+        
+        for subject_data in self._model.subjects:
+            for file_info in subject_data.files:
+                modality = file_info.get('modality', '')
+                
+                # Map modality string to datatype/suffix
+                if 'ieeg' in modality.lower():
+                    datatype_suffix_pairs.add(('ieeg', 'ieeg'))
+                elif 'anat' in modality.lower():
+                    # Extract suffix from modality (e.g., "T1w (anat)" -> "T1w")
+                    suffix = modality.split('(')[0].strip()
+                    datatype_suffix_pairs.add(('anat', suffix))
+                # Add more mappings as needed
+        
+        # Collect all required entities across all file types
+        # Use existing proven schema logic from BidsSubject (same as Tab 2)
+        all_required_entities = set()
+        
+        # Create a temporary BidsSubject to use its proven schema methods
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_subject = BidsSubject('temp', temp_dir, self._schema_manager)
+            
+            for datatype, suffix in datatype_suffix_pairs:
+                required = temp_subject.get_required_entities_for_suffix(datatype, suffix)
+                all_required_entities.update(required)
+        
+        # Build entity requirements with possible values
+        entity_requirements = {}
+        for entity in all_required_entities:
+            if entity == 'task':
+                # For task entity, we could query schema for allowed values
+                # For now, provide common iEEG task values
+                entity_requirements['task'] = ['Cognitiv', 'Seizure', 'Interictal', 'Stimulation', 'Sleep', 'Rest']
+            elif entity == 'ses':
+                entity_requirements['ses'] = ['pre', 'post', 'intra', '01', '02']
+            # Add more entities as needed
+        
+        return entity_requirements
     
     def set_config_path(self, config_path: str):
         """

@@ -252,11 +252,15 @@ class DatasetModel:
             # Extract subject IDs
             self._subjects = [subject.get_subject_id() for subject in bids_subjects]
             
+            # If BidsFolder found no subjects, fall back to directory scanning
+            if not self._subjects:
+                raise RuntimeError("No subjects found in BidsFolder, falling back to directory scan")
+            
             # Load sessions for each subject
             self._sessions = {}
             for subject in bids_subjects:
                 subject_id = subject.get_subject_id()
-                subject_path = os.path.join(dataset_path, subject_id)
+                subject_path = os.path.join(dataset_path, f"sub-{subject_id}")
                 if os.path.exists(subject_path):
                     sessions = [f for f in os.listdir(subject_path)
                               if os.path.isdir(os.path.join(subject_path, f))
@@ -277,13 +281,15 @@ class DatasetModel:
                     if (os.path.isdir(item_path) and 
                         item.startswith("sub-") and 
                         not item.startswith(".")):
-                        self._subjects.append(item)
+                        # Strip 'sub-' prefix to be consistent with main code path
+                        subject_id = item[4:] if item.startswith("sub-") else item
+                        self._subjects.append(subject_id)
                         
                         # Load sessions
                         sessions = [f for f in os.listdir(item_path)
                                    if os.path.isdir(os.path.join(item_path, f))
                                    and f.startswith("ses-") and not f.startswith(".")]
-                        self._sessions[item] = sessions
+                        self._sessions[subject_id] = sessions
             except Exception:
                 pass  # Continue with empty lists
     
@@ -313,8 +319,9 @@ class DatasetModel:
             return False, "No dataset loaded"
         
         # Validate subject ID
-        from ..services.ValidationService import ValidationService
-        is_valid, error = ValidationService.validate_subject_name(subject_id)
+        from ..services.ValidationServiceSchema import ValidationService
+        validation_service = ValidationService()
+        is_valid, error = validation_service.validate_subject_name(subject_id)
         if not is_valid:
             return False, error
         
@@ -326,7 +333,7 @@ class DatasetModel:
             from ..core.BidsFolder import BidsFolder
             
             bids_folder = BidsFolder(self._current_dataset.path)
-            subject_path = os.path.join(self._current_dataset.path, subject_id)
+            subject_path = os.path.join(self._current_dataset.path, f"sub-{subject_id}")
             
             # This will be handled by the actual BIDS creation process
             # For now, just add to our internal list
@@ -351,8 +358,9 @@ class DatasetModel:
         if not self._is_loaded:
             return False, "No dataset loaded"
         
-        from ..services.ValidationService import ValidationService
-        return ValidationService.validate_bids_dataset(self._current_dataset.path, subject_id)
+        from ..services.ValidationServiceSchema import ValidationService
+        validation_service = ValidationService()
+        return validation_service.validate_bids_dataset(self._current_dataset.path, subject_id)
     
     def get_dataset_statistics(self) -> Dict[str, Any]:
         """

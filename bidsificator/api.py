@@ -406,6 +406,11 @@ def create_empty_bids_subject(dataset_name):
     #Create subject
     subject_id = subject_description["participant_id"]
     subject_description.pop("participant_id", None)
+    
+    # Strip "sub-" prefix if provided to prevent double prefix
+    if subject_id.lower().startswith("sub-"):
+        subject_id = subject_id[4:]
+    
     try:
         bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
     except ValueError as e:
@@ -517,13 +522,24 @@ def add_files_to_bids_subject(dataset_name):
         file_path = Path(file["path"])
         if file_path.exists():
             if file["modality"] == "ieeg":
-                new_file_path = bids_subject.add_functionnal_file(file_path, file["entities"])
-                bids_subject.generate_events_file(new_file_path, file["entities"])
-                bids_subject.generate_channels_file(new_file_path, file["entities"])
-                bids_subject.generate_task_file(new_file_path, file["entities"])
+                # Use new schema-driven BidsSubject API
+                result = bids_subject.add_file(
+                    source_path=file_path,
+                    datatype='ieeg',
+                    entities=file["entities"],
+                    suffix='ieeg'
+                )
+                print(f"Added iEEG file via API: {result.get('target_path', file_path)}")
 
-            elif file["modality"] == "T1w" or file["modality"] == "T2w" or file["modality"] == "T1rho" or file["modality"] == "T2*" or file["modality"] == "FLAIR" or file["modality"] == "CT":
-                bids_subject.add_anatomical_file(file_path, file)
+            elif file["modality"] in ["T1w", "T2w", "T1rho", "T2*", "FLAIR", "CT"]:
+                # Use new schema-driven BidsSubject API
+                result = bids_subject.add_file(
+                    source_path=file_path,
+                    datatype='anat',
+                    entities=file["entities"],
+                    suffix=file["modality"]
+                )
+                print(f"Added anatomical file via API: {result.get('target_path', file_path)}")
 
             else:
                 print("modality not recognized : ", file["modality"])

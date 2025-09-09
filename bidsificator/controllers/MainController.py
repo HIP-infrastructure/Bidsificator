@@ -190,9 +190,9 @@ class MainController(QObject):
         if success:
             self.status_updated.emit("Selected subjects removed")
     
-    def start_subjects_import(self):
+    def start_subjects_import(self, task: str = "Rest"):
         """Start batch subjects import process."""
-        success = self._import_subjects_controller.start_batch_import()
+        success = self._import_subjects_controller.start_batch_import(task)
         if success:
             self.status_updated.emit("Batch import started...")
     

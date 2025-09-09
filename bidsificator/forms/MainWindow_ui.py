@@ -311,7 +311,7 @@ class Ui_MainWindow(object):
         self.IS_StartImportLayout.addWidget(self.IS_StartImportPushButton)
         spacerItem8 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
         self.IS_StartImportLayout.addItem(spacerItem8)
-        self.gridLayout_3.addLayout(self.IS_StartImportLayout, 3, 0, 1, 1)
+        self.gridLayout_3.addLayout(self.IS_StartImportLayout, 4, 0, 1, 1)
         self.tabWidget.addTab(self.ImportSubjectsTab, "")
         self.horizontalLayout_main.addWidget(self.mainSplitter)
         MainWindow.setCentralWidget(self.centralwidget)

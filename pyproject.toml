@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.5.3"
+version = "1.8.0"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
@@ -12,8 +12,15 @@ pyqt6 = "^6.8.1"
 
 # bids
 numpy = "1.26"
+pandas = "^2.0.0"
 dicom2nifti = ">=2.4.10"
 bids_validator = ">=1.14.5"
+
+# neurophysiology data conversion
+mne = "^1.6.0"
+neo = "^0.13.0"
+edfio = "^0.4.4"
+pybv = "^0.7.5"
 
 # API
 flasgger = "^0.9"
@@ -33,7 +40,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.codespell]
 # Ref: https://github.com/codespell-project/codespell#using-a-config-file
-skip = '.git*,*.lock'
+skip = '.git*,*.lock,./bidsificator/schema/bids_schema.json'
 check-hidden = true
 # ignore-regex = ''
 # ignore-words-list = ''

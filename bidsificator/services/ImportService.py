@@ -4,7 +4,7 @@ import os
 from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 
-from .FileDetectionService import FileDetectionService
+from .FileDetectionServiceSchema import FileDetectionService
 
 
 class ImportService:
@@ -95,16 +95,21 @@ class ImportService:
         successful_files = []
         failed_files = []
         
+        # Create file detection service instance
+        detection_service = FileDetectionService()
+        
         for file_path in file_paths:
             try:
-                # Auto-detect modality
-                detected_modality = FileDetectionService.detect_modality_from_file(file_path)
-                if not detected_modality:
+                # Auto-detect modality using new schema service
+                detection_result = detection_service.detect_file(Path(file_path))
+                if not detection_result.detected_datatype:
                     failed_files.append(f"{os.path.basename(file_path)}: Unsupported file type")
                     continue
                 
-                # Determine task based on modality
-                if "(anat)" in detected_modality or "photo" in detected_modality:
+                detected_datatype = detection_result.detected_datatype
+                
+                # Determine task based on datatype
+                if detected_datatype in ["anat"] or "photo" in detected_datatype:
                     task = ""  # Anatomy and photos don't use tasks
                 else:
                     task = form_defaults.get("task", "")
@@ -118,7 +123,7 @@ class ImportService:
                 acquisition = cls.get_next_acquisition_number(
                     successful_files + existing_files,  # Include both new and existing
                     session,
-                    detected_modality,
+                    detected_datatype,
                     task
                 )
                 
@@ -126,12 +131,12 @@ class ImportService:
                 file_data = {
                     "file_name": os.path.basename(file_path),
                     "file_path": file_path,
-                    "modality": detected_modality,
+                    "modality": detected_datatype,
                     "task": task,
                     "session": session,
-                    "contrast_agent": form_defaults.get("contrast_agent", "") if "(anat)" in detected_modality else "",
+                    "contrast_agent": form_defaults.get("contrast_agent", "") if detected_datatype == "anat" else "",
                     "acquisition": acquisition,
-                    "reconstruction": form_defaults.get("reconstruction", "") if "(anat)" in detected_modality else ""
+                    "reconstruction": form_defaults.get("reconstruction", "") if detected_datatype == "anat" else ""
                 }
                 
                 # Check for duplicates against existing files

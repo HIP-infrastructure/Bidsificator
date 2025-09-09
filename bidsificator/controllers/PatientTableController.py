@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ..core.BidsFolder import BidsFolder
-from ..services.ValidationService import ValidationService
+from ..services.ValidationServiceSchema import ValidationService
 
 
 class PatientTableController(QObject):
@@ -127,8 +127,13 @@ class PatientTableController(QObject):
         if not self._bids_folder:
             return False, "No dataset loaded"
         
+        # Strip "sub-" prefix if provided (case-insensitive) to prevent double prefix
+        if subject_id.lower().startswith("sub-"):
+            subject_id = subject_id[4:]
+        
         # Validate subject ID
-        is_valid, error = ValidationService.validate_subject_name(subject_id)
+        validation_service = ValidationService()
+        is_valid, error = validation_service.validate_subject_name(subject_id)
         if not is_valid:
             return False, error
         
@@ -136,7 +141,7 @@ class PatientTableController(QObject):
             # Get subject description from current keys
             subject_description = self._all_optional_keys.copy()
             if not subject_description:
-                subject_description = {'age': '123', 'sex': 'M/F'}
+                subject_description = {'age': 25, 'sex': 'M'}
             
             # Actually create the subject in the BIDS dataset
             bids_subject = self._bids_folder.add_bids_subject(subject_id, subject_description)
@@ -211,7 +216,8 @@ class PatientTableController(QObject):
             
             # Special handling for subject_id changes
             if field_name == "subject_id":
-                is_valid, error = ValidationService.validate_subject_name(new_value)
+                validation_service = ValidationService()
+                is_valid, error = validation_service.validate_subject_name(new_value)
                 if not is_valid:
                     QMessageBox.warning(
                         self._parent_widget,
@@ -232,6 +238,9 @@ class PatientTableController(QObject):
                 # Actually update the subject ID in the BidsSubject
                 bids_subject.set_subject_id(new_value)
                 
+                # Use the new subject ID for the signal
+                subject_id = new_value
+                
             else:
                 # Update optional key in the BidsSubject
                 bids_subject.update_optional_key(field_name, new_value)
@@ -247,7 +256,10 @@ class PatientTableController(QObject):
             
             return True
             
-        except Exception:
+        except Exception as e:
+            print(f"Error in update_subject_field: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def add_key_after(self, column_index: int) -> bool:

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QWidget, QFileDialog, QInputDialog, QMessageBox
 from PyQt6.QtCore import QStandardPaths
 
 from ..models.DatasetModel import DatasetModel
-from ..services.ValidationService import ValidationService
+from ..services.ValidationServiceSchema import ValidationService
 
 
 class DatasetController:
