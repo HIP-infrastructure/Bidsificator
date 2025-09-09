@@ -14,7 +14,7 @@ class SubjectLookupService:
         """
         Parse CSV lookup table file.
         
-        Expected format: FolderID;CenterName;NumericID
+        Expected format: FolderID;CenterID;SubjectID
         
         Args:
             csv_path: Path to CSV file
@@ -44,7 +44,7 @@ class SubjectLookupService:
                 reader = csv.DictReader(file, delimiter=delimiter)
                 
                 # Validate headers
-                expected_headers = {'FolderID', 'CenterName', 'NumericID'}
+                expected_headers = {'FolderID', 'CenterID', 'SubjectID'}
                 if not expected_headers.issubset(set(reader.fieldnames or [])):
                     errors.append(f"Invalid headers. Expected: {expected_headers}, Found: {reader.fieldnames}")
                     return mapping, errors
@@ -56,23 +56,54 @@ class SubjectLookupService:
                     line_number += 1
                     
                     folder_id = row.get('FolderID', '').strip()
-                    center_name = row.get('CenterName', '').strip()
-                    numeric_id = row.get('NumericID', '').strip()
+                    center_id_str = row.get('CenterID', '').strip()
+                    subject_id_str = row.get('SubjectID', '').strip()
                     
                     # Validate required fields
                     if not folder_id:
                         errors.append(f"Line {line_number}: Empty FolderID")
                         continue
                     
-                    if not center_name or not numeric_id:
-                        errors.append(f"Line {line_number}: Missing CenterName or NumericID for {folder_id}")
+                    if not center_id_str or not subject_id_str:
+                        errors.append(f"Line {line_number}: Missing CenterID or SubjectID for {folder_id}")
                         continue
                     
-                    # Format subject name
-                    formatted_name = SubjectLookupService.format_subject_name(center_name, numeric_id)
+                    # Check if using CUSTOM mode
+                    if center_id_str.upper() == 'CUSTOM':
+                        # Custom mode - SubjectID can be alphanumeric
+                        if not re.match(r'^[a-zA-Z0-9]+$', subject_id_str):
+                            errors.append(f"Line {line_number}: SubjectID must be alphanumeric only, got '{subject_id_str}'")
+                            continue
+                        # Use subject_id directly as the formatted name
+                        formatted_name = subject_id_str
+                    else:
+                        # Numeric mode - validate and parse numeric IDs
+                        try:
+                            center_id = int(center_id_str)
+                            if center_id < 0 or center_id > 999:
+                                errors.append(f"Line {line_number}: CenterID must be 0-999, got {center_id}")
+                                continue
+                        except ValueError:
+                            errors.append(f"Line {line_number}: CenterID must be numeric (0-999) or 'CUSTOM', got '{center_id_str}'"
+                            continue
+                        
+                        try:
+                            subject_id = int(subject_id_str)
+                            if subject_id < 0 or subject_id > 9999:
+                                errors.append(f"Line {line_number}: SubjectID must be 0-9999, got {subject_id}")
+                                continue
+                        except ValueError:
+                            errors.append(f"Line {line_number}: SubjectID must be numeric when CenterID is numeric, got '{subject_id_str}'")
+                            continue
+                        
+                        # Format subject name using numeric format
+                        formatted_name = SubjectLookupService.format_subject_name(center_id, subject_id)
                     
                     if not formatted_name:
-                        errors.append(f"Line {line_number}: Could not create valid subject name from '{center_name}' '{numeric_id}'")
+                        if center_id_str.upper() == 'CUSTOM':
+                            errors.append(f"Line {line_number}: Could not create valid subject name from SubjectID='{subject_id_str}'")
+                        else:
+                            errors.append(f"Line {line_number}: Could not create valid subject name from CenterID={center_id}, SubjectID={subject_id}")
                         continue
                     
                     # Normalize folder_id for case-insensitive matching
@@ -85,7 +116,10 @@ class SubjectLookupService:
                     
                     # Check for name conflicts
                     if formatted_name in used_names:
-                        errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}' (from '{center_name}' '{numeric_id}')")
+                        if center_id_str.upper() == 'CUSTOM':
+                            errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}'")
+                        else:
+                            errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}' (from CenterID={center_id}, SubjectID={subject_id})")
                         continue
                     
                     # Store multiple case variations for matching
@@ -104,84 +138,33 @@ class SubjectLookupService:
         return mapping, errors
     
     @staticmethod
-    def format_subject_name(center_name: str, numeric_id: str) -> str:
+    def format_subject_name(center_id: int, subject_id: int) -> str:
         """
-        Create anonymous BIDS-compatible subject name from center and numeric ID.
+        Create BIDS-compatible subject name from numeric center and subject IDs.
+        
+        Format: ZZZXXXX where:
+        - ZZZ: 3-digit center ID (000-999)
+        - XXXX: 4-digit subject ID (0000-9999)
+        
+        Note: For custom alphanumeric IDs, use CUSTOM mode in the CSV.
         
         Args:
-            center_name: Medical center name
-            numeric_id: Anonymous numeric identifier
+            center_id: Center identifier (0-999)
+            subject_id: Subject identifier (0-9999)
             
         Returns:
-            Formatted subject name (e.g., "Paris_001")
+            Formatted subject name (e.g., "0010123")
         """
-        if not center_name or not numeric_id:
+        # Validate ranges
+        if center_id < 0 or center_id > 999:
+            return ""
+        if subject_id < 0 or subject_id > 9999:
             return ""
         
-        # Clean and format center name and numeric ID
-        clean_center = SubjectLookupService._clean_center_name(center_name)
-        clean_numeric = SubjectLookupService._clean_numeric_id(numeric_id)
-        
-        if not clean_center or not clean_numeric:
-            return ""
-        
-        # Create anonymous formatted name
-        formatted_name = f"{clean_center}_{clean_numeric}"
+        # Create fixed-format name: ZZZXXXX (7 digits total)
+        formatted_name = f"{center_id:03d}{subject_id:04d}"
         
         return formatted_name
-    
-    @staticmethod
-    def _clean_center_name(center_name: str) -> str:
-        """
-        Clean center name for BIDS compatibility.
-        
-        Args:
-            center_name: Medical center name
-            
-        Returns:
-            Cleaned center name (max 8 chars, alphanumeric and hyphens)
-        """
-        if not center_name:
-            return ""
-        
-        # Remove special characters, keep only alphanumeric and hyphens
-        cleaned = re.sub(r'[^a-zA-Z0-9-]', '', center_name.strip())
-        
-        # Capitalize and limit length
-        if cleaned:
-            cleaned = cleaned[:8].upper()  # "LAUSANNE", "LYON", etc.
-        
-        return cleaned
-    
-    @staticmethod
-    def _clean_numeric_id(numeric_id: str) -> str:
-        """
-        Clean and format numeric ID.
-        
-        Args:
-            numeric_id: Raw numeric identifier
-            
-        Returns:
-            Cleaned numeric ID (padded to at least 3 digits)
-        """
-        if not numeric_id:
-            return ""
-        
-        # Extract digits only
-        digits = re.sub(r'[^0-9]', '', numeric_id.strip())
-        
-        if not digits:
-            return ""
-        
-        # Convert to int and back to remove leading zeros, then pad appropriately
-        try:
-            num = int(digits)
-            if num < 1 or num > 99999:  # Support up to 5-digit IDs
-                return ""
-            # Pad to at least 3 digits, but keep more if needed
-            return str(num).zfill(3 if num < 1000 else len(str(num)))
-        except ValueError:
-            return ""
     
     @staticmethod
     def validate_csv_format(csv_path: str) -> Tuple[bool, List[str]]:
@@ -220,10 +203,11 @@ class SubjectLookupService:
                 
                 # Check for expected headers (case insensitive)
                 first_line_lower = first_line.lower()
-                required_terms = ['folderid', 'centername', 'numericid']
+                required_terms = ['folderid', 'centerid', 'subjectid']
                 
                 if not all(term in first_line_lower for term in required_terms):
-                    errors.append("File does not contain expected headers (FolderID, CenterName, NumericID)")
+                    errors.append("File does not contain expected headers (FolderID, CenterID, SubjectID)")
+                    errors.append("CenterID can be numeric (0-999) or 'CUSTOM' for alphanumeric SubjectIDs")
                     return False, errors
                 
         except Exception as e:
@@ -257,7 +241,7 @@ class SubjectLookupService:
     @staticmethod
     def generate_template_csv(subject_ids: List[str] = None) -> str:
         """
-        Generate CSV template content for anonymous lookup table.
+        Generate CSV template content for subject lookup table.
         
         Args:
             subject_ids: Optional list of subject IDs to pre-populate
@@ -266,18 +250,26 @@ class SubjectLookupService:
             CSV content as string
         """
         # CSV header
-        csv_lines = ["FolderID;CenterName;NumericID"]
+        csv_lines = ["FolderID;CenterID;SubjectID"]
         
         if subject_ids:
-            # Pre-populate with subject IDs, leaving center/numeric fields for manual entry
+            # Pre-populate with subject IDs, leaving center/subject fields for manual entry
             for i, subject_id in enumerate(subject_ids):
-                numeric_id = str(i + 1).zfill(3)  # Generate sequential IDs: 001, 002, etc.
-                csv_lines.append(f"{subject_id};CENTER_NAME;{numeric_id}")
+                # Generate sequential IDs with center 000
+                subject_num = str(i + 1).zfill(4)  # 0001, 0002, etc.
+                csv_lines.append(f"{subject_id};000;{subject_num}")
         else:
-            # Add example rows with realistic anonymous data
+            # Add example rows showing both modes
             csv_lines.extend([
-                "PAT_001;CHUV;001",
-                "PAT_002;HCL;002", 
+                "# Numeric mode examples (CenterID is numeric 0-999):",
+                "PAT_001;001;0123",  # Will become 0010123
+                "PAT_002;013;0456",  # Will become 0130456
+                "PAT_003;239;0789",  # Will become 2390789
+                "",
+                "# Custom mode examples (CenterID is 'CUSTOM'):",
+                "PAT_004;CUSTOM;CHUV001",   # Will become CHUV001
+                "PAT_005;CUSTOM;patient123",  # Will become patient123
+                "PAT_006;CUSTOM;JohnDoe",     # Will become JohnDoe
             ])
         
         return "\n".join(csv_lines)
