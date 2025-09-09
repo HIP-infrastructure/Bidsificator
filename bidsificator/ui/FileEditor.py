@@ -19,6 +19,15 @@ class FileEditor(QWidget, Ui_FileEditor):
         
         # Populate modality dropdown with schema-driven values
         self.populate_modality_dropdown()
+        
+        # Set default selections for comboboxes
+        self._set_default_combobox_selections()
+    
+    def _set_default_combobox_selections(self):
+        """Set default selections for comboboxes during initialization."""
+        # TaskComboBox should default to first item
+        if self.TaskComboBox.count() > 0:
+            self.TaskComboBox.setCurrentIndex(0)
 
     def _setup_controller_connections(self):
         """Set up connections between controller and UI."""
@@ -265,10 +274,17 @@ class FileEditor(QWidget, Ui_FileEditor):
         self.TaskComboBox.clear()
         self.TaskComboBox.addItems(tasks)
         
-        # Restore selection if possible
-        index = self.TaskComboBox.findText(current_text)
-        if index >= 0:
-            self.TaskComboBox.setCurrentIndex(index)
+        # Restore selection if possible, otherwise select first item
+        if current_text:
+            index = self.TaskComboBox.findText(current_text)
+            if index >= 0:
+                self.TaskComboBox.setCurrentIndex(index)
+            elif self.TaskComboBox.count() > 0:
+                # If previous selection not found, select first item
+                self.TaskComboBox.setCurrentIndex(0)
+        elif self.TaskComboBox.count() > 0:
+            # No previous selection, select first item
+            self.TaskComboBox.setCurrentIndex(0)
             
         self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.TaskComboBox.currentTextChanged.connect(self._on_field_changed)
@@ -324,6 +340,16 @@ class FileEditor(QWidget, Ui_FileEditor):
         if index >= 0:
             comboBox.setCurrentIndex(index)
         else:
-            comboBox.setCurrentIndex(-1)
+            # If text not found or empty, use appropriate default
+            default_index = self._get_default_combobox_index(comboBox)
+            comboBox.setCurrentIndex(default_index)
         comboBox.clearFocus()
+    
+    def _get_default_combobox_index(self, comboBox):
+        """Get default index for combobox when text is not found."""
+        # TaskComboBox should default to first item when empty
+        if comboBox is self.TaskComboBox and comboBox.count() > 0:
+            return 0
+        # Other comboboxes default to no selection
+        return -1
 

@@ -3,7 +3,7 @@
 import csv
 import re
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Tuple, List
 
 
 class SubjectLookupService:
@@ -84,7 +84,7 @@ class SubjectLookupService:
                                 errors.append(f"Line {line_number}: CenterID must be 0-999, got {center_id}")
                                 continue
                         except ValueError:
-                            errors.append(f"Line {line_number}: CenterID must be numeric (0-999) or 'CUSTOM', got '{center_id_str}'"
+                            errors.append(f"Line {line_number}: CenterID must be numeric (0-999) or 'CUSTOM', got '{center_id_str}'")
                             continue
                         
                         try:
