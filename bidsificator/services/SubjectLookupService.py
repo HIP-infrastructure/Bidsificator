@@ -75,9 +75,12 @@ class SubjectLookupService:
                         errors.append(f"Line {line_number}: Could not create valid subject name from '{center_name}' '{numeric_id}'")
                         continue
                     
-                    # Check for duplicates in CSV
-                    if folder_id in mapping:
-                        errors.append(f"Line {line_number}: Duplicate FolderID '{folder_id}'")
+                    # Normalize folder_id for case-insensitive matching
+                    folder_id_lower = folder_id.lower()
+                    
+                    # Check for duplicates in CSV (case-insensitive)
+                    if any(k.lower() == folder_id_lower for k in mapping.keys()):
+                        errors.append(f"Line {line_number}: Duplicate FolderID '{folder_id}' (case-insensitive)")
                         continue
                     
                     # Check for name conflicts
@@ -85,7 +88,14 @@ class SubjectLookupService:
                         errors.append(f"Line {line_number}: Duplicate subject name '{formatted_name}' (from '{center_name}' '{numeric_id}')")
                         continue
                     
+                    # Store multiple case variations for matching
+                    # This allows matching Pat_44, PAT_44, pat_44, etc.
                     mapping[folder_id] = formatted_name
+                    mapping[folder_id.lower()] = formatted_name
+                    mapping[folder_id.upper()] = formatted_name
+                    # Also try with first letter capitalized
+                    mapping[folder_id.capitalize()] = formatted_name
+                    
                     used_names.add(formatted_name)
                 
         except Exception as e:
