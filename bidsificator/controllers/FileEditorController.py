@@ -230,11 +230,15 @@ class FileEditorController(QObject):
     
     def toggle_edit_mode(self) -> bool:
         """
-        Toggle edit mode on/off.
+        Toggle edit mode on/off. When exiting edit mode, save changes.
         
         Returns:
             New edit mode state
         """
+        if self._edit_mode:
+            # Exiting edit mode - save changes
+            self.save_edit_changes()
+        
         self._edit_mode = not self._edit_mode
         self.edit_mode_changed.emit(self._edit_mode)
         return self._edit_mode
@@ -261,6 +265,18 @@ class FileEditorController(QObject):
                 
                 # Emit updated file data
                 self.file_selected.emit(self._file_memory.copy())
+                
+                # Exit edit mode
+                self._edit_mode = False
+                self.edit_mode_changed.emit(False)
+    
+    def save_edit_changes(self):
+        """Save current edit changes to memory."""
+        if self.has_files and self._selected_file_index >= 0:
+            files = self._current_subject_data["files"]
+            if 0 <= self._selected_file_index < len(files):
+                # Update memory with current file state
+                self._file_memory = files[self._selected_file_index].copy()
     
     def handle_task_selection(self, task_name: str, current_tasks: List[str]) -> tuple[str, List[str]]:
         """

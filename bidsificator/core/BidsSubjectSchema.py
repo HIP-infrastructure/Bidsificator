@@ -552,15 +552,16 @@ class BidsSubject:
         """Build BIDS-compliant filename with proper entity ordering"""
         filename_parts = []
         
-        # Add entities in BIDS-specified order
+        # Add entities in BIDS-specified order, but only if they have non-empty values
         for entity_key in ENTITY_ORDER:
-            if entity_key in entities:
+            if entity_key in entities and entities[entity_key] and entities[entity_key].strip():
                 filename_parts.append(self._format_entity(entity_key, entities[entity_key]))
         
         # Add any remaining entities not in standard order (shouldn't happen with proper schema)
         remaining_entities = set(entities.keys()) - set(ENTITY_ORDER)
         for entity_key in sorted(remaining_entities):
-            filename_parts.append(self._format_entity(entity_key, entities[entity_key]))
+            if entities[entity_key] and entities[entity_key].strip():
+                filename_parts.append(self._format_entity(entity_key, entities[entity_key]))
         
         # Build final filename
         filename = "_".join(filename_parts)

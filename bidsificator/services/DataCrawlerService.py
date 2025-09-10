@@ -77,8 +77,15 @@ class DataCrawlerService:
         original_subject_id = subject["subject_id"]
         if subject_mapping and original_subject_id in subject_mapping:
             mapped_subject_id = subject_mapping[original_subject_id]
+            # Format the ID for display
+            if len(mapped_subject_id) == 7 and mapped_subject_id.isdigit():
+                # Numeric format: split into center ID (first 3 digits) and subject ID (last 4 digits)
+                display_id = f"{mapped_subject_id[:3]}-{mapped_subject_id[3:]}"
+            else:
+                # Custom alphanumeric format: show as-is
+                display_id = mapped_subject_id
             # Create display name showing original [mapped] format
-            display_name = f"{original_subject_id} [{mapped_subject_id}]"
+            display_name = f"{original_subject_id} [{display_id}]"
         else:
             mapped_subject_id = original_subject_id
             display_name = original_subject_id  # No mapping, show original
