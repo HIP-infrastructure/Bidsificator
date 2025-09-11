@@ -6,6 +6,7 @@ from PyQt6.QtCore import QStandardPaths
 
 from ..models.DatasetModel import DatasetModel
 from ..services.ValidationServiceSchema import ValidationService
+from ..ui.ValidationResultsDialog import ValidationProgressDialog, ValidationResultsDialog
 
 
 class DatasetController:
@@ -204,23 +205,48 @@ class DatasetController:
             )
             return False, error
         
-        is_valid, message = self._model.validate_dataset(subject_name)
+        # ValidationService already imported at top
         
-        # Show result to user
-        if is_valid:
-            QMessageBox.information(
-                self._parent_widget,
-                "Dataset compliant",
-                message
-            )
-        else:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Dataset not compliant", 
-                message
-            )
+        # Show progress dialog
+        progress = ValidationProgressDialog(self._parent_widget)
+        progress.show()
         
-        return is_valid, message
+        try:
+            # Update progress message
+            if subject_name:
+                progress.set_status(f"Validating subject {subject_name}...")
+            else:
+                progress.set_status("Validating entire dataset...")
+            
+            # Get detailed validation result
+            validation_service = ValidationService()
+            dataset_path = self._model.current_dataset.path
+            
+            if subject_name:
+                # Subject-specific validation (no dataset-level checks)
+                validation_result = validation_service.validate_subject(dataset_path, subject_name)
+            else:
+                # Full dataset validation (includes dataset-level checks)
+                validation_result = validation_service.validate_dataset(dataset_path)
+            
+            # Close progress dialog
+            progress.close()
+            
+            # Show detailed results dialog
+            results_dialog = ValidationResultsDialog(self._parent_widget)
+            results_dialog.display_validation_result(validation_result)
+            results_dialog.exec()
+            
+            return validation_result.is_valid, validation_result.message
+            
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(
+                self._parent_widget,
+                "Validation Error",
+                f"An error occurred during validation: {str(e)}"
+            )
+            return False, str(e)
     
     def get_sessions_for_subject(self, subject_id: str) -> list[str]:
         """

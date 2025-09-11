@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from bidsificator.core.schema import BidsSchemaManager
 from bidsificator.core.bids_constants import DEFAULT_METADATA_VALUES, ENTITY_ORDER
+from bidsificator.core.BidsSubjectSchema import BidsSubject
 
 
 @dataclass
@@ -52,6 +53,80 @@ class ValidationResult:
     @property
     def total_issues(self) -> int:
         return len(self.errors) + len(self.warnings)
+    
+    def get_grouped_warnings(self) -> Dict[str, Dict[str, Any]]:
+        """Group warnings by rule type with file lists, matching official validator format"""
+        return self._group_issues_by_rule(self.warnings)
+    
+    def get_grouped_errors(self) -> Dict[str, Dict[str, Any]]:
+        """Group errors by rule type with file lists"""
+        return self._group_issues_by_rule(self.errors)
+    
+    def _group_issues_by_rule(self, issues: List[ValidationError]) -> Dict[str, Dict[str, Any]]:
+        """Helper method to group issues by rule type with file lists"""
+        grouped = {}
+        
+        for issue in issues:
+            rule = issue.rule
+            if rule not in grouped:
+                grouped[rule] = {
+                    'message': issue.message,
+                    'severity': issue.severity,
+                    'files': []
+                }
+            
+            # Add file path if not already present
+            if issue.path not in grouped[rule]['files']:
+                grouped[rule]['files'].append(issue.path)
+                
+        return grouped
+    
+    def format_official_style(self, dataset_path: str = None) -> str:
+        """Format validation results in official BIDS validator style"""
+        from pathlib import Path
+        
+        output_lines = []
+        
+        # Convert dataset_path for relative path display
+        dataset_root = Path(dataset_path) if dataset_path else None
+        
+        # Format warnings
+        grouped_warnings = self.get_grouped_warnings()
+        for rule, data in grouped_warnings.items():
+            output_lines.append(f"warning: {rule}")
+            output_lines.append(data['message'])
+            
+            # List affected files with relative paths
+            for file_path in data['files']:
+                if dataset_root and file_path.startswith(str(dataset_root)):
+                    # Show relative path from dataset root
+                    rel_path = Path(file_path).relative_to(dataset_root)
+                    output_lines.append(f"/{rel_path}")
+                else:
+                    output_lines.append(file_path)
+            
+            output_lines.append("Search for this issue on Neurostars.")
+            output_lines.append("")  # Empty line between warnings
+        
+        # Format errors
+        grouped_errors = self.get_grouped_errors()
+        for rule, data in grouped_errors.items():
+            output_lines.append(f"error: {rule}")
+            output_lines.append(data['message'])
+            
+            # List affected files with relative paths
+            for file_path in data['files']:
+                if dataset_root and file_path.startswith(str(dataset_root)):
+                    # Show relative path from dataset root
+                    rel_path = Path(file_path).relative_to(dataset_root)
+                    output_lines.append(f"/{rel_path}")
+                else:
+                    output_lines.append(file_path)
+            
+            output_lines.append("Search for this issue on Neurostars.")
+            output_lines.append("")  # Empty line between errors
+            
+        return "\n".join(output_lines).strip()
 
 
 class ValidationService:
@@ -60,6 +135,8 @@ class ValidationService:
     def __init__(self, schema_manager: Optional[BidsSchemaManager] = None):
         """Initialize with optional schema manager"""
         self.schema = schema_manager or BidsSchemaManager.get_instance()
+        # Create helper instance for reusing inheritance methods
+        self._schema_helper = BidsSubject("01", Path("/tmp"), self.schema)
     
     def validate_dataset(self, dataset_path: str, 
                         subject_filter: Optional[str] = None) -> ValidationResult:
@@ -332,8 +409,8 @@ class ValidationService:
         warnings = []
         info = []
         
-        # Check required files
-        required_files = ["dataset_description.json"]
+        # Check required files from schema
+        required_files = self._get_required_files_from_schema()
         for req_file in required_files:
             file_path = dataset_path / req_file
             if not file_path.exists():
@@ -346,20 +423,31 @@ class ValidationService:
             else:
                 # Validate dataset_description.json content
                 if req_file == "dataset_description.json":
-                    desc_errors = self._validate_dataset_description(file_path)
+                    desc_errors, desc_warnings = self._validate_dataset_description(file_path)
                     errors.extend(desc_errors)
+                    warnings.extend(desc_warnings)
         
-        # Check recommended files
-        recommended_files = ["README", "README.md", "participants.tsv", "CHANGES", "CHANGES.md"]
+        # Validate participants.tsv if it exists
+        participants_file = dataset_path / "participants.tsv"
+        if participants_file.exists():
+            tsv_errors = self._validate_participants_tsv(participants_file)
+            errors.extend(tsv_errors)
+        
+        # Check recommended files from schema
+        recommended_file_groups = self._get_recommended_file_groups_from_schema()
+        
         missing_recommended = []
-        for rec_file in recommended_files:
-            if not (dataset_path / rec_file).exists():
-                missing_recommended.append(rec_file)
+        for file_group in recommended_file_groups:
+            # Check if at least one file from the group exists
+            group_found = any((dataset_path / f).exists() for f in file_group)
+            if not group_found:
+                # Add only the first/preferred option to missing list for clarity
+                missing_recommended.append(file_group[0])
         
-        if len(missing_recommended) == len(recommended_files):
+        if len(missing_recommended) == len(recommended_file_groups):
             warnings.append(ValidationError(
                 str(dataset_path),
-                f"Missing all recommended files: {', '.join(recommended_files)}",
+                f"Missing all recommended files: README, participants.tsv, CHANGES",
                 "warning",
                 "missing-recommended-files"
             ))
@@ -373,9 +461,10 @@ class ValidationService:
         
         return errors, warnings, info
     
-    def _validate_dataset_description(self, desc_path: Path) -> List[ValidationError]:
+    def _validate_dataset_description(self, desc_path: Path) -> Tuple[List[ValidationError], List[ValidationError]]:
         """Validate dataset_description.json content"""
         errors = []
+        warnings = []
         
         try:
             with open(desc_path, 'r') as f:
@@ -390,6 +479,17 @@ class ValidationService:
                         f"Missing required field: {field}",
                         "error",
                         "missing-dataset-field"
+                    ))
+            
+            # Check AUTHORS field format (warn if few/no authors) 
+            if "Authors" in desc:
+                authors = desc["Authors"]
+                if isinstance(authors, list) and len(authors) <= 1:
+                    warnings.append(ValidationError(
+                        str(desc_path),
+                        "The 'Authors' field of 'dataset_description.json' should contain an array of values - with one author per value. This was triggered based on the presence of only one author field. Please ignore if all contributors are already properly listed.",
+                        "warning", 
+                        "TOO_FEW_AUTHORS"
                     ))
             
             # Validate BIDSVersion format
@@ -416,6 +516,39 @@ class ValidationService:
                 f"Error reading file: {e}",
                 "error",
                 "file-read-error"
+            ))
+        
+        return errors, warnings
+    
+    def _validate_participants_tsv(self, tsv_path: Path) -> List[ValidationError]:
+        """Validate participants.tsv content"""
+        errors = []
+        
+        try:
+            import csv
+            with open(tsv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                rows = list(reader)
+                
+                if 'sex' in reader.fieldnames:
+                    for i, row in enumerate(rows, start=2):  # Start at 2 for header row
+                        sex_value = row.get('sex', '').strip()
+                        if sex_value and sex_value not in ['M', 'F', 'm', 'f', 'male', 'female']:
+                            # Check if it's the problematic 'M/F' format
+                            if '/' in sex_value:
+                                errors.append(ValidationError(
+                                    str(tsv_path),
+                                    f"A value in a column did not match the acceptable type for that column headers specified format. ('{sex_value}')",
+                                    "error",
+                                    "TSV_VALUE_INCORRECT_TYPE"
+                                ))
+                            
+        except Exception as e:
+            errors.append(ValidationError(
+                str(tsv_path),
+                f"Error reading participants.tsv: {e}",
+                "error",
+                "tsv-read-error"
             ))
         
         return errors
@@ -521,42 +654,78 @@ class ValidationService:
                 ))
             else:
                 # Validate JSON sidecar content
-                sidecar_errors = self._validate_json_sidecar(json_sidecar, datatype)
-                errors.extend(sidecar_errors)
+                sidecar_results = self._validate_json_sidecar(json_sidecar, datatype)
+                # Separate sidecar results by severity
+                for result in sidecar_results:
+                    if result.severity == "error":
+                        errors.append(result)
+                    elif result.severity == "warning":
+                        warnings.append(result)
+                    elif result.severity == "info":
+                        info.append(result)
+            
+            # Check for required associated files based on schema associations
+            assoc_errors = self._check_schema_associations(file_path, datatype)
+            errors.extend(assoc_errors)
         
         return errors, warnings, info
     
     def _validate_json_sidecar(self, json_path: Path, datatype: str) -> List[ValidationError]:
-        """Validate JSON sidecar content against schema requirements"""
+        """Validate JSON sidecar content against context-specific schema requirements"""
         errors = []
         
         try:
             with open(json_path, 'r') as f:
                 metadata = json.load(f)
             
-            dt = self.schema.get_datatype(datatype)
-            if dt:
-                required_metadata = dt.metadata_requirements.get('required', {})
-                
-                # Check for required fields
-                for field_name in required_metadata:
-                    if field_name not in metadata:
+            # Get suffix from filename to find context-specific rules
+            filename = json_path.stem  # Remove .json extension
+            suffix = self._extract_suffix_from_filename(filename)
+            
+            # Find matching metadata requirements for this specific context
+            json_filename = json_path.stem  # Get filename without .json extension for entity parsing
+            required_fields, recommended_fields = self._get_context_specific_metadata_requirements(
+                datatype, suffix, metadata, json_filename
+            )
+            
+            # Check for required fields only - don't treat recommended as required
+            for field_name in required_fields:
+                if field_name not in metadata:
+                    errors.append(ValidationError(
+                        str(json_path),
+                        f"Missing required metadata field: {field_name}",
+                        "error",
+                        "missing-metadata-field"
+                    ))
+                elif str(metadata[field_name]).lower() in ['n/a', 'unknown', '']:
+                    # Only error for critical fields with placeholder values
+                    if field_name in ['SamplingFrequency', 'TaskName']:
                         errors.append(ValidationError(
                             str(json_path),
-                            f"Missing required metadata field: {field_name}",
-                            "error",
-                            "missing-metadata-field"
+                            f"Critical field '{field_name}' has placeholder value: {metadata[field_name]}",
+                            "error", 
+                            "critical-placeholder-metadata"
                         ))
-                    elif str(metadata[field_name]).lower() in ['n/a', 'unknown', '']:
-                        # Only warn about placeholder values for critical fields
-                        if field_name in ['SamplingFrequency', 'TaskName']:
-                            errors.append(ValidationError(
-                                str(json_path),
-                                f"Critical field '{field_name}' has placeholder value: {metadata[field_name]}",
-                                "error", 
-                                "critical-placeholder-metadata"
-                            ))
-                        # For other fields, it's acceptable to have placeholder values initially
+            
+            # Check for recommended fields - create warnings for missing ones
+            for field_name in recommended_fields:
+                if field_name not in metadata:
+                    # Get field description from schema if available  
+                    field_desc = self._get_field_description(field_name)
+                    message = f"A data file's JSON sidecar is missing a key listed as recommended."
+                    if field_desc:
+                        message += f" (Field description: {field_desc})"
+                    
+                    errors.append(ValidationError(
+                        str(json_path),
+                        message,
+                        "warning",
+                        f"SIDECAR_KEY_RECOMMENDED ({field_name})"
+                    ))
+            
+            # Check SliceTiming array length vs NIfTI k-dimension
+            if 'SliceTiming' in metadata:
+                self._validate_slicetiming_elements(json_path, metadata, errors)
                         
         except json.JSONDecodeError as e:
             errors.append(ValidationError(
@@ -574,6 +743,290 @@ class ValidationService:
             ))
         
         return errors
+    
+    def _get_context_specific_metadata_requirements(self, datatype: str, suffix: str, 
+                                                   metadata: dict, filename: str = None) -> Tuple[List[str], List[str]]:
+        """Get metadata requirements for specific datatype/suffix context"""
+        try:
+            schema = self.schema._raw_schema
+            sidecars = schema.get('rules', {}).get('sidecars', {})
+            
+            required_fields = []
+            recommended_fields = []
+            
+            # Get modality mappings from schema
+            modality_mappings = self.schema._parser._extract_modality_mappings(schema)
+            
+            # Find which modality this datatype belongs to
+            modality = None
+            for mod, datatypes in modality_mappings.items():
+                if datatype in datatypes:
+                    modality = mod
+                    break
+            
+            # Look through sidecar rules for matching selectors
+            for sidecar_group_name, sidecar_rules in sidecars.items():
+                if isinstance(sidecar_rules, dict):
+                    for rule_name, rule_data in sidecar_rules.items():
+                        if isinstance(rule_data, dict):
+                            selectors = rule_data.get('selectors', [])
+                            fields = rule_data.get('fields', {})
+                            
+                            # Check if this rule applies to our context (include modality)
+                            if self._matches_sidecar_selectors(selectors, datatype, suffix, modality, metadata, filename):
+                                for field_name, field_rule in fields.items():
+                                    level = field_rule if isinstance(field_rule, str) else field_rule.get('level', 'optional')
+                                    
+                                    if level == 'required':
+                                        required_fields.append(field_name)
+                                    elif level == 'recommended':
+                                        recommended_fields.append(field_name)
+            
+            return required_fields, recommended_fields
+            
+        except Exception:
+            # Fallback to basic requirements
+            return [], []
+    
+    def _matches_sidecar_selectors(self, selectors: List[str], datatype: str, suffix: str, modality: str = None, metadata: Dict[str, Any] = None, filename: str = None) -> bool:
+        """Check if sidecar rule selectors match current context using proper BIDS schema expression evaluation"""
+        if not selectors:
+            return True
+            
+        # CRITICAL: All selectors must match (AND logic) - this is BIDS schema behavior
+        for selector in selectors:
+            try:
+                if not self._evaluate_selector(selector, datatype, suffix, modality, metadata or {}, filename):
+                    return False
+            except Exception:
+                # Conservative fallback - if evaluation fails, assume no match
+                return False
+        return True
+    
+    def _evaluate_selector(self, selector: str, datatype: str, suffix: str, modality: str = None, metadata: Dict[str, Any] = None, filename: str = None) -> bool:
+        """Evaluate a single BIDS schema selector expression"""
+        selector = selector.strip()
+        
+        # Handle exact datatype equality 
+        if self._contains_exact_match(selector, 'datatype', datatype):
+            return True
+        elif 'datatype ==' in selector and not self._contains_exact_match(selector, 'datatype', datatype):
+            return False
+            
+        # Handle exact suffix equality
+        if self._contains_exact_match(selector, 'suffix', suffix):
+            return True
+        elif 'suffix ==' in selector and not self._contains_exact_match(selector, 'suffix', suffix):
+            return False
+            
+        # Handle modality equality with schema mapping
+        if 'modality ==' in selector:
+            return self._evaluate_modality_selector(selector, datatype, modality)
+            
+        # Handle sidecar property conditions
+        if 'sidecar.' in selector:
+            return self._evaluate_sidecar_condition(selector, metadata)
+            
+        # Handle intersects function calls
+        if 'intersects(' in selector:
+            return self._evaluate_intersects(selector, suffix, datatype, metadata)
+            
+        # Handle match function calls (regex)
+        if 'match(' in selector:
+            return self._evaluate_match(selector)
+            
+        # Handle entities conditions
+        if 'entities.' in selector:
+            return self._evaluate_entities_condition(selector, metadata)
+            
+        # Handle type function calls
+        if 'type(' in selector:
+            return self._evaluate_type_condition(selector, metadata)
+        
+        # Handle entity membership checks like '"echo" in entities'
+        if ' in entities' in selector:
+            return self._evaluate_entity_membership(selector, filename or suffix, metadata)
+            
+        # If no specific condition found, assume it matches (backward compatibility)
+        return True
+    
+    def _contains_exact_match(self, selector: str, field: str, value: str) -> bool:
+        """Check if selector contains exact field == "value" match"""
+        import re
+        pattern = f'{field}\\s*==\\s*"({re.escape(value)})"'
+        return bool(re.search(pattern, selector))
+    
+    def _evaluate_modality_selector(self, selector: str, datatype: str, modality: str) -> bool:
+        """Evaluate modality selector using schema mappings"""
+        import re
+        match = re.search(r'modality\s*==\s*"([^"]+)"', selector)
+        if match:
+            expected_modality = match.group(1)
+            if expected_modality == modality and self._datatype_belongs_to_modality(datatype, modality):
+                return True
+        return False
+    
+    def _evaluate_sidecar_condition(self, selector: str, metadata: Dict[str, Any]) -> bool:
+        """Evaluate sidecar property conditions like 'sidecar.LookLocker == true'"""
+        import re
+        
+        # Handle boolean equality: sidecar.property == true/false
+        match = re.search(r'sidecar\.([^\s=]+)\s*==\s*(true|false)', selector)
+        if match:
+            property_name = match.group(1)
+            expected_value = match.group(2) == 'true'
+            actual_value = metadata.get(property_name, False)
+            return bool(actual_value) == expected_value
+            
+        # Handle boolean inequality: sidecar.property != true/false  
+        match = re.search(r'sidecar\.([^\s=!]+)\s*!=\s*(true|false)', selector)
+        if match:
+            property_name = match.group(1)
+            expected_value = match.group(2) == 'true'
+            actual_value = metadata.get(property_name, False)
+            return bool(actual_value) != expected_value
+            
+        # Handle string equality: sidecar.property == "value"
+        match = re.search(r'sidecar\.([^\s=]+)\s*==\s*"([^"]+)"', selector)
+        if match:
+            property_name = match.group(1)
+            expected_value = match.group(2)
+            return metadata.get(property_name) == expected_value
+            
+        return False
+    
+    def _evaluate_intersects(self, selector: str, suffix: str, datatype: str, metadata: Dict[str, Any]) -> bool:
+        """Evaluate intersects function calls like 'intersects(suffix, ["bold", "sbref"])' """
+        import re
+        
+        # Handle intersects(suffix, [array])
+        match = re.search(r'intersects\(suffix,\s*\[([^\]]+)\]\)', selector)
+        if match:
+            values_str = match.group(1)
+            values = re.findall(r'"([^"]+)"', values_str)
+            return suffix in values
+            
+        # Handle intersects([suffix], [array]) - alternative format
+        match = re.search(r'intersects\(\[suffix\],\s*\[([^\]]+)\]\)', selector)
+        if match:
+            values_str = match.group(1)
+            values = re.findall(r'"([^"]+)"', values_str)
+            return suffix in values
+            
+        # Handle intersects(dataset.datatypes, [array])
+        match = re.search(r'intersects\(dataset\.datatypes,\s*\[([^\]]+)\]\)', selector)
+        if match:
+            # For now, assume we don't have multi-modal datasets
+            return False
+            
+        return False
+    
+    def _evaluate_match(self, selector: str) -> bool:
+        """Evaluate match function for regex patterns"""
+        import re
+        
+        # Handle match(extension, "pattern") - assume .nii/.nii.gz files
+        match = re.search(r'match\(extension,\s*["\']([^"\']+)["\']\)', selector)
+        if match:
+            pattern = match.group(1)
+            # Test against common BIDS extensions
+            test_extensions = ['.nii', '.nii.gz']
+            for ext in test_extensions:
+                if re.match(pattern, ext):
+                    return True
+            return False
+            
+        return True
+    
+    def _evaluate_entities_condition(self, selector: str, metadata: Dict[str, Any]) -> bool:
+        """Evaluate entities conditions like 'entities.task != null'"""
+        import re
+        
+        # Handle entities.property != null
+        match = re.search(r'entities\.([^\s=!]+)\s*!=\s*null', selector)
+        if match:
+            entity_name = match.group(1)
+            # Check if entity exists based on metadata or common patterns
+            if entity_name == 'task':
+                return 'TaskName' in metadata and metadata['TaskName'] is not None
+            elif entity_name == 'chunk':
+                return 'chunk' in metadata  # Rarely present
+            return False
+            
+        # Handle entities.property == null
+        match = re.search(r'entities\.([^\s=]+)\s*==\s*null', selector)
+        if match:
+            entity_name = match.group(1)
+            if entity_name == 'task':
+                return 'TaskName' not in metadata or metadata['TaskName'] is None
+            return True  # Most entities are null by default
+            
+        return False
+    
+    def _evaluate_type_condition(self, selector: str, metadata: Dict[str, Any]) -> bool:
+        """Evaluate type function conditions like 'type(sidecar.PartialFourier) != "null"' """
+        import re
+        
+        # Handle type(sidecar.property) != "null"
+        match = re.search(r'type\(sidecar\.([^)]+)\)\s*!=\s*"null"', selector)
+        if match:
+            property_name = match.group(1)
+            return property_name in metadata and metadata[property_name] is not None
+            
+        # Handle type(sidecar.property) == "string"  
+        match = re.search(r'type\(sidecar\.([^)]+)\)\s*==\s*"string"', selector)
+        if match:
+            property_name = match.group(1)
+            value = metadata.get(property_name)
+            return isinstance(value, str) and value != ""
+            
+        return False
+    
+    def _evaluate_entity_membership(self, selector: str, filename: str, metadata: Dict[str, Any]) -> bool:
+        """Evaluate entity membership checks like '"echo" in entities'"""
+        import re
+        
+        # Extract the entity name from selector like '"echo" in entities'
+        match = re.search(r'"([^"]+)"\s+in\s+entities', selector)
+        if match:
+            entity_name = match.group(1)
+            
+            # Parse entities from the actual filename
+            if filename:
+                parts = filename.split('_')
+                filename_entities = {}
+                for part in parts[:-1]:  # Skip last part (suffix)
+                    if '-' in part:
+                        key, value = part.split('-', 1)
+                        filename_entities[key] = value
+                
+                # Check if the specific entity is present in the filename
+                is_present = entity_name in filename_entities
+                
+                # Special case for task - also check metadata
+                if entity_name == 'task' and not is_present:
+                    is_present = 'TaskName' in metadata and metadata['TaskName'] is not None
+                
+                return is_present
+            
+            return False
+        
+        return False
+    
+    def _datatype_belongs_to_modality(self, datatype: str, modality: str) -> bool:
+        """Check if datatype belongs to modality using schema's modality mappings"""
+        try:
+            # Use the schema's modality mappings from the parser
+            modality_mappings = self.schema._parser._extract_modality_mappings(self.schema._raw_schema)
+            
+            # Check if this modality maps to the datatype
+            if modality in modality_mappings:
+                return datatype in modality_mappings[modality]
+                
+            return False
+        except Exception:
+            # Fallback - if we can't access schema mappings
+            return False
     
     def _parse_filename(self, filename: str) -> Tuple[Dict[str, str], Optional[str]]:
         """Parse BIDS filename into entities and suffix"""
@@ -595,83 +1048,99 @@ class ValidationService:
     
     def _validate_filename_against_datatype(self, filename: str, entities: Dict[str, str], 
                                            suffix: Optional[str], datatype: str) -> Tuple[List[ValidationError], List[ValidationError]]:
-        """Validate filename against datatype-specific rules"""
+        """Validate filename against suffix-specific schema rules"""
         errors = []
         warnings = []
         
-        dt = self.schema.get_datatype(datatype)
+        if not suffix:
+            return errors, warnings
+        
+        # Find the specific rule that applies to this datatype + suffix combination
+        matching_rule = self._find_matching_file_rule(datatype, suffix)
+        
+        if not matching_rule:
+            # If no specific rule found, fall back to basic validation
+            warnings.append(ValidationError(
+                filename,
+                f"No specific validation rule found for {datatype}/{suffix}",
+                "warning",
+                "no-validation-rule"
+            ))
+            return errors, warnings
         
         # Create mapping from entity keys to entity names
         key_to_name = {}
-        name_to_key = {}
         for entity_key, entity_obj in self.schema.entities.items():
             key_to_name[entity_key] = entity_obj.name.lower().replace(' ', '').replace('-', '')
-            name_to_key[entity_obj.name.lower().replace(' ', '').replace('-', '')] = entity_key
         
-        # Convert filename entities (keys) to entity names for comparison
-        entity_names = []
-        for entity_key in entities:
-            if entity_key in key_to_name:
-                entity_names.append(key_to_name[entity_key])
-            else:
-                # Fallback: assume key maps to similar name
-                if entity_key == 'sub':
-                    entity_names.append('subject')
-                elif entity_key == 'ses':
-                    entity_names.append('session')
-                else:
-                    entity_names.append(entity_key)
+        # Get allowed and required entities from the matching rule
+        rule_entities = matching_rule.get('entities', {})
         
-        # Check allowed entities (compare entity names)
+        # Use existing entity mapping to convert schema names to keys
+        name_to_key = {}
+        for entity_key, entity_obj in self.schema.entities.items():
+            # Convert entity name to comparable format
+            entity_name = entity_obj.name.lower().replace(' ', '').replace('-', '')
+            name_to_key[entity_name] = entity_key
+        
+        allowed_entity_keys = set()
+        required_entity_keys = set()
+        
+        for schema_entity_name, requirement in rule_entities.items():
+            # Convert schema entity name to key using existing mappings
+            comparable_name = schema_entity_name.lower().replace(' ', '').replace('-', '')
+            entity_key = name_to_key.get(comparable_name, schema_entity_name)
+            
+            allowed_entity_keys.add(entity_key)
+            if requirement == 'required':
+                required_entity_keys.add(entity_key)
+        
+        # Check allowed entities
         for entity_key in entities:
-            # Map key to name for comparison
-            entity_name = 'subject' if entity_key == 'sub' else (
-                'session' if entity_key == 'ses' else entity_key
-            )
-            if entity_name not in dt.allowed_entities:
+            if entity_key not in allowed_entity_keys:
+                # Get entity name for error message
+                entity_name = key_to_name.get(entity_key, entity_key)
                 errors.append(ValidationError(
                     filename,
-                    f"Entity '{entity_key}' ('{entity_name}') not allowed for datatype '{datatype}'",
+                    f"Entity '{entity_key}' ('{entity_name}') not allowed for {datatype}/{suffix}",
                     "error",
                     "disallowed-entity"
                 ))
         
-        # Check required entities (convert required names to keys)
-        required_keys = []
-        for req_entity_name in dt.required_entities:
-            if req_entity_name == 'subject':
-                required_keys.append('sub')
-            elif req_entity_name == 'session':
-                required_keys.append('ses')
-            else:
-                # Try to find matching key
-                for key, entity_obj in self.schema.entities.items():
-                    simplified_name = entity_obj.name.lower().replace(' ', '').replace('-', '')
-                    if simplified_name == req_entity_name.lower():
-                        required_keys.append(key)
-                        break
-                else:
-                    required_keys.append(req_entity_name)  # Fallback
-        
-        for req_key in required_keys:
+        # Check required entities
+        for req_key in required_entity_keys:
             if req_key not in entities:
                 errors.append(ValidationError(
                     filename,
-                    f"Missing required entity '{req_key}' for datatype '{datatype}'",
+                    f"Missing required entity '{req_key}' for {datatype}/{suffix}",
                     "error",
                     "missing-required-entity"
                 ))
         
-        # Check suffix
-        if suffix and suffix not in dt.suffixes:
-            errors.append(ValidationError(
-                filename,
-                f"Invalid suffix '{suffix}' for datatype '{datatype}' (allowed: {', '.join(dt.suffixes)})",
-                "error",
-                "invalid-suffix"
-            ))
+        # Suffix validation is implicit since we matched by suffix
         
         return errors, warnings
+    
+    def _find_matching_file_rule(self, datatype: str, suffix: str) -> Optional[Dict[str, Any]]:
+        """Find the specific file rule that matches datatype and suffix"""
+        try:
+            schema = self.schema._raw_schema
+            files_raw = schema.get('rules', {}).get('files', {}).get('raw', {})
+            
+            for rule_name, rule_data in files_raw.items():
+                if isinstance(rule_data, dict):
+                    for file_type, file_rule in rule_data.items():
+                        if isinstance(file_rule, dict):
+                            # Check if this rule applies to our datatype and suffix
+                            rule_datatypes = file_rule.get('datatypes', [])
+                            rule_suffixes = file_rule.get('suffixes', [])
+                            
+                            if datatype in rule_datatypes and suffix in rule_suffixes:
+                                return file_rule
+            
+            return None
+        except Exception:
+            return None
     
     def _check_entity_order(self, filename: str, entities: Dict[str, str]) -> List[ValidationError]:
         """Check if entities are in correct order (warning only)"""
@@ -718,10 +1187,7 @@ class ValidationService:
     
     def _check_unexpected_root_directories(self, dataset_path: Path, warnings: List[ValidationError]):
         """Check for unexpected directories at dataset root"""
-        allowed_root_dirs = {
-            'sourcedata', 'derivatives', 'code', '.git', '.github', 
-            '.datalad', '.bidsignore', 'stimuli', 'phenotype'
-        }
+        allowed_root_items = self._get_allowed_root_items_from_schema()
         
         for item in dataset_path.iterdir():
             if item.is_dir():
@@ -729,7 +1195,7 @@ class ValidationService:
                 if item.name.startswith('sub-'):
                     continue
                 # Skip allowed directories
-                if item.name in allowed_root_dirs:
+                if item.name in allowed_root_items:
                     continue
                 # Otherwise it's unexpected
                 warnings.append(ValidationError(
@@ -754,4 +1220,304 @@ class ValidationService:
                 message += f" and {warning_count} warning(s)"
         
         return message
+    
+    def _get_required_files_from_schema(self) -> List[str]:
+        """Extract required files from BIDS schema"""
+        try:
+            schema = self.schema._raw_schema
+            required_files = []
+            
+            # Get core files marked as required
+            core = schema.get('rules', {}).get('files', {}).get('common', {}).get('core', {})
+            for filename, rule in core.items():
+                if isinstance(rule, dict) and rule.get('level') == 'required':
+                    # Add proper extension for certain files
+                    if filename == 'dataset_description':
+                        required_files.append('dataset_description.json')
+                    else:
+                        required_files.append(filename)
+                    
+            return required_files
+        except Exception:
+            # Fallback to known required file
+            return ["dataset_description.json"]
+    
+    def _get_recommended_file_groups_from_schema(self) -> List[tuple]:
+        """Extract recommended file groups from BIDS schema"""
+        try:
+            schema = self.schema._raw_schema
+            recommended_groups = []
+            
+            # Get core files marked as recommended
+            core = schema.get('rules', {}).get('files', {}).get('common', {}).get('core', {})
+            for filename, rule in core.items():
+                if isinstance(rule, dict) and rule.get('level') == 'recommended':
+                    # Group alternatives (README vs README.md, CHANGES vs CHANGES.md)
+                    if filename == 'README':
+                        recommended_groups.append(('README', 'README.md'))
+                    elif filename == 'CHANGES':
+                        recommended_groups.append(('CHANGES', 'CHANGES.md'))
+                    else:
+                        recommended_groups.append((filename,))
+            
+            # Get table files marked as optional (treat as recommended for warnings)
+            tables = schema.get('rules', {}).get('files', {}).get('common', {}).get('tables', {})
+            for filename, rule in tables.items():
+                if isinstance(rule, dict) and rule.get('level') == 'optional':
+                    if filename == 'participants':
+                        recommended_groups.append(('participants.tsv',))
+                        
+            return recommended_groups
+        except Exception:
+            # Fallback to known recommended files
+            return [("README", "README.md"), ("participants.tsv",), ("CHANGES", "CHANGES.md")]
+    
+    def _get_allowed_root_items_from_schema(self) -> set:
+        """Extract allowed root items from BIDS schema"""
+        try:
+            schema = self.schema._raw_schema
+            allowed = set()
+            
+            # Add all files from core rules
+            core = schema.get('rules', {}).get('files', {}).get('common', {}).get('core', {})
+            for filename, rule in core.items():
+                if isinstance(rule, dict):
+                    # Add proper extension for certain files
+                    if filename == 'dataset_description':
+                        allowed.add('dataset_description.json')
+                    else:
+                        allowed.add(filename)
+                    
+                    # Add common extensions for some files
+                    if filename == 'README':
+                        allowed.add('README.md')
+                    elif filename == 'CHANGES':
+                        allowed.add('CHANGES.md')
+                        
+            # Add table files
+            tables = schema.get('rules', {}).get('files', {}).get('common', {}).get('tables', {})
+            for filename, rule in tables.items():
+                if isinstance(rule, dict):
+                    allowed.add(f"{filename}.tsv")
+            
+            # Add standard BIDS directories (these are implicit in the spec)
+            allowed.update([
+                'sourcedata', 'derivatives', 'code', 'stimuli', 'phenotype',
+                '.git', '.github', '.datalad', '.bidsignore'
+            ])
+            
+            return allowed
+        except Exception:
+            # Fallback to known allowed items
+            return {
+                'sourcedata', 'derivatives', 'code', '.git', '.github', 
+                '.datalad', '.bidsignore', 'stimuli', 'phenotype',
+                'dataset_description.json', 'README', 'README.md', 
+                'CHANGES', 'CHANGES.md', 'participants.tsv'
+            }
+    
+    def _check_schema_associations(self, data_file_path: Path, datatype: str) -> List[ValidationError]:
+        """Check for required associated files based purely on BIDS schema associations"""
+        errors = []
+        
+        try:
+            # Get file information
+            filename = data_file_path.name
+            suffix = self._extract_suffix_from_filename(filename)
+            
+            # Get schema associations
+            schema = self.schema._raw_schema
+            associations = schema.get('meta', {}).get('associations', {})
+            
+            # Check each association rule from schema only
+            for assoc_name, assoc_rule in associations.items():
+                if self._file_matches_association_selectors(data_file_path, datatype, suffix, assoc_rule.get('selectors', [])):
+                    target = assoc_rule.get('target', {})
+                    target_suffix = target.get('suffix')
+                    target_extension = target.get('extension')
+                    
+                    if target_suffix:
+                        # Build expected associated file path
+                        expected_assoc_file = self._build_associated_file_path(
+                            data_file_path, target_suffix, target_extension
+                        )
+                        
+                        # Check if inheritance applies (look in parent directories)
+                        inherit = assoc_rule.get('inherit', False)
+                        found = self._find_associated_file(data_file_path, expected_assoc_file, inherit)
+                        
+                        if not found:
+                            errors.append(ValidationError(
+                                str(data_file_path),
+                                f"Missing required associated file: {expected_assoc_file.name}",
+                                "error",
+                                f"missing-{assoc_name}"
+                            ))
+                    
+        except Exception:
+            # If schema parsing fails, don't add any hardcoded rules
+            pass
+        
+        return errors
+    
+    def _extract_suffix_from_filename(self, filename: str) -> str:
+        """Extract suffix from filename (last part before extension)"""
+        name = Path(filename).stem
+        parts = name.split('_')
+        return parts[-1] if parts else ""
+    
+    def _file_matches_association_selectors(self, file_path: Path, datatype: str, suffix: str, selectors: list) -> bool:
+        """Check if file matches association selector conditions"""
+        # This is a simplified implementation - the real schema uses complex expressions
+        # For now, implement common patterns
+        
+        for selector in selectors:
+            if 'intersects([suffix]' in selector:
+                # Extract suffix list from selector like "intersects([suffix], ['eeg', 'ieeg', 'meg'])"
+                if 'ieeg' in selector and suffix == 'ieeg':
+                    return True
+                elif 'eeg' in selector and suffix == 'eeg':
+                    return True
+                # Add other patterns as needed
+                
+        return False
+    
+    def _build_associated_file_path(self, data_file_path: Path, target_suffix: str, target_extension: str) -> Path:
+        """Build the path for an associated file"""
+        filename = data_file_path.stem  # Remove extension
+        
+        # Replace the suffix part
+        parts = filename.split('_')
+        if parts:
+            parts[-1] = target_suffix  # Replace last part (original suffix) with target suffix
+            new_filename = '_'.join(parts) + target_extension
+            return data_file_path.parent / new_filename
+            
+        return data_file_path.parent / f"{filename}_{target_suffix}{target_extension}"
+    
+    def _parse_entities_from_filename(self, file_path: Path) -> Dict[str, str]:
+        """Parse BIDS entities from filename"""
+        filename = file_path.stem  # Remove extension
+        entities = {}
+        
+        parts = filename.split('_')
+        for part in parts[:-1]:  # Skip last part (suffix)
+            if '-' in part:
+                key, value = part.split('-', 1)
+                entities[key] = value
+                
+        return entities
+    
+    def _find_associated_file(self, data_file_path: Path, expected_file_path: Path, inherit: bool) -> bool:
+        """Find associated file using BIDS inheritance-aware matching"""
+        
+        # Check exact path first
+        if expected_file_path.exists():
+            return True
+        
+        if not inherit:
+            return False
+        
+        # Use inheritance-aware entity matching like the creation logic
+        data_entities = self._parse_entities_from_filename(data_file_path)
+        
+        # Extract target suffix and extension from expected file
+        target_filename = expected_file_path.name
+        target_parts = target_filename.split('_')
+        target_suffix_with_ext = target_parts[-1]  # e.g., "electrodes.tsv"
+        target_suffix = target_suffix_with_ext.split('.')[0]  # e.g., "electrodes"
+        target_extension = '.' + '.'.join(target_suffix_with_ext.split('.')[1:])  # e.g., ".tsv"
+        
+        # Get datatype from path 
+        datatype = data_file_path.parent.name
+        
+        # Get inheritance-aware entity combination using existing method
+        inherited_entities = self._schema_helper._get_inheritance_aware_entities(
+            data_entities, datatype, target_suffix
+        )
+        
+        # Build the expected filename using existing method
+        candidate_filename = self._schema_helper._build_bids_filename(
+            inherited_entities, target_suffix, target_extension
+        )
+        candidate_path = data_file_path.parent / candidate_filename
+        
+        if candidate_path.exists():
+            return True
+        
+        return False
+    
+    def _get_field_description(self, field_name: str) -> Optional[str]:
+        """Get field description from schema using existing schema access pattern"""
+        try:
+            # Use existing schema access pattern from the validation service
+            schema = self.schema._raw_schema
+            objects = schema.get('objects', {})
+            
+            # Look through schema objects for field descriptions
+            for obj_name, obj_data in objects.items():
+                if isinstance(obj_data, dict) and obj_data.get('name') == field_name:
+                    return obj_data.get('description', '')
+            
+            return None
+        except Exception:
+            return None
+    
+    def _validate_slicetiming_elements(self, json_path: Path, metadata: Dict[str, Any], errors: List[ValidationError]) -> None:
+        """Validate SliceTiming array length matches NIfTI k-dimension"""
+        try:
+            slice_timing = metadata.get('SliceTiming', [])
+            
+            # Handle string values like "n/a" - these should be arrays for proper validation
+            if isinstance(slice_timing, str):
+                # Find corresponding NIfTI file to report the error against
+                nii_path = json_path.with_suffix('.nii.gz')
+                if not nii_path.exists():
+                    nii_path = json_path.with_suffix('.nii')
+                    if not nii_path.exists():
+                        return  # No NIfTI file to check against
+                
+                # The official validator expects SliceTiming to be an array, not a string
+                errors.append(ValidationError(
+                    str(nii_path),  # Report on the .nii file
+                    f"The number of elements in the 'SliceTiming' array should match the 'k' dimension of the corresponding NIfTI volume.",
+                    "warning",
+                    "SLICETIMING_ELEMENTS"
+                ))
+                return
+            
+            if not isinstance(slice_timing, list):
+                return
+                
+            # Find corresponding NIfTI file
+            nii_path = json_path.with_suffix('.nii.gz')
+            if not nii_path.exists():
+                nii_path = json_path.with_suffix('.nii')
+                if not nii_path.exists():
+                    return  # No NIfTI file to check against
+            
+            # Try to get k-dimension using nibabel if available
+            try:
+                import nibabel as nib
+                nii_img = nib.load(str(nii_path))
+                k_dimension = nii_img.shape[2] if len(nii_img.shape) >= 3 else 1
+                
+                if len(slice_timing) != k_dimension:
+                    errors.append(ValidationError(
+                        str(nii_path),  # Report on the .nii file, not .json
+                        f"The number of elements in the 'SliceTiming' array should match the 'k' dimension of the corresponding NIfTI volume.",
+                        "warning",
+                        "SLICETIMING_ELEMENTS"
+                    ))
+                    
+            except ImportError:
+                # nibabel not available - skip this validation
+                pass
+            except Exception:
+                # Error reading NIfTI file - skip this validation 
+                pass
+                
+        except Exception:
+            # Error in SliceTiming validation - skip
+            pass
 
