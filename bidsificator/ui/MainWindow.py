@@ -897,106 +897,113 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_multiple_files(self):
         """Add multiple files using the controller."""
-        
         try:
-            # Always show all supported files for auto-detection
-            file_filter = "All supported files (*.nii *.nii.gz *.trc *.vhdr *.edf *.png *.jpg *.tif)"
-            
-            # Open file dialog
-            files, _ = QFileDialog.getOpenFileNames(
-                self,
-                "Select files to import", 
-                self.__browse_folder_path_memory,
-                file_filter
-            )
-            
-            
+            files = self._select_files_for_import()
             if not files:
                 return
                 
-            # Update browse memory
-            self.__browse_folder_path_memory = os.path.dirname(files[0])
-        
-            # Get form values
-            current_subject = self.SubjectComboBox.currentText()
-            session = self.SessionComboBox.currentText()
-            task = self.TaskComboBox.currentText()
-            contrast_agent = self.ContrastAgentLineEdit.text()
-            acquisition = self.AcquisitionLineEdit.text()
-            reconstruction = self.ReconstructionLineEdit.text()
+            form_values = self._get_current_form_values()
+            successful_count, failed_files = self._process_selected_files(files, form_values)
             
-            # Add each file
-            successful_count = 0
-            failed_files = []
-            
-            for file_path in files:
-                file_name = os.path.basename(file_path)
-                
-                # Check for duplicates
-                duplicate_found = False
-                for existing_file in self.__import_files_data["files"]:
-                    if existing_file["file_path"] == file_path:
-                        failed_files.append(f"{file_name}: Already in list")
-                        duplicate_found = True
-                        break
-                
-                if duplicate_found:
-                    continue
-                
-                # Auto-detect modality for this file
-                detected_modality = self.detect_modality_from_file(file_path)
-                if not detected_modality:
-                    failed_files.append(f"{file_name}: Unsupported file type")
-                    continue
-                
-                
-                # Set task based on detected modality
-                if "(anat)" in detected_modality or "photo" in detected_modality:
-                    task_value = ""  # Anatomy and photos don't use tasks
-                else:
-                    task_value = task
-                
-                # Auto-increment acquisition number for files with same properties
-                auto_acquisition = self.get_next_acquisition_number(
-                    current_subject,
-                    session.removeprefix("ses-") if session else "",
-                    detected_modality,
-                    task_value
-                )
-                
-                    
-                file_data = {
-                    "file_name": file_name,
-                    "file_path": file_path,
-                    "modality": detected_modality,
-                    "task": task_value,
-                    "session": session.removeprefix("ses-") if session else "",
-                    "contrast_agent": contrast_agent if "(anat)" in detected_modality else "",
-                    "acquisition": auto_acquisition,
-                    "reconstruction": reconstruction if "(anat)" in detected_modality else "",
-                    "intended_subject": current_subject
-                }
-                
-                # Add to data structure
-                self.__import_files_data["subject_id"] = current_subject
-                self.__import_files_data["files"].append(file_data)
-                successful_count += 1
-            
-            # Update UI
             self.refresh_import_file_list()
-            
-            # Show results
-            if successful_count > 0 or failed_files:
-                message = f"Successfully imported {successful_count} files"
-                if failed_files:
-                    message += f"\n\nFailed files:\n" + "\n".join(failed_files)
-                
-                QMessageBox.information(self, "Import Results", message)
+            self._show_import_results(successful_count, failed_files)
                 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
+    
+    def _select_files_for_import(self):
+        """Select files through file dialog."""
+        file_filter = "All supported files (*.nii *.nii.gz *.trc *.vhdr *.edf *.png *.jpg *.tif)"
+        
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select files to import", 
+            self.__browse_folder_path_memory,
+            file_filter
+        )
+        
+        if files:
+            self.__browse_folder_path_memory = os.path.dirname(files[0])
+            
+        return files
+    
+    def _get_current_form_values(self):
+        """Get current form values for import."""
+        return {
+            'current_subject': self.SubjectComboBox.currentText(),
+            'session': self.SessionComboBox.currentText(),
+            'task': self.TaskComboBox.currentText(),
+            'contrast_agent': self.ContrastAgentLineEdit.text(),
+            'acquisition': self.AcquisitionLineEdit.text(),
+            'reconstruction': self.ReconstructionLineEdit.text()
+        }
+    
+    def _process_selected_files(self, files, form_values):
+        """Process each selected file for import."""
+        successful_count = 0
+        failed_files = []
+        
+        for file_path in files:
+            if self._is_duplicate_file(file_path):
+                file_name = os.path.basename(file_path)
+                failed_files.append(f"{file_name}: Already in list")
+                continue
+            
+            file_data = self._create_file_data(file_path, form_values)
+            if file_data:
+                self.__import_files_data["subject_id"] = form_values['current_subject']
+                self.__import_files_data["files"].append(file_data)
+                successful_count += 1
+            else:
+                file_name = os.path.basename(file_path)
+                failed_files.append(f"{file_name}: Unsupported file type")
+        
+        return successful_count, failed_files
+    
+    def _is_duplicate_file(self, file_path):
+        """Check if file is already in the import list."""
+        return any(existing_file["file_path"] == file_path 
+                  for existing_file in self.__import_files_data["files"])
+    
+    def _create_file_data(self, file_path, form_values):
+        """Create file data dictionary for import."""
+        file_name = os.path.basename(file_path)
+        detected_modality = self.detect_modality_from_file(file_path)
+        
+        if not detected_modality:
+            return None
+        
+        # Set task based on detected modality
+        task_value = "" if "(anat)" in detected_modality or "photo" in detected_modality else form_values['task']
+        
+        # Auto-increment acquisition number
+        auto_acquisition = self.get_next_acquisition_number(
+            form_values['current_subject'],
+            form_values['session'].removeprefix("ses-") if form_values['session'] else "",
+            detected_modality,
+            task_value
+        )
+        
+        return {
+            "file_name": file_name,
+            "file_path": file_path,
+            "modality": detected_modality,
+            "task": task_value,
+            "session": form_values['session'].removeprefix("ses-") if form_values['session'] else "",
+            "contrast_agent": form_values['contrast_agent'] if "(anat)" in detected_modality else "",
+            "acquisition": auto_acquisition,
+            "reconstruction": form_values['reconstruction'] if "(anat)" in detected_modality else "",
+            "intended_subject": form_values['current_subject']
+        }
+    
+    def _show_import_results(self, successful_count, failed_files):
+        """Show results of the import operation."""
+        if successful_count > 0 or failed_files:
+            message = f"Successfully imported {successful_count} files"
+            if failed_files:
+                message += f"\n\nFailed files:\n" + "\n".join(failed_files)
+            
+            QMessageBox.information(self, "Import Results", message)
 
     def add_file_to_import_data(self, file_data):
         """Add file to import data structure"""
@@ -1098,9 +1105,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 # in FileEditor should handle most of the persistence within the current subject
 
     def validate_bids_dataset(self):
-        """Validate BIDS dataset using the controller."""
-        subject_name = self.SubjectComboBox.currentText()
-        self._main_controller.validate_bids_dataset(subject_name)
+        """Validate entire BIDS dataset using the controller."""
+        # Validate the entire dataset, not just a single subject
+        self._main_controller.validate_bids_dataset(subject_name=None)
 
     def set_comboBox_text(self, comboBox, text):
         index = comboBox.findText(text)
@@ -1176,16 +1183,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not index.isValid():
             return
         
-        # Get the file system model and file path
-        model = self.fileTreeView.model()
+        selected_subjects, selected_files = self._get_selected_tree_items(index)
         
-        # Get selected items (support multi-selection)
-        # Use selectedRows() to get unique rows instead of all column indexes
+        if not selected_subjects and not selected_files:
+            return
+            
+        if not self._validate_tree_selection(selected_subjects, selected_files):
+            return
+            
+        if not self._check_dataset_operations_allowed():
+            return
+        
+        context_menu = self._create_tree_context_menu(selected_subjects, selected_files)
+        context_menu.popup(QCursor.pos())
+    
+    def _get_selected_tree_items(self, index):
+        """Get selected subjects and files from tree view."""
+        model = self.fileTreeView.model()
         selected_indexes = self.fileTreeView.selectionModel().selectedRows()
         if not selected_indexes:
             selected_indexes = [index]
         
-        # Categorize selected items into subjects and files
         selected_subjects = []
         selected_files = []
         
@@ -1193,49 +1211,43 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             file_path = model.filePath(idx)
             file_name = model.fileName(idx)
             
-            if model.isDir(idx):
-                # Check if it's a BIDS subject folder
-                if file_name.startswith("sub-"):
-                    selected_subjects.append({
-                        'name': file_name,
-                        'path': file_path,
-                        'index': idx
-                    })
-            else:
-                # It's a file - check if it's within a BIDS dataset
-                # We'll allow deleting any file that's selected
+            if model.isDir(idx) and file_name.startswith("sub-"):
+                selected_subjects.append({
+                    'name': file_name,
+                    'path': file_path,
+                    'index': idx
+                })
+            elif not model.isDir(idx):
                 selected_files.append({
                     'name': file_name,
                     'path': file_path,
                     'index': idx
                 })
         
-        # If nothing relevant is selected, return
-        if not selected_subjects and not selected_files:
-            return
-        
-        # If mixed selection (both subjects and files), don't show menu
+        return selected_subjects, selected_files
+    
+    def _validate_tree_selection(self, selected_subjects, selected_files):
+        """Validate that tree selection is appropriate for context menu."""
         if selected_subjects and selected_files:
-            # Mixed selection not allowed - show warning
             QMessageBox.information(
                 self,
                 "Mixed Selection",
                 "Please select either subjects or files, not both.\n\n"
                 "This prevents accidental deletions."
             )
-            return
-        
-        # Check if dataset validation allows operations (simplified since tabs are disabled for NOT_BIDS)
+            return False
+        return True
+    
+    def _check_dataset_operations_allowed(self):
+        """Check if dataset operations are allowed based on validation level."""
         if self._validation_level == "NOT_BIDS":
-            # This shouldn't happen since tabs are disabled, but just in case
             QMessageBox.warning(
                 self,
                 "Operations Not Available",
                 "Please load a valid BIDS dataset to enable operations."
             )
-            return
+            return False
         elif self._validation_level == "PARTIAL_BIDS":
-            # Show warning for partial BIDS but allow operation
             reply = QMessageBox.question(
                 self,
                 "Partial BIDS Dataset",
@@ -1243,33 +1255,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
-            if reply == QMessageBox.StandardButton.No:
-                return
-        
-        # Create context menu
+            return reply == QMessageBox.StandardButton.Yes
+        return True
+    
+    def _create_tree_context_menu(self, selected_subjects, selected_files):
+        """Create context menu based on selected items."""
         context_menu = QMenu(self)
         
-        # Handle BIDS subject folders
         if selected_subjects:
-            # Only subjects selected
-            if len(selected_subjects) == 1:
-                rename_action = context_menu.addAction("Rename Subject")
-                rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
-            
-            delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
-            delete_action = context_menu.addAction(delete_text)
-            delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
-        
-        # Handle files
+            self._add_subject_menu_actions(context_menu, selected_subjects)
         elif selected_files:
-            # Only files selected
-            delete_text = "Delete File" if len(selected_files) == 1 else f"Delete {len(selected_files)} Files"
-            delete_action = context_menu.addAction(delete_text)
-            delete_action.triggered.connect(lambda: self.delete_files_from_tree(selected_files))
+            self._add_file_menu_actions(context_menu, selected_files)
         
-        # Show context menu
-        context_menu.popup(QCursor.pos())
+        return context_menu
+    
+    def _add_subject_menu_actions(self, menu, selected_subjects):
+        """Add menu actions for selected subjects."""
+        if len(selected_subjects) == 1:
+            # Single subject - add validate and rename options
+            validate_action = menu.addAction("Validate Subject")
+            validate_action.triggered.connect(lambda: self.validate_subject_from_tree(selected_subjects[0]))
+            
+            menu.addSeparator()
+            
+            rename_action = menu.addAction("Rename Subject")
+            rename_action.triggered.connect(lambda: self.rename_subject_from_tree(selected_subjects[0]))
         
+        # Add delete action
+        delete_text = "Delete Subject" if len(selected_subjects) == 1 else f"Delete {len(selected_subjects)} Subjects"
+        delete_action = menu.addAction(delete_text)
+        delete_action.triggered.connect(lambda: self.delete_subjects_from_tree(selected_subjects))
+    
+    def _add_file_menu_actions(self, menu, selected_files):
+        """Add menu actions for selected files."""
+        delete_text = "Delete File" if len(selected_files) == 1 else f"Delete {len(selected_files)} Files"
+        delete_action = menu.addAction(delete_text)
+        delete_action.triggered.connect(lambda: self.delete_files_from_tree(selected_files))
+        
+    def validate_subject_from_tree(self, subject_info):
+        """Validate a specific BIDS subject from the file tree."""
+        subject_name = subject_info['name']
+        
+        # Call the controller to validate this specific subject
+        self._main_controller.validate_bids_dataset(subject_name=subject_name)
+    
     def rename_subject_from_tree(self, subject_info):
         """Rename a BIDS subject from the file tree."""
         old_folder_name = subject_info['name']

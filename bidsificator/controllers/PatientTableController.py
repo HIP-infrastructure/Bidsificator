@@ -81,8 +81,8 @@ class PatientTableController(QObject):
     def _get_default_value_for_key(self, key: str) -> str:
         """Get default value for a subject key."""
         default_values = {
-            'age': '123',
-            'sex': 'M/F'
+            'age': '25',
+            'sex': 'M'
         }
         return default_values.get(key.lower(), "n/a")
     
@@ -257,9 +257,7 @@ class PatientTableController(QObject):
             return True
             
         except Exception as e:
-            print(f"Error in update_subject_field: {e}")
-            import traceback
-            traceback.print_exc()
+            # Log error appropriately in production
             return False
     
     def add_key_after(self, column_index: int) -> bool:

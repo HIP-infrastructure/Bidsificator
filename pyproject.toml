@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.8.1"
+version = "1.9.0"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
