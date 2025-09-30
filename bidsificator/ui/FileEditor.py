@@ -1,5 +1,4 @@
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt, pyqtSignal
 
 from ..forms.FileEditor_ui import Ui_FileEditor
 from ..controllers.FileEditorController import FileEditorController
@@ -19,7 +18,10 @@ class FileEditor(QWidget, Ui_FileEditor):
         
         # Populate modality dropdown with schema-driven values
         self.populate_modality_dropdown()
-        
+
+        # Make SessionComboBox editable for custom session names
+        self._setup_session_combobox()
+
         # Set default selections for comboboxes
         self._set_default_combobox_selections()
     
@@ -28,6 +30,22 @@ class FileEditor(QWidget, Ui_FileEditor):
         # TaskComboBox should default to first item
         if self.TaskComboBox.count() > 0:
             self.TaskComboBox.setCurrentIndex(0)
+
+    def _setup_session_combobox(self):
+        """
+        Configure SessionComboBox for flexible session input.
+
+        Makes the combobox editable to allow custom session names per BIDS spec.
+        Keeps only ses-pre and ses-post from UI, users can type any other session name.
+        """
+        # Make combobox editable to allow custom session names
+        self.SessionComboBox.setEditable(True)
+
+        # Keep existing items (ses-pre, ses-post) from UI form
+        # Users can type any other session name (baseline, followup, month6, etc.)
+
+        # Set placeholder text to guide users
+        self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
 
     def _setup_controller_connections(self):
         """Set up connections between controller and UI."""

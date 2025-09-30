@@ -64,20 +64,27 @@ class BidsSchemaMapper:
         return columns
     
     def _get_channels_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
-        """Get columns for channels.tsv files"""
+        """Get columns for channels.tsv files - dynamically extracted from schema"""
         columns = {}
-        
-        # Core channels.tsv columns based on BIDS schema
+
+        # Map schema column keys to BIDS column names
+        # Schema uses suffixes like '__channels' to namespace columns
         column_mappings = {
             'name__channels': 'name',
-            'type__channels': 'type', 
+            'type__channels': 'type',
             'units': 'units',
             'sampling_frequency': 'sampling_frequency',
             'status': 'status',
             'group__channel': 'group',
-            # Add reference-related columns
+            'low_cutoff': 'low_cutoff',
+            'high_cutoff': 'high_cutoff',
+            'reference': 'reference',
+            'description__channel': 'description',
+            'notch': 'notch',
+            'status_description': 'status_description'
         }
-        
+
+        # Extract columns from schema
         for schema_key, bids_key in column_mappings.items():
             if schema_key in schema_columns:
                 col_def = schema_columns[schema_key]
@@ -89,37 +96,26 @@ class BidsSchemaMapper:
                     format=col_def.get('format'),
                     enum=col_def.get('enum')
                 )
-        
-        # Add modality-specific columns
-        if datatype in ['ieeg', 'seeg', 'ecog']:
-            # For intracranial recordings, add reference info
-            if 'reference' not in columns:
-                columns['reference'] = ColumnDefinition(
-                    name='reference',
-                    description='Specification of the reference electrode(s)',
-                    data_type='string',
-                    requirement_level='recommended'
-                )
-            
-            # Add filtering information
-            for filter_type in ['low_cutoff', 'high_cutoff']:
-                if filter_type not in columns:
-                    columns[filter_type] = ColumnDefinition(
-                        name=filter_type,
-                        description=f'{filter_type.replace("_", " ").title()} filter frequency in Hz',
-                        data_type='number',
-                        requirement_level='optional'
-                    )
-        
+
+        # Add reference column if not in schema (common for ieeg/eeg)
+        if 'reference' not in columns and datatype in ['ieeg', 'eeg', 'meg']:
+            columns['reference'] = ColumnDefinition(
+                name='reference',
+                description='Specification of the reference electrode(s)',
+                data_type='string',
+                requirement_level='recommended'
+            )
+
         return columns
     
     def _get_events_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
-        """Get columns for events.tsv files"""
+        """Get columns for events.tsv files - dynamically extracted from schema"""
         columns = {}
-        
-        # Core events.tsv columns (from BIDS schema)
-        core_event_columns = ['onset', 'duration', 'trial_type', 'response_time', 'stim_file']
-        
+
+        # Core events.tsv columns defined in BIDS schema
+        core_event_columns = ['onset', 'duration', 'trial_type', 'response_time', 'stim_file', 'HED']
+
+        # Extract from schema
         for col_name in core_event_columns:
             if col_name in schema_columns:
                 col_def = schema_columns[col_name]
@@ -131,8 +127,8 @@ class BidsSchemaMapper:
                     format=col_def.get('format'),
                     enum=col_def.get('enum')
                 )
-        
-        # Ensure required columns are present
+
+        # Ensure required columns are present (fallback if not in schema)
         if 'onset' not in columns:
             columns['onset'] = ColumnDefinition(
                 name='onset',
@@ -140,24 +136,24 @@ class BidsSchemaMapper:
                 data_type='number',
                 requirement_level='required'
             )
-        
+
         if 'duration' not in columns:
             columns['duration'] = ColumnDefinition(
-                name='duration', 
+                name='duration',
                 description='Duration of event in seconds',
                 data_type='number',
                 requirement_level='required'
             )
-        
-        # Add BIDS arbitrary columns commonly used for EEG/iEEG
-        # 'value' column for trigger codes (demoted to arbitrary but widely used)
-        columns['value'] = ColumnDefinition(
-            name='value',
-            description='Event value (e.g., trigger code, stimulus identifier)',
-            data_type='string',
-            requirement_level='optional'
-        )
-        
+
+        # Add 'value' column (arbitrary but commonly used for trigger codes)
+        if 'value' not in columns:
+            columns['value'] = ColumnDefinition(
+                name='value',
+                description='Event value (e.g., trigger code, stimulus identifier)',
+                data_type='string',
+                requirement_level='optional'
+            )
+
         return columns
     
     def _get_electrodes_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:

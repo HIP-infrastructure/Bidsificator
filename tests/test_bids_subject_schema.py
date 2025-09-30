@@ -11,7 +11,7 @@ from bidsificator.core.schema import BidsSchemaManager
 from bidsificator.core.BidsSubjectSchema import BidsSubject
 from bidsificator.core.file_analysis import FileAnalysis
 from bidsificator.core.bids_constants import (
-    DEFAULT_SUFFIXES,
+    get_default_suffix_for_datatype,
     DEFAULT_METADATA_VALUES,
     DEFAULT_CHANNEL_COUNTS
 )
@@ -77,9 +77,12 @@ def test_improved_bids_subject():
         print("\n3. TESTING CONSTANTS SYSTEM")
         print("-" * 50)
         
-        print(f"✅ Default suffixes loaded: {len(DEFAULT_SUFFIXES)} datatypes")
-        print(f"   - iEEG: {DEFAULT_SUFFIXES.get('ieeg')}")
-        print(f"   - Anatomy: {DEFAULT_SUFFIXES.get('anat')}")
+        # Test schema-driven suffix selection
+        schema_manager = BidsSchemaManager.get_instance()
+        datatype_count = len(schema_manager.datatypes)
+        print(f"✅ Default suffixes (schema-driven): {datatype_count} datatypes")
+        print(f"   - iEEG: {get_default_suffix_for_datatype('ieeg')}")
+        print(f"   - Anatomy: {get_default_suffix_for_datatype('anat')}")
         
         print(f"✅ Metadata values: {DEFAULT_METADATA_VALUES}")
         print(f"✅ Channel counts: {DEFAULT_CHANNEL_COUNTS}")

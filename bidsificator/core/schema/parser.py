@@ -272,3 +272,70 @@ class BidsSchemaParser:
             "num_suffixes": len(schema.get("objects", {}).get("suffixes", {})),
             "num_extensions": len(schema.get("objects", {}).get("extensions", {}))
         }
+
+    def get_entity_order(self, schema: dict) -> List[str]:
+        """
+        Extract canonical entity ordering from BIDS schema.
+
+        The BIDS specification defines a canonical order for entities in filenames.
+        While the schema JSON doesn't explicitly encode this order, we extract it
+        from the entity definitions and apply the BIDS-specified canonical ordering.
+
+        Reference: BIDS Specification Appendix - Entity Table
+
+        Returns:
+            List of entity keys in canonical BIDS order
+        """
+        entities = schema.get('objects', {}).get('entities', {})
+
+        # Canonical entity order as defined in BIDS specification appendix
+        # This order is part of the BIDS standard and should remain stable across versions
+        canonical_order = [
+            'subject',      # sub
+            'session',      # ses
+            'task',         # task
+            'acquisition',  # acq
+            'ceagent',      # ce
+            'reconstruction',  # rec
+            'direction',    # dir
+            'run',          # run
+            'modality',     # mod
+            'echo',         # echo
+            'flip',         # flip
+            'inversion',    # inv
+            'mtransfer',    # mt
+            'part',         # part
+            'recording',    # recording
+            'chunk',        # chunk
+            'space',        # space
+            'processing',   # proc
+            'split',        # split
+            'tracer',       # trc
+            'sample',       # sample
+            'stain',        # stain
+            'tracksys',     # tracksys
+            'resolution',   # res
+            'density',      # den
+            'label',        # label
+            'description',  # desc
+            'hemisphere',   # hemi
+            'segmentation', # seg
+            'nucleus',      # nuc
+            'volume',       # voi
+        ]
+
+        # Extract entity short names in canonical order
+        ordered_keys = []
+        for entity_name in canonical_order:
+            if entity_name in entities:
+                entity_key = entities[entity_name]['name']  # Get short form (e.g., 'sub', 'ses')
+                ordered_keys.append(entity_key)
+
+        # Add any remaining entities not in canonical list (for schema extensions)
+        existing_keys = set(ordered_keys)
+        for entity_name, entity_def in entities.items():
+            entity_key = entity_def['name']
+            if entity_key not in existing_keys:
+                ordered_keys.append(entity_key)
+
+        return ordered_keys

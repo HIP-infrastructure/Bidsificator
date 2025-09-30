@@ -9,8 +9,6 @@ from typing import List, Dict, Optional, Any
 from enum import Enum
 import re
 
-from ..bids_constants import ENTITY_ORDER
-
 
 class EntityFormat(Enum):
     """Format types for BIDS entities"""
@@ -55,42 +53,31 @@ class BidsDatatype:
     metadata_requirements: Dict[str, Any]
     
     def build_path(self, entities: Dict[str, str], suffix: str, extension: str) -> str:
-        """Build BIDS-compliant path"""
+        """Build BIDS-compliant path using FilenameBuilder"""
+        # Import here to avoid circular imports
+        from ..filename_builder import FilenameBuilder
+        from pathlib import Path
+
         # Validate required entities
         for req in self.required_entities:
             if req not in entities:
                 raise ValueError(f"Required entity '{req}' missing for {self.name}")
-        
-        # Build path components
-        path_parts = []
-        
-        # Subject directory
-        if "sub" in entities:
-            path_parts.append(f"sub-{entities['sub']}")
-        
-        # Session directory (optional)
-        if "ses" in entities:
-            path_parts.append(f"ses-{entities['ses']}")
-        
-        # Datatype directory
-        path_parts.append(self.name)
-        
-        # Build filename
-        filename_parts = []
-        
-        # Add entities in BIDS order
-        for entity_key in ENTITY_ORDER:
-            if entity_key in entities:
-                filename_parts.append(f"{entity_key}-{entities[entity_key]}")
-        
-        # Add suffix and extension
-        filename = "_".join(filename_parts)
-        if suffix:
-            filename = f"{filename}_{suffix}"
-        filename = f"{filename}{extension}"
-        
-        path_parts.append(filename)
-        return "/".join(path_parts)
+
+        # Use FilenameBuilder for consistent path construction
+        builder = FilenameBuilder()
+
+        # Build path from root (empty Path)
+        full_path = builder.build_path(
+            dataset_root=Path(),
+            entities=entities,
+            datatype=self.name,
+            suffix=suffix,
+            extension=extension,
+            validate=False  # Skip validation for internal use
+        )
+
+        # Return as string with forward slashes
+        return str(full_path).replace('\\', '/')
     
     def get_required_metadata(self, suffix: str = None) -> Dict[str, Any]:
         """Get required metadata fields"""
