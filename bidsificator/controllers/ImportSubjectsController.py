@@ -421,15 +421,28 @@ class ImportSubjectsController(QObject):
         for subject_data in self._model.subjects:
             for file_info in subject_data.files:
                 modality = file_info.get('modality', '')
-                
-                # Map modality string to datatype/suffix
-                if 'ieeg' in modality.lower():
-                    datatype_suffix_pairs.add(('ieeg', 'ieeg'))
-                elif 'anat' in modality.lower():
-                    # Extract suffix from modality (e.g., "T1w (anat)" -> "T1w")
+
+                # Schema-driven modality parsing
+                # Format: "T1w (anat)" or "ieeg (ieeg)" or just "ieeg"
+                if '(' in modality and ')' in modality:
+                    # Extract suffix and datatype: "T1w (anat)" -> suffix="T1w", datatype="anat"
                     suffix = modality.split('(')[0].strip()
-                    datatype_suffix_pairs.add(('anat', suffix))
-                # Add more mappings as needed
+                    datatype = modality.split('(')[1].split(')')[0].strip()
+                else:
+                    # Format without parentheses - use as both suffix and datatype
+                    suffix = modality.strip()
+                    datatype = modality.strip()
+
+                # Validate datatype exists in schema
+                if datatype in self._schema_manager.datatypes:
+                    dt = self._schema_manager.get_datatype(datatype)
+                    # Validate suffix is valid for this datatype
+                    if suffix in dt.suffixes or datatype == suffix:
+                        datatype_suffix_pairs.add((datatype, suffix))
+                    else:
+                        print(f"Warning: Suffix '{suffix}' not valid for datatype '{datatype}' - skipping")
+                else:
+                    print(f"Warning: Unknown datatype '{datatype}' from modality '{modality}' - skipping")
         
         # Collect all required entities across all file types
         # Use existing proven schema logic from BidsSubject (same as Tab 2)

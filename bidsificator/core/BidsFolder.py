@@ -47,9 +47,12 @@ class BidsFolder:
         self.generate_readme_file()
 
     def generate_empty_dataset_description_file(self, dataset_name: str, json_file_path: str):
+        # Get BIDS version from schema instead of hardcoding
+        bids_version = self.schema_manager.get_bids_version()
+
         dataset_description = {
             "Name": dataset_name,
-            "BIDSVersion": "1.2.0",
+            "BIDSVersion": bids_version,
             "DatasetType": "raw",
             "License": "n/a",
             "Authors": [],
@@ -75,9 +78,12 @@ class BidsFolder:
         if not json_file_path:
             json_file_path = self.__path / "dataset_description.json"
 
+        # Get BIDS version from schema if not provided in input dict
+        default_bids_version = self.schema_manager.get_bids_version()
+
         dataset_description_dict = {
             "Name": dataset_description_dict.get("Name", "n/a"),
-            "BIDSVersion": dataset_description_dict.get("BIDSVersion", "n/a"),
+            "BIDSVersion": dataset_description_dict.get("BIDSVersion", default_bids_version),
             "DatasetType": dataset_description_dict.get("DatasetType", "raw"),
             "License": dataset_description_dict.get("License", "n/a"),
             "Authors": dataset_description_dict.get("Authors", []),

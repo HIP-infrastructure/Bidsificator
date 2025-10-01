@@ -58,7 +58,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Populate modality dropdown with schema-driven values
         self.populate_modality_dropdown()
-        
+
+        # Make SessionComboBox editable for custom session names
+        self._setup_session_combobox()
+
         # Initialize MVC Controller
         self._main_controller = MainController(self)
         self._setup_controller_connections()
@@ -304,6 +307,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Initially disable form elements since no files are loaded
         self.set_import_form_enabled(False)
         
+    def _setup_session_combobox(self):
+        """
+        Configure SessionComboBox for flexible session input.
+
+        Makes the combobox editable to allow custom session names per BIDS spec.
+        Keeps only ses-pre and ses-post from UI, users can type any other session name.
+        """
+        # Make combobox editable to allow custom session names
+        self.SessionComboBox.setEditable(True)
+
+        # Keep existing items (ses-pre, ses-post) from UI form
+        # Users can type any other session name (baseline, followup, month6, etc.)
+
+        # Set placeholder text to guide users
+        self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
+
     def populate_modality_dropdown(self):
         """Populate ModalityComboBox with available datatypes from schema"""
         try:
@@ -601,13 +620,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_subject_details(self):
         """Update subject details using controller data."""
         subject_name = self.SubjectComboBox.currentText()
-        
+
         if not subject_name or not self._main_controller.is_dataset_loaded():
             return
-            
+
         session_names = self._main_controller.get_sessions_for_subject(subject_name)
+
+        # Clear and repopulate, but maintain editable functionality
         self.SessionComboBox.clear()
-        self.SessionComboBox.addItems(session_names)
+
+        # Add existing sessions from this subject
+        if session_names:
+            self.SessionComboBox.addItems(session_names)
+        else:
+            # No sessions yet - add just the default pre/post
+            self.SessionComboBox.addItems(['ses-pre', 'ses-post'])
+
+        # Ensure combobox stays editable after repopulation
+        if not self.SessionComboBox.isEditable():
+            self.SessionComboBox.setEditable(True)
+            self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
 
     def show_delete_import_subject_context_menu(self):
         # Create custom context menu

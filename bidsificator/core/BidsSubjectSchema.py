@@ -19,10 +19,10 @@ import tempfile
 from bidsificator.core.schema import BidsSchemaManager
 from bidsificator.converters.registry import ConverterRegistry
 from bidsificator.core.file_analysis import FileAnalysis
+from bidsificator.core.filename_builder import FilenameBuilder
 from bidsificator.core.bids_constants import (
     DEFAULT_METADATA_VALUES,
-    DEFAULT_SUFFIXES,
-    ENTITY_ORDER,
+    get_default_suffix_for_datatype,
     DEFAULT_CHANNEL_COUNTS,
     BIDS_DATA_EXTENSIONS
 )
@@ -57,13 +57,13 @@ class BidsSubject:
         
         self.subject_path = self._build_subject_path()
         self.subject_path.mkdir(parents=True, exist_ok=True)
-        
-        # Create default BIDS folder structure (matching old behavior)
-        self._create_default_folders()
-        
+
         # Initialize converter registry
         self.converter_registry = ConverterRegistry()
-        
+
+        # Initialize filename builder
+        self.filename_builder = FilenameBuilder()
+
         # Track optional metadata for this subject
         self.optional_metadata: Dict[str, Any] = {}
     
@@ -124,20 +124,6 @@ class BidsSubject:
         """Build subject directory path"""
         return self.dataset_path / self._format_entity('sub', self.subject_id)
     
-    def _create_default_folders(self):
-        """Create default BIDS folder structure for backward compatibility.
-        
-        Creates ses-pre and ses-post folders with anat and ieeg subdirectories,
-        matching the old BidsSubject behavior.
-        """
-        # Create session folders with datatype subdirectories
-        sessions = ["ses-pre", "ses-post"]
-        datatypes = ["anat", "ieeg"]  # Default datatypes for iEEG datasets
-        
-        for session in sessions:
-            for datatype in datatypes:
-                folder_path = self.subject_path / session / datatype
-                folder_path.mkdir(parents=True, exist_ok=True)
     
     def _format_entity(self, entity_key: str, entity_value: str) -> str:
         """Format entity with prefix (e.g., 'sub-01')"""
@@ -522,9 +508,9 @@ class BidsSubject:
         for suffix in dt.suffixes:
             if suffix.lower() in filename_lower:
                 return suffix
-        
-        # Use default suffix for datatype
-        return DEFAULT_SUFFIXES.get(datatype, datatype)
+
+        # Use schema-driven default suffix for datatype
+        return get_default_suffix_for_datatype(datatype)
     
     def _build_target_path(self, entities: Dict[str, str], datatype: str, 
                           suffix: str, extension: str) -> Path:
@@ -549,27 +535,13 @@ class BidsSubject:
         return Path(*path_parts)
     
     def _build_bids_filename(self, entities: Dict[str, str], suffix: str, extension: str) -> str:
-        """Build BIDS-compliant filename with proper entity ordering"""
-        filename_parts = []
-        
-        # Add entities in BIDS-specified order, but only if they have non-empty values
-        for entity_key in ENTITY_ORDER:
-            if entity_key in entities and entities[entity_key] and entities[entity_key].strip():
-                filename_parts.append(self._format_entity(entity_key, entities[entity_key]))
-        
-        # Add any remaining entities not in standard order (shouldn't happen with proper schema)
-        remaining_entities = set(entities.keys()) - set(ENTITY_ORDER)
-        for entity_key in sorted(remaining_entities):
-            if entities[entity_key] and entities[entity_key].strip():
-                filename_parts.append(self._format_entity(entity_key, entities[entity_key]))
-        
-        # Build final filename
-        filename = "_".join(filename_parts)
-        if suffix:
-            filename = f"{filename}_{suffix}"
-        filename = f"{filename}{extension}"
-        
-        return filename
+        """Build BIDS-compliant filename using schema-driven FilenameBuilder"""
+        return self.filename_builder.build_filename(
+            entities=entities,
+            suffix=suffix,
+            extension=extension,
+            validate=False  # Skip validation for internal use (already validated)
+        )
     
     def _generate_metadata_files(self, data_path: Path, datatype: str, suffix: str,
                                 entities: Dict[str, str], user_metadata: Dict[str, Any], source_path: Path = None):

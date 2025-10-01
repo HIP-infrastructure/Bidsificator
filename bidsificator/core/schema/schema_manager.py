@@ -210,16 +210,30 @@ class BidsSchemaManager:
     def _extract_entities_from_filename(self, filename: str) -> Dict[str, str]:
         """Extract entities from a BIDS filename"""
         import re
-        
+
         entities = {}
-        
+
         # Remove extension and suffix
         name_parts = filename.split('_')
-        
+
         for part in name_parts[:-1]:  # Skip last part (suffix + extension)
             if '-' in part:
                 key, value = part.split('-', 1)
                 if key in self.entities:
                     entities[key] = value
-        
+
         return entities
+
+    def get_entity_order(self) -> List[str]:
+        """
+        Get canonical entity ordering from BIDS schema.
+
+        Returns entity keys in the order they should appear in BIDS filenames,
+        as defined by the BIDS specification.
+
+        Returns:
+            List of entity keys in canonical order (e.g., ['sub', 'ses', 'task', ...])
+        """
+        if not self._raw_schema:
+            self.load_schema()
+        return self._parser.get_entity_order(self._raw_schema)
