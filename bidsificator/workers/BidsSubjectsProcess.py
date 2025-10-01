@@ -67,20 +67,29 @@ def processBidsSubjects(
             # Define entities for the file, filtering out empty values
             entities = {}
             entities["sub"] = bids_subject.get_subject_id()
-            
-            if file.get("session", ""):
-                entities["ses"] = file.get("session")
-            
+
+            session_value = file.get("session", "")
+            if session_value:
+                # Remove "ses-" prefix if present (should be already removed by controller)
+                session_clean = session_value.removeprefix("ses-")
+                entities["ses"] = session_clean
+                print(f"Session: raw='{session_value}', clean='{session_clean}'")
+
             # Process file based on its modality - use existing hardcoded approach for consistency
             modality = file.get("modality", "")
-            
+            print(f"Processing file with modality: '{modality}' - file: {file_path}")
+
             # Use schema to determine if task is required for specific modality types
             # This is the schema-driven improvement while keeping existing patterns
             if modality == "ieeg (ieeg)":
                 required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'ieeg')
                 if 'task' in required_entities:
                     entities["task"] = task
-            elif modality == "photo (ieeg)":  
+            elif modality == "eeg (eeg)":
+                required_entities = bids_subject.get_required_entities_for_suffix('eeg', 'eeg')
+                if 'task' in required_entities:
+                    entities["task"] = task
+            elif modality == "photo (ieeg)":
                 required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'photo')
                 if 'task' in required_entities:
                     entities["task"] = task
@@ -108,6 +117,19 @@ def processBidsSubjects(
                         suffix='ieeg'
                     )
                     print(f"Added iEEG file: {result.get('target_path', file_path)}")
+                except Exception as e:
+                    print(f"Error processing file {file_path}: {e}")
+                    print(f"Skipping file")
+            elif modality == "eeg (eeg)":
+                try:
+                    # Map modality to datatype for schema-driven BidsSubject
+                    result = bids_subject.add_file(
+                        source_path=file_path,
+                        datatype='eeg',
+                        entities=entities,
+                        suffix='eeg'
+                    )
+                    print(f"Added EEG file: {result.get('target_path', file_path)}")
                 except Exception as e:
                     print(f"Error processing file {file_path}: {e}")
                     print(f"Skipping file")

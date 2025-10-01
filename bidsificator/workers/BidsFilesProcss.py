@@ -57,6 +57,19 @@ def processBidsFiles(
             except Exception as e:
                 print(f"Error processing file {file_path}: {e}")
                 print(f"Skipping file")
+        elif modality == "eeg (eeg)":
+            try:
+                # Map modality to datatype for schema-driven BidsSubject
+                result = bids_subject.add_file(
+                    source_path=file_path,
+                    datatype='eeg',
+                    entities=entities,
+                    suffix='eeg'
+                )
+                print(f"Added EEG file: {result.get('target_path', file_path)}")
+            except Exception as e:
+                print(f"Error processing file {file_path}: {e}")
+                print(f"Skipping file")
         elif modality == "photo (ieeg)":
             try:
                 # Photos are stored in ieeg datatype with photo suffix

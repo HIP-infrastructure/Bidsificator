@@ -264,14 +264,16 @@ class BidsSubject:
         # Handle conversion if needed
         if analysis.needs_conversion:
             final_source, conv_metadata = self._convert_file(
-                source_path, 
+                source_path,
                 analysis.converter
             )
             metadata.update(conv_metadata)
             metadata['SourceFile'] = str(source_path)
-            final_datatype = analysis.bids_datatype or datatype
+            # Prioritize explicit datatype parameter over auto-detection
+            final_datatype = datatype or analysis.bids_datatype
         else:
             final_source = source_path
+            # Prioritize explicit datatype parameter over auto-detection
             final_datatype = datatype or analysis.bids_datatype
         
         # Get datatype definition from schema

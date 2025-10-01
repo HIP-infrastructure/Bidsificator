@@ -204,7 +204,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         display_names = self._main_controller.import_subjects_controller.get_display_names()
         for display_name in display_names:
             self.IS_SubjectListWidget.addItem(display_name)
-            
+
+        # Auto-select first subject if available, otherwise clear file editor
+        if display_names:
+            self.IS_SubjectListWidget.setCurrentRow(0)
+            # Manually trigger the selection update since setCurrentRow doesn't always fire signals
+            self.update_import_subject_fileList()
+        else:
+            # No subjects left - clear the file editor
+            self.__ImportSubjectFileEditor.clear_file_list()
+
     def _on_import_subject_selection_changed(self, index: int):
         """Handle import subject selection change from controller."""
         # This will be handled by the controller updating the file editor
@@ -312,13 +321,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Configure SessionComboBox for flexible session input.
 
         Makes the combobox editable to allow custom session names per BIDS spec.
-        Keeps only ses-pre and ses-post from UI, users can type any other session name.
+        Provides default options with ses-post first (selected by default).
         """
+        # Add default session options first (before making it editable)
+        self.SessionComboBox.addItems(['ses-post', 'ses-pre'])
+
+        # Set ses-post as current selection
+        self.SessionComboBox.setCurrentIndex(0)
+
         # Make combobox editable to allow custom session names
         self.SessionComboBox.setEditable(True)
-
-        # Keep existing items (ses-pre, ses-post) from UI form
-        # Users can type any other session name (baseline, followup, month6, etc.)
 
         # Set placeholder text to guide users
         self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
@@ -350,6 +362,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     ('ieeg (ieeg)', 'ieeg'),
                     ('photo (ieeg)', 'photo')
                 ],
+                'eeg': [
+                    ('eeg (eeg)', 'eeg')
+                ],
                 'func': [
                     ('BOLD (func)', 'bold')
                 ],
@@ -378,8 +393,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Fallback to basic items if schema loading fails
             fallback_items = [
                 "T1w (anat)",
-                "T2w (anat)", 
+                "T2w (anat)",
                 "ieeg (ieeg)",
+                "eeg (eeg)",
                 "photo (ieeg)"
             ]
             for item in fallback_items:
@@ -431,7 +447,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Update form fields with file metadata
             self.BrowseLineEdit.setText(file_data["file_path"])
             self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
-            self.set_comboBox_text(self.SessionComboBox, "ses-" + file_data["session"] if file_data["session"] else "")
+            # Use ses-post as default if session is empty
+            session_text = "ses-" + file_data["session"] if file_data["session"] else "ses-post"
+            self.set_comboBox_text(self.SessionComboBox, session_text)
             self.set_comboBox_text(self.TaskComboBox, file_data["task"])
             self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
             self.AcquisitionLineEdit.setText(file_data["acquisition"])
@@ -631,10 +649,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Add existing sessions from this subject
         if session_names:
-            self.SessionComboBox.addItems(session_names)
+            # Sort sessions to put ses-post first if it exists
+            sorted_sessions = sorted(session_names, key=lambda x: (x != 'ses-post', x))
+            self.SessionComboBox.addItems(sorted_sessions)
         else:
-            # No sessions yet - add just the default pre/post
-            self.SessionComboBox.addItems(['ses-pre', 'ses-post'])
+            # No sessions yet - add default with ses-post first
+            self.SessionComboBox.addItems(['ses-post', 'ses-pre'])
 
         # Ensure combobox stays editable after repopulation
         if not self.SessionComboBox.isEditable():
@@ -653,16 +673,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.customMenu.popup(QCursor.pos())
 
     def remove_selected_import_subject(self):
-        reply = QMessageBox.question(self, "Remove Subject", "Are you sure you want to remove the selected subject(s)?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.No:
+        """Remove selected subjects from import list using controller."""
+        selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
+        if not selectedIndexes:
             return
 
-        selectedIndexes = self.IS_SubjectListWidget.selectedIndexes()
-        for index in selectedIndexes[::-1]:
-            self.IS_SubjectListWidget.takeItem(index.row())
-            self.__subject_data.pop(index.row())
+        # Get the row indices to remove
+        indices_to_remove = [index.row() for index in selectedIndexes]
 
-        self.__ImportSubjectFileEditor.clear_file_list()
+        # Use controller to remove subjects
+        self._main_controller.remove_selected_import_subjects(indices_to_remove)
 
     def update_modality_UI(self):
         if "(anat)" in self.ModalityComboBox.currentText():
@@ -704,6 +724,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.SessionLabel.show()
             self.SessionComboBox.show()
             #task - show for all modalities
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            #contrast
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
+            #acquisition
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
+            #reconstruction
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
+        elif "eeg (eeg)" in self.ModalityComboBox.currentText():
+            #session
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task
             self.TaskLabel.show()
             self.TaskComboBox.show()
             #contrast
@@ -807,6 +844,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             acquisition = self.AcquisitionLineEdit.text()
             reconstruction = self.ReconstructionLineEdit.text()
         elif "ieeg (ieeg)" in modality:
+            task = self.TaskComboBox.currentText()
+            session = self.SessionComboBox.currentText()
+            contrast_agent = ""
+            acquisition = self.AcquisitionLineEdit.text()
+            reconstruction = ""
+        elif "eeg (eeg)" in modality:
             task = self.TaskComboBox.currentText()
             session = self.SessionComboBox.currentText()
             contrast_agent = ""
@@ -1124,17 +1167,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     
     def _save_file_editor_changes(self):
         """Save FileEditor changes back to ImportSubjectsController."""
-        # Make sure FileEditor saves its current form data
+        # Force save of any pending form changes (even if user didn't click "Save")
         if hasattr(self.__ImportSubjectFileEditor, '_save_form_data'):
             self.__ImportSubjectFileEditor._save_form_data()
-        
-        # Get the modified data from FileEditor controller
-        if hasattr(self.__ImportSubjectFileEditor._controller, '_current_subject_data'):
+
+        # Also update any changed fields from the form directly
+        if hasattr(self.__ImportSubjectFileEditor, '_save_form_data_to_controller'):
+            self.__ImportSubjectFileEditor._save_form_data_to_controller()
+
+        # Get the modified data from FileEditor controller and sync to ImportSubjectsController
+        if hasattr(self.__ImportSubjectFileEditor, '_controller') and hasattr(self.__ImportSubjectFileEditor._controller, '_current_subject_data'):
             modified_data = self.__ImportSubjectFileEditor._controller._current_subject_data
-            if modified_data:
+            if modified_data and modified_data.get("subject_id"):
                 subject_id = modified_data.get("subject_id")
-                # Here we would sync back to ImportSubjectsController, but for now the change persistence
-                # in FileEditor should handle most of the persistence within the current subject
+                # Sync changes back to ImportSubjectsController before import
+                self._main_controller.import_subjects_controller.update_subject_data(subject_id, modified_data)
 
     def validate_bids_dataset(self):
         """Validate entire BIDS dataset using the controller."""
