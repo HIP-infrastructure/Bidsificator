@@ -176,10 +176,13 @@ class FileEditor(QWidget, Ui_FileEditor):
         file_names = self._controller.get_file_names_for_list()
         for file_name in file_names:
             self.FileListWidget.addItem(file_name)
-        
-        # Auto-select first file if available
+
+        # Auto-select first file if available, otherwise clear form
         if file_names:
             self.FileListWidget.setCurrentRow(0)
+        else:
+            # No files - clear the form fields
+            self._clear_form_fields()
 
     def _update_form_fields(self, file_data):
         """Update form fields from controller data."""
@@ -199,6 +202,16 @@ class FileEditor(QWidget, Ui_FileEditor):
 
         # Update UI visibility based on modality
         self.update_userinterface_for_modality()
+
+    def _clear_form_fields(self):
+        """Clear all form fields when no files are present."""
+        self.set_comboBox_text(self.ModalityComboBox, "")
+        self.set_comboBox_text(self.SessionComboBox, "")
+        self.set_comboBox_text(self.TaskComboBox, "")
+        self.ContrastAgentLineEdit.clear()
+        self.AcquisitionLineEdit.clear()
+        self.ReconstructionLineEdit.clear()
+        self.PathLineEdit.clear()
 
     def _update_edit_mode_ui(self, edit_mode):
         """Update UI for edit mode."""
@@ -248,6 +261,9 @@ class FileEditor(QWidget, Ui_FileEditor):
                     ('ieeg (ieeg)', 'ieeg'),
                     ('photo (ieeg)', 'photo')
                 ],
+                'eeg': [
+                    ('eeg (eeg)', 'eeg')
+                ],
                 'func': [
                     ('BOLD (func)', 'bold')
                 ],
@@ -276,8 +292,9 @@ class FileEditor(QWidget, Ui_FileEditor):
             # Fallback to basic items if schema loading fails
             fallback_items = [
                 "T1w (anat)",
-                "T2w (anat)", 
+                "T2w (anat)",
                 "ieeg (ieeg)",
+                "eeg (eeg)",
                 "photo (ieeg)"
             ]
             for item in fallback_items:
