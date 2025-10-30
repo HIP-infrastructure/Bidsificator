@@ -35,7 +35,8 @@ class ImportFilesController(QObject):
         self._model = ImportSessionModel()
         self._worker: Optional[ImportBidsFilesWorker] = None
         self._browse_memory = ""
-        
+        self._contact_labeling_file: Optional[str] = None
+
         # Set up default configuration
         self._model.config.auto_detect_modality = True
         self._model.config.auto_increment_acquisition = True
@@ -282,7 +283,37 @@ class ImportFilesController(QObject):
                 return False  # User cancelled the change
         
         return self._model.change_subject(new_subject)
-    
+
+    def _check_electrodes_will_be_overwritten(self, dataset_path: str, subject_id: str) -> bool:
+        """
+        Check if electrodes.tsv exists for this subject.
+
+        Args:
+            dataset_path: Path to BIDS dataset
+            subject_id: Subject identifier
+
+        Returns:
+            True if electrodes.tsv exists and will be overwritten
+        """
+        from pathlib import Path
+
+        try:
+            subject_path = Path(dataset_path) / f"sub-{subject_id}"
+
+            # Check if subject folder exists
+            if not subject_path.exists():
+                return False
+
+            # Check all possible locations for electrodes.tsv
+            # Could be in multiple session folders or directly in subject
+            electrodes_files = list(subject_path.glob("**/sub-*_electrodes.tsv"))
+
+            return len(electrodes_files) > 0
+
+        except Exception as e:
+            print(f"Could not check for existing electrodes.tsv: {e}")
+            return False
+
     def start_import(self) -> bool:
         """
         Start the import process.
@@ -320,9 +351,34 @@ class ImportFilesController(QObject):
         legacy_data = self._model.get_legacy_data_structure()
         subject_name = legacy_data["subject_id"]
         files = legacy_data["files"]
-        
-        # Create and start worker
-        self._worker = ImportBidsFilesWorker(dataset_path, subject_name, files)
+
+        # Check if we need to warn about electrodes.tsv regeneration
+        if self._contact_labeling_file:
+            if self._check_electrodes_will_be_overwritten(dataset_path, subject_name):
+                # Show confirmation dialog
+                reply = QMessageBox.question(
+                    self._parent_widget,
+                    "Regenerate electrodes.tsv?",
+                    f"⚠️ The subject '{subject_name}' already has an existing electrodes.tsv file.\n\n"
+                    f"Importing with a contact labeling file will completely regenerate "
+                    f"this file with the clinical annotations.\n\n"
+                    f"⚠️ Warning: Any manual edits to the existing electrodes.tsv will be LOST.\n\n"
+                    f"Do you want to continue and regenerate?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No  # Default to No for safety
+                )
+
+                if reply == QMessageBox.StandardButton.No:
+                    # User cancelled
+                    return False
+
+        # Create and start worker with optional contact labeling file
+        self._worker = ImportBidsFilesWorker(
+            dataset_path,
+            subject_name,
+            files,
+            self._contact_labeling_file
+        )
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
         self._worker.finished.connect(self._on_import_finished)
         self._worker.start()
@@ -405,14 +461,18 @@ class ImportFilesController(QObject):
         return self._worker is not None and self._worker.isRunning()
     
     
-    def set_files_data(self, subject_id: str, files_data: List[Dict]) -> None:
+    def set_files_data(self, subject_id: str, files_data: List[Dict], contact_labeling_file: Optional[str] = None) -> None:
         """
         Set files data directly from external source (e.g., MainWindow).
-        
+
         Args:
             subject_id: Subject identifier
             files_data: List of file data dictionaries
+            contact_labeling_file: Optional path to contact labeling Excel file
         """
+        # Store contact labeling file
+        self._contact_labeling_file = contact_labeling_file
+
         # Load the data into the model
         data = {
             "subject_id": subject_id,

@@ -53,7 +53,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.__ImportSubjectFileEditor = FileEditor()
         self.IS_FileEditorLayout.addWidget(self.__ImportSubjectFileEditor)
         # Initialize Import Files tab
-        self.__import_files_data = {"subject_id": "", "files": []}
+        self.__import_files_data = {
+            "subject_id": "",
+            "files": [],
+            "contact_labeling_file": None
+        }
         self.setup_import_files_tab()
         
         # Populate modality dropdown with schema-driven values
@@ -103,6 +107,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Import File List Widget connections
         self.ImportFileListWidget.itemClicked.connect(self.on_import_file_selected)
         self.ImportFileListWidget.itemSelectionChanged.connect(self.on_import_file_selected)
+        # Clinical electrode labeling file connection
+        self.ClinicalElecPushButton.clicked.connect(self.browse_clinical_electrode_file)
+        self.ClinicalElecLineEdit.setReadOnly(True)  # Make read-only like BrowseLineEdit
         #    Third tab
         self.IS_ParsePushButton.clicked.connect(self.parse_subject_to_import)
         self.IS_SubjectListWidget.itemClicked.connect(self.update_import_subject_fileList)
@@ -269,10 +276,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def on_subject_changed(self):
         """Handle subject selection change in Import Files tab"""
         current_subject = self.SubjectComboBox.currentText()
-        
+
         # If no files, just update subject
         if not self.__import_files_data["files"]:
             self.__import_files_data["subject_id"] = current_subject
+            # Clear contact labeling file when subject changes
+            self.ClinicalElecLineEdit.clear()
+            self.__import_files_data["contact_labeling_file"] = None
             return
         
         # If subject actually changed and there are files, prompt user
@@ -297,6 +307,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 for file_data in self.__import_files_data["files"]:
                     file_data["intended_subject"] = current_subject
                 self.__import_files_data["subject_id"] = current_subject
+                # Clear contact labeling file when subject changes
+                self.ClinicalElecLineEdit.clear()
+                self.__import_files_data["contact_labeling_file"] = None
             else:
                 # Cancel - revert to original subject selection
                 self._reverting_subject = True
@@ -1125,6 +1138,59 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Single-file browse as fallback option"""
         self.browse_for_file_to_add()
 
+    def browse_clinical_electrode_file(self):
+        """Browse for clinical electrode labeling Excel file."""
+        from pathlib import Path
+
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        file_dialog.setNameFilter("Excel Files (*.xlsx *.xls)")
+        file_dialog.setWindowTitle("Select Contact Labeling File")
+
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+
+                # Validate file using ContactLabelingParser
+                try:
+                    from ..services.ContactLabelingParser import ContactLabelingParser
+                    parser = ContactLabelingParser()
+                    contact_data = parser.parse_file(Path(file_path))
+
+                    # Show success message
+                    contact_count = len(contact_data)
+                    QMessageBox.information(
+                        self,
+                        "File Loaded",
+                        f"Successfully loaded {contact_count} contacts from labeling file.\n\n"
+                        f"File: {Path(file_path).name}"
+                    )
+
+                    # Update UI and store in data
+                    self.ClinicalElecLineEdit.setText(file_path)
+                    self.__import_files_data["contact_labeling_file"] = file_path
+
+                except FileNotFoundError as e:
+                    QMessageBox.warning(
+                        self,
+                        "File Not Found",
+                        f"The selected file could not be found:\n{str(e)}"
+                    )
+                except ValueError as e:
+                    QMessageBox.warning(
+                        self,
+                        "Invalid File Format",
+                        f"Could not parse Excel file:\n{str(e)}\n\n"
+                        f"Please ensure the file has the correct structure with a 'contact' column."
+                    )
+                except Exception as e:
+                    QMessageBox.warning(
+                        self,
+                        "Error Loading File",
+                        f"An unexpected error occurred:\n{str(e)}"
+                    )
+
     def start_file_import(self):
         """Start file import using the controller."""
         # Save current form data before starting import
@@ -1146,10 +1212,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Sync the current import data to the controller
             subject_id = self.__import_files_data["subject_id"]
             files = self.__import_files_data["files"]
-            
-            
+            contact_labeling_file = self.__import_files_data.get("contact_labeling_file")
+
             # Set the data in the controller
-            self._main_controller.import_files_controller.set_files_data(subject_id, files)
+            self._main_controller.import_files_controller.set_files_data(
+                subject_id,
+                files,
+                contact_labeling_file
+            )
 
     def start_subjects_import(self):
         """Start subjects import using the controller."""

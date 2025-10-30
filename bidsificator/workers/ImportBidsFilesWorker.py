@@ -9,16 +9,17 @@ class ImportBidsFilesWorker(QThread):
     update_progressbar_signal = pyqtSignal(int)
     finished = pyqtSignal()
 
-    def __init__(self, dataset_path: str, subject_name: str, file_list: list):
+    def __init__(self, dataset_path: str, subject_name: str, file_list: list, contact_labeling_file: str = None):
         super().__init__()
         self.dataset_path = dataset_path
         self.subject_name = subject_name
         self.file_list = file_list
+        self.contact_labeling_file = contact_labeling_file
         self.anatomical_modalities = {"T1w (anat)", "T2w (anat)", "T1rho (anat)", "T2* (anat)", "FLAIR (anat)", "CT (anat)"}
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()
-        process = mp.Process(target=processBidsFiles, args=(child_conn, self.dataset_path, self.subject_name, self.file_list, self.anatomical_modalities))
+        process = mp.Process(target=processBidsFiles, args=(child_conn, self.dataset_path, self.subject_name, self.file_list, self.anatomical_modalities, self.contact_labeling_file))
         process.start()
 
         while True:

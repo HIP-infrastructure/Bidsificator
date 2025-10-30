@@ -9,6 +9,7 @@ def processBidsFiles(
     subject_name: str,
     file_list: list,
     anatomical_modalities: set[str],
+    contact_labeling_file: str = None,
 ):
 
     bids_folder = BidsFolder(dataset_path)
@@ -17,6 +18,15 @@ def processBidsFiles(
     if bids_subject is None:
         conn.send(-1)  # Indicate error
         return
+
+    # Attach contact labeling file if provided
+    if contact_labeling_file:
+        try:
+            from pathlib import Path
+            bids_subject.set_contact_labeling_file(Path(contact_labeling_file))
+            print(f"Attached contact labeling file: {contact_labeling_file}")
+        except Exception as e:
+            print(f"Warning: Could not attach contact labeling file: {e}")
 
     for index, file in enumerate(file_list):
         file_path = file["file_path"]
