@@ -183,6 +183,7 @@ class ContactLabelingParser:
 
         # Convert to string and check if it's an indicator
         str_value = str(value).strip().lower()
+        str_value = str_value.strip("'\"")  # Strip surrounding quotes
 
         # Normalize common indicator values
         if str_value in ['y', 'yes', 'n', 'no', 'na', 'n/a', 'nd', 'n/d']:
