@@ -159,18 +159,18 @@ class BidsSchemaMapper:
     def _get_electrodes_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
         """Get columns for electrodes.tsv files (for iEEG)"""
         columns = {}
-        
+
         # Core electrode columns
         electrode_columns = {
             'name': 'Electrode name',
-            'x': 'X coordinate', 
+            'x': 'X coordinate',
             'y': 'Y coordinate',
             'z': 'Z coordinate',
             'size': 'Surface area or volume',
             'hemisphere': 'Hemisphere (L/R)',
             'group': 'Electrode group'
         }
-        
+
         for col_name, description in electrode_columns.items():
             data_type = 'number' if col_name in ['x', 'y', 'z', 'size'] else 'string'
             columns[col_name] = ColumnDefinition(
@@ -179,7 +179,36 @@ class BidsSchemaMapper:
                 data_type=data_type,
                 requirement_level='required' if col_name == 'name' else 'optional'
             )
-        
+
+        # Clinical annotation columns (for SEEG contact labeling)
+        # These are all optional and populated from external labeling files
+        clinical_columns = {
+            'within_ez': ('Whether contact is within the epileptogenic zone', 'string'),
+            'within_lesion': ('Whether contact is within the lesion (EI value)', 'string'),
+            'spikes_wake': ('Presence of spikes during wakefulness', 'string'),
+            'spikes_wake_rate': ('Rate of spikes during wakefulness', 'number'),
+            'spikes_sleep': ('Presence of spikes during sleep', 'string'),
+            'spikes_sleep_rate': ('Rate of spikes during sleep', 'number'),
+            'ripples_wake': ('Presence of ripples during wakefulness', 'string'),
+            'ripples_wake_rate': ('Rate of ripples during wakefulness', 'number'),
+            'ripples_sleep': ('Presence of ripples during sleep', 'string'),
+            'ripples_sleep_rate': ('Rate of ripples during sleep', 'number'),
+            'fast_ripples_wake': ('Presence of fast ripples during wakefulness', 'string'),
+            'fast_ripples_wake_rate': ('Rate of fast ripples during wakefulness', 'number'),
+            'fast_ripples_sleep': ('Presence of fast ripples during sleep', 'string'),
+            'fast_ripples_sleep_rate': ('Rate of fast ripples during sleep', 'number'),
+            'rftc': ('Radiofrequency thermocoagulation status', 'string'),
+            'resected': ('Whether contact was resected', 'string'),
+        }
+
+        for col_name, (description, data_type) in clinical_columns.items():
+            columns[col_name] = ColumnDefinition(
+                name=col_name,
+                description=description,
+                data_type=data_type,
+                requirement_level='optional'
+            )
+
         return columns
     
     def validate_tsv_dataframe(self, df: pd.DataFrame, suffix: str, datatype: str = None) -> List[str]:

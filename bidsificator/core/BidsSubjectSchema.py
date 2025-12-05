@@ -66,6 +66,9 @@ class BidsSubject:
 
         # Track optional metadata for this subject
         self.optional_metadata: Dict[str, Any] = {}
+
+        # Track contact labeling file for SEEG subjects
+        self.contact_labeling_file: Optional[Path] = None
     
     def _sanitize_subject_id(self, subject_id: str) -> str:
         """
@@ -119,7 +122,41 @@ class BidsSubject:
             del self.optional_metadata[key]
         else:
             print("Key not found:", key)
-    
+
+    def set_contact_labeling_file(self, file_path: Optional[Path]):
+        """
+        Set the contact labeling file for this subject
+
+        Args:
+            file_path: Path to Excel file with contact labeling data, or None to clear
+        """
+        if file_path is not None:
+            file_path = Path(file_path)
+            if not file_path.exists():
+                raise FileNotFoundError(f"Contact labeling file not found: {file_path}")
+            if file_path.suffix.lower() not in ['.xlsx', '.xls']:
+                raise ValueError(f"Contact labeling file must be Excel format (.xlsx or .xls): {file_path}")
+        self.contact_labeling_file = file_path
+
+    def get_contact_labeling_file(self) -> Optional[Path]:
+        """
+        Get the contact labeling file for this subject
+
+        Returns:
+            Path to contact labeling file, or None if not set
+        """
+        return self.contact_labeling_file
+
+    def has_contact_labeling_file(self) -> bool:
+        """
+        Check if this subject has a contact labeling file
+
+        Returns:
+            True if contact labeling file is set and exists
+        """
+        return (self.contact_labeling_file is not None and
+                self.contact_labeling_file.exists())
+
     def _build_subject_path(self) -> Path:
         """Build subject directory path"""
         return self.dataset_path / self._format_entity('sub', self.subject_id)
@@ -815,9 +852,14 @@ class BidsSubject:
             
             electrodes_filename = self._build_bids_filename(electrodes_entities, 'electrodes', '.tsv')
             electrodes_path = electrodes_dir / electrodes_filename
-            if not electrodes_path.exists():
+            # Regenerate if doesn't exist OR if contact labeling file provided
+            if not electrodes_path.exists() or self.contact_labeling_file is not None:
                 try:
-                    electrodes_df = metadata_extractor.extract_electrodes_tsv(source_file, datatype)
+                    electrodes_df = metadata_extractor.extract_electrodes_tsv(
+                        source_file,
+                        datatype,
+                        contact_labeling_file=self.contact_labeling_file
+                    )
                     
                     # Validate generated DataFrame
                     is_valid, errors = metadata_extractor.validate_generated_tsv(electrodes_df, 'electrodes', datatype)

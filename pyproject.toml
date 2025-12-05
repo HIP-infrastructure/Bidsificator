@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.10.0"
+version = "1.11.0"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
@@ -29,10 +29,14 @@ flask-cors = "^4.0"
 flask-httpauth = "^4.8"
 flask-restful = "^0.3"
 flask_caching = "^2.3"
+openpyxl = "^3.1.5"
 
 [tool.poetry.scripts]
 bidsificator = "bidsificator.main:main"
 bidsificator-api = "bidsificator.api:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
 
 [build-system]
 requires = ["poetry-core"]
@@ -43,4 +47,4 @@ build-backend = "poetry.core.masonry.api"
 skip = '.git*,*.lock,./bidsificator/schema/bids_schema.json'
 check-hidden = true
 # ignore-regex = ''
-# ignore-words-list = ''
+ignore-words-list = 'nd'  # 'nd' is a valid BIDS value meaning "not determined"
