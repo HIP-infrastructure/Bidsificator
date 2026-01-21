@@ -22,6 +22,7 @@ from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
 from ..ui.AboutDialog import AboutDialog
+from ..ui.StatusBarManager import StatusBarManager
 from ..services.FileDetectionServiceSchema import FileDetectionService
 from ..services.ImportService import ImportService
 from ..services.ValidationServiceSchema import ValidationService
@@ -39,6 +40,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
+
+        # Initialize status bar manager
+        self._status_bar_manager = StatusBarManager(self.statusbar)
 
         # Set up splitter with reasonable default sizes
         # 25% for file tree, 75% for main content
@@ -156,12 +160,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         import_files_ctrl.selection_changed.connect(self._on_import_file_selection_changed)
         import_files_ctrl.form_data_updated.connect(self._update_form_from_data)
         import_files_ctrl.progress_updated.connect(self.progressBar.setValue)  # Second tab progress bar
-        
+        import_files_ctrl.progress_updated.connect(self._on_file_import_progress)
+        import_files_ctrl.import_completed.connect(self._on_file_import_completed)
+        import_files_ctrl.import_failed.connect(self._on_import_failed)
+        import_files_ctrl.dialog_dismissed.connect(self._on_dialog_dismissed)
+
         # Import subjects controller signals (Third tab)
         import_subjects_ctrl = self._main_controller.import_subjects_controller
         import_subjects_ctrl.subjects_loaded.connect(self._on_subjects_loaded)
         import_subjects_ctrl.selection_changed.connect(self._on_import_subject_selection_changed)
         import_subjects_ctrl.progress_updated.connect(self.IS_progressBar.setValue)  # Third tab progress bar
+        import_subjects_ctrl.progress_updated.connect(self._on_subjects_import_progress)
+        import_subjects_ctrl.import_completed.connect(self._on_subjects_import_completed)
+        import_subjects_ctrl.import_failed.connect(self._on_import_failed)
+        import_subjects_ctrl.dialog_dismissed.connect(self._on_dialog_dismissed)
         import_subjects_ctrl.lookup_table_updated.connect(self._on_lookup_table_updated)
         
     def _on_dataset_changed(self, dataset_path: str):
@@ -1195,14 +1207,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Start file import using the controller."""
         # Save current form data before starting import
         self.save_current_form_to_data()
-        
-        
+
+
         # Reset progress bar for this tab
         self.progressBar.setValue(0)
-        
+
+        # Show starting message in status bar
+        self._status_bar_manager.show_progress("File import in progress...")
+
         # Sync MainWindow data to controller before starting import
         self._sync_files_to_controller()
-        
+
         # Use controller to start import
         self._main_controller.start_file_import()
     
@@ -1223,16 +1238,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def start_subjects_import(self):
         """Start subjects import using the controller."""
-        
+
         # Reset progress bar for this tab
         self.IS_progressBar.setValue(0)
-        
+
+        # Show starting message in status bar
+        self._status_bar_manager.show_progress("Batch import in progress...")
+
         # Save any pending FileEditor changes before import
         self._save_file_editor_changes()
-        
+
         # Get task value from the FileEditor's TaskComboBox
         task = self.__ImportSubjectFileEditor.TaskComboBox.currentText()
-        
+
         self._main_controller.start_subjects_import(task)
     
     def _save_file_editor_changes(self):
@@ -1741,3 +1759,34 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Force refresh of validation state - can be called manually."""
         self._update_validation_state()
         self._update_tabs_based_on_validation()
+
+    # Status bar handler methods
+
+    def _on_file_import_progress(self, progress: int):
+        """Handle file import progress update for status bar."""
+        self._status_bar_manager.show_progress("Importing files...", progress)
+
+    def _on_file_import_completed(self, results: dict):
+        """Handle file import completion for status bar."""
+        file_count = results.get("files_imported", 0)
+        self._status_bar_manager.show_success(f"Successfully imported {file_count} files")
+
+    def _on_subjects_import_progress(self, progress: int):
+        """Handle subjects import progress update for status bar."""
+        self._status_bar_manager.show_progress("Importing subjects...", progress)
+
+    def _on_subjects_import_completed(self, results: dict):
+        """Handle subjects import completion for status bar."""
+        subject_count = results.get("subjects_imported", 0)
+        file_count = results.get("total_files", 0)
+        self._status_bar_manager.show_success(
+            f"Successfully imported {subject_count} subjects ({file_count} files)"
+        )
+
+    def _on_import_failed(self, error_message: str):
+        """Handle import failure for status bar."""
+        self._status_bar_manager.show_error(f"Import failed: {error_message}")
+
+    def _on_dialog_dismissed(self):
+        """Handle dialog dismissal - clear status bar."""
+        self._status_bar_manager.clear()

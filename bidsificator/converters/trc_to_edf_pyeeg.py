@@ -104,7 +104,8 @@ class TrcToEdfConverterPyEEG(FormatConverter):
         try:
             self.wrapper.convert_file(
                 str(source_path).encode('utf-8'),
-                str(output_path).encode('utf-8')
+                str(output_path).encode('utf-8'),
+                False
             )
         except Exception as e:
             raise RuntimeError(f"Failed to convert {source_path}: {e}")

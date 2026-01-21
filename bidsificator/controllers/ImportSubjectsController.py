@@ -27,6 +27,7 @@ class ImportSubjectsController(QObject):
     file_list_updated = pyqtSignal()  # File list for selected subject updated
     lookup_table_updated = pyqtSignal(str)  # Lookup table status message
     required_entities_changed = pyqtSignal(dict)  # Required entities for UI updated
+    dialog_dismissed = pyqtSignal()  # Completion dialog was closed by user
     
     def __init__(self, dataset_path_provider, file_editor_controller, parent: Optional[QWidget] = None):
         """
@@ -353,6 +354,9 @@ class ImportSubjectsController(QObject):
             f"Successfully imported {subject_count} subjects with {total_files} files.\n\n"
             "Check the dataset folder for the imported files."
         )
+
+        # Emit signal after dialog is dismissed
+        self.dialog_dismissed.emit()
     
     def _update_file_editor(self):
         """Update file editor with currently selected subject."""

@@ -20,6 +20,7 @@ class ImportFilesController(QObject):
     file_list_changed = pyqtSignal()  # File list updated
     selection_changed = pyqtSignal(int)  # Selected file index changed
     form_data_updated = pyqtSignal(dict)  # Form data for selected file
+    dialog_dismissed = pyqtSignal()  # Completion dialog was closed by user
     
     def __init__(self, dataset_path_provider, parent: Optional[QWidget] = None):
         """
@@ -418,6 +419,9 @@ class ImportFilesController(QObject):
             "• Add more files\n"
             "• Re-import if there were issues"
         )
+
+        # Emit signal after dialog is dismissed
+        self.dialog_dismissed.emit()
     
     def get_ui_requirements_for_modality(self, modality: str) -> Dict[str, bool]:
         """
