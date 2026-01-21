@@ -7,28 +7,28 @@ license = "Apache 2.0"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-pyqt6 = "^6.8.1"
+python = ">=3.11,<3.14"
+pyqt6 = "^6.10.2"
 
 # bids
-numpy = "1.26"
-pandas = "^2.0.0"
-dicom2nifti = ">=2.4.10"
+numpy = "^2.4"
+pandas = "^2.3"
+dicom2nifti = ">=2.6.2"
 bids_validator = ">=1.14.5"
 
 # neurophysiology data conversion
-mne = "^1.6.0"
-neo = "^0.13.0"
-edfio = "^0.4.4"
-pybv = "^0.7.5"
+mne = "^1.11.0"
+neo = "^0.14.3"
+edfio = "^0.4.12"
+pybv = "^0.7.6"
 
 # API
-flasgger = "^0.9"
-flask = "^3.0"
-flask-cors = "^4.0"
+flasgger = "^0.9.7"
+flask = "^3.1"
+flask-cors = "^6.0"
 flask-httpauth = "^4.8"
-flask-restful = "^0.3"
-flask_caching = "^2.3"
+flask-restful = "^0.3.10"
+flask_caching = "^2.3.1"
 openpyxl = "^3.1.5"
 
 [tool.poetry.scripts]
@@ -36,7 +36,7 @@ bidsificator = "bidsificator.main:main"
 bidsificator-api = "bidsificator.api:main"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.4.2"
+pytest = "^9.0"
 
 [build-system]
 requires = ["poetry-core"]
