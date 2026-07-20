@@ -1,38 +1,53 @@
 #!/usr/bin/env python
-"""Test the BIDS validation functionality"""
+"""Tests for the schema-driven BIDS ValidationService.
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+These build tiny datasets under pytest's ``tmp_path`` and assert on the
+``ValidationService`` result, rather than pointing at a hardcoded dataset path.
+"""
+
+import json
 
 from bidsificator.services.ValidationServiceSchema import ValidationService
 
-# Test validation
-validator = ValidationService()
 
-# Test with a sample path (update this to your actual dataset path)
-test_path = "/path/to/your/bids/dataset"  # Update this path
+def _missing_description_errors(result):
+    """Errors flagging a missing dataset_description.json (a BIDS-required file)."""
+    return [
+        err for err in result.errors
+        if "dataset_description.json" in err.message and err.rule == "missing-required-file"
+    ]
 
-if os.path.exists(test_path):
-    print(f"Testing validation on: {test_path}")
-    result = validator.validate_dataset(test_path)
-    
-    print(f"\nValidation Result: {'✅ VALID' if result.is_valid else '❌ INVALID'}")
-    print(f"Errors: {len(result.errors)}")
-    print(f"Warnings: {len(result.warnings)}")
-    print(f"Info: {len(result.info)}")
-    
-    if result.errors:
-        print("\nFirst 5 errors:")
-        for err in result.errors[:5]:
-            print(f"  - {err.path}: {err.message}")
-else:
-    print(f"Test path does not exist: {test_path}")
-    print("Using schema-based validation, which properly validates against BIDS specification.")
-    print("\nFeatures implemented:")
-    print("✅ Dataset-wide validation (not just single subject)")
-    print("✅ Progress dialog during validation")
-    print("✅ Detailed tree view of errors/warnings/info")
-    print("✅ Export validation report to JSON/text")
-    print("✅ Right-click context menu to validate individual subjects")
-    print("✅ Schema-driven validation using bids_schema.json")
+
+def test_nonexistent_dataset_is_invalid():
+    result = ValidationService().validate_dataset("/this/path/should/not/exist/bidsificator")
+    assert result.is_valid is False
+    assert result.error_count >= 1
+    assert any("does not exist" in err.message.lower() for err in result.errors)
+
+
+def test_empty_directory_reports_missing_required_files(tmp_path):
+    result = ValidationService().validate_dataset(str(tmp_path))
+    assert result.is_valid is False
+    # An empty directory is missing dataset_description.json, which BIDS requires.
+    assert _missing_description_errors(result), (
+        "expected a missing-required-file error for dataset_description.json, "
+        f"got: {[e.message for e in result.errors]}"
+    )
+
+
+def test_adding_dataset_description_clears_that_error(tmp_path):
+    service = ValidationService()
+
+    before = service.validate_dataset(str(tmp_path))
+    assert _missing_description_errors(before), (
+        "precondition: dataset_description.json should be reported missing"
+    )
+
+    (tmp_path / "dataset_description.json").write_text(
+        json.dumps({"Name": "Test Dataset", "BIDSVersion": "1.10.1"})
+    )
+
+    after = service.validate_dataset(str(tmp_path))
+    assert not _missing_description_errors(after), (
+        "adding dataset_description.json should clear the missing-required-file error"
+    )

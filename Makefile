@@ -12,6 +12,14 @@ design: ## Run the Qt designer
 bidsificator/forms/MainWindow_ui.py: bidsificator/forms/MainWindow.ui
 	pyuic6 -o "$@" "$^"
 
+.PHONY: test
+test: ## Run the test suite
+	poetry run pytest tests/ -v
+
+.PHONY: lint
+lint: ## Run ruff checks (active after PR 5)
+	poetry run ruff check bidsificator tests
+
 .PHONY: help
 help:  ## Show the help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

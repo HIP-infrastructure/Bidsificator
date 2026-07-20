@@ -3,6 +3,7 @@
 Comprehensive tests for PyEEGFormat-based TRC to EDF converter
 """
 
+import os
 import tempfile
 import json
 from pathlib import Path
@@ -10,6 +11,10 @@ import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
 from bidsificator.converters.trc_to_edf_pyeeg import TrcToEdfConverterPyEEG
+
+# Optional real-TRC integration test. Set BIDSIFICATOR_TRC_TEST_FILE to a .TRC
+# file path to run it; otherwise it is skipped (no hardcoded paths).
+TRC_TEST_FILE = os.environ.get("BIDSIFICATOR_TRC_TEST_FILE")
 
 
 class TestTrcToEdfConverterPyEEG:
@@ -119,19 +124,21 @@ class TestTrcToEdfConverterPyEEG:
                 
                 expected_output = output_dir / "test.edf"
                 
-                # Mock successful conversion
-                def mock_convert(src, dst):
+                # Mock successful conversion. convert_file is called with a
+                # third positional 'overwrite' flag (see TrcToEdfConverterPyEEG.convert).
+                def mock_convert(src, dst, overwrite=False):
                     Path(dst.decode('utf-8')).touch()
-                
+
                 self.mock_wrapper.convert_file.side_effect = mock_convert
-                
+
                 # Perform conversion
                 result = converter.convert(source_path, output_dir)
-                
+
                 # Verify conversion was called with correct arguments
                 self.mock_wrapper.convert_file.assert_called_once_with(
                     str(source_path).encode('utf-8'),
-                    str(expected_output).encode('utf-8')
+                    str(expected_output).encode('utf-8'),
+                    False
                 )
                 
                 assert result == expected_output
@@ -146,7 +153,7 @@ class TestTrcToEdfConverterPyEEG:
                 source_path.touch()
                 
                 # Mock conversion that doesn't create output file
-                self.mock_wrapper.convert_file.side_effect = lambda src, dst: None
+                self.mock_wrapper.convert_file.side_effect = lambda src, dst, overwrite=False: None
                 
                 # Should raise RuntimeError
                 with pytest.raises(RuntimeError, match="output file not created"):
@@ -279,14 +286,16 @@ class TestTrcToEdfIntegration:
     """Integration tests with actual TRC files (if available)"""
     
     @pytest.mark.skipif(
-        not Path("/tmp/test.trc").exists(),
-        reason="No test TRC file available at /tmp/test.trc"
+        not TRC_TEST_FILE,
+        reason="Set BIDSIFICATOR_TRC_TEST_FILE to run this integration test",
     )
     def test_real_trc_conversion(self):
         """Test with real TRC file if available"""
         converter = TrcToEdfConverterPyEEG()
-        
-        test_file = Path("/tmp/test.trc")
+
+        test_file = Path(TRC_TEST_FILE)
+        if not test_file.exists():
+            pytest.skip(f"BIDSIFICATOR_TRC_TEST_FILE not found: {test_file}")
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir)
             

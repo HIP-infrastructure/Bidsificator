@@ -6,14 +6,20 @@ Tests the complete schema-driven pipeline from file metadata extraction
 to BIDS-compliant TSV file generation.
 """
 
+import os
 import tempfile
 from pathlib import Path
 import pandas as pd
+import pytest
 from unittest.mock import MagicMock, patch
 
 from bidsificator.core.schema.tsv_schema_mapper import BidsSchemaMapper, ColumnDefinition
 from bidsificator.services.BidsMetadataExtractorService import BidsMetadataExtractor
 from bidsificator.converters.trc_to_edf_pyeeg import TrcToEdfConverterPyEEG
+
+# Optional real-TRC integration test. Set BIDSIFICATOR_TRC_TEST_FILE to a .TRC
+# file path to run it; otherwise it is skipped (no hardcoded personal paths).
+TRC_TEST_FILE = os.environ.get("BIDSIFICATOR_TRC_TEST_FILE")
 
 
 class TestBidsSchemaMapper:
@@ -108,12 +114,15 @@ class TestBidsSchemaMapper:
         assert len(df) == 2
         assert 'name' in df.columns
         assert 'sampling_frequency' in df.columns
-        assert 'status' in df.columns  # Should be added as required/recommended
+        assert 'reference' in df.columns  # recommended column auto-added for iEEG channels
         
         # Verify data integrity
         assert df.loc[0, 'name'] == 'A\'1'
         assert df.loc[0, 'sampling_frequency'] == 1024.0
-        assert df.loc[1, 'sampling_frequency'] == 0  # Default for missing numeric
+        # A value missing from a single row (vs a wholly-absent column) is left
+        # as NaN — written as an empty field in the TSV. It is NOT coerced to 0,
+        # which would be a wrong sampling frequency rather than "missing".
+        assert pd.isna(df.loc[1, 'sampling_frequency'])
         
         print(f"✅ Created compliant DataFrame with {len(df.columns)} columns")
 
@@ -212,21 +221,20 @@ class TestTrcMetadataExtraction:
                 onsets = [event['onset'] for event in events_data]
                 assert onsets == sorted(onsets), "Events should be sorted by onset time"
                 
-                # Check first trigger
+                # Check first trigger. Triggers use a generic trial_type; the
+                # trigger code is carried in the BIDS 'value' column.
                 trigger1 = events_data[0]  # Sample 1000
                 assert trigger1['onset'] == 1000/1024.0
-                assert trigger1['trial_type'] == 'trigger_1'
+                assert trigger1['trial_type'] == 'trigger'
                 assert trigger1['value'] == '1'
-                assert trigger1['event_type'] == 'trigger'
-                
-                # Check annotation
-                annotation = next(e for e in events_data if e['event_type'] == 'annotation')
-                assert annotation['value'] == 'Test annotation'
-                assert annotation['trial_type'] == 'annotation'
-                
+
+                # Check annotation. Note text becomes the trial_type.
+                annotation = next(e for e in events_data if e['trial_type'] == 'Test annotation')
+                assert annotation['onset'] == 1500/1024.0
+
                 print(f"✅ Successfully extracted {len(events_data)} events")
-                print(f"   Triggers: {len([e for e in events_data if e['event_type'] == 'trigger'])}")
-                print(f"   Annotations: {len([e for e in events_data if e['event_type'] == 'annotation'])}")
+                print(f"   Triggers: {len([e for e in events_data if e['trial_type'] == 'trigger'])}")
+                print(f"   Annotations: {len([e for e in events_data if e['trial_type'] != 'trigger'])}")
                 
             finally:
                 tmp_path.unlink()
@@ -340,14 +348,16 @@ class TestBidsMetadataExtractor:
 class TestIntegrationWithRealTrcFile:
     """Integration test with real TRC file"""
     
+    @pytest.mark.skipif(
+        not TRC_TEST_FILE,
+        reason="Set BIDSIFICATOR_TRC_TEST_FILE to run this integration test",
+    )
     def test_real_trc_metadata_extraction(self):
         """Test metadata extraction with real TRC file"""
-        real_trc = Path("/Users/fl6985/Documents/Data/TrcNotes/EEG_1967.TRC")
-        
+        real_trc = Path(TRC_TEST_FILE)
         if not real_trc.exists():
-            print("⚠️  Real TRC test file not available - skipping integration test")
-            return
-            
+            pytest.skip(f"BIDSIFICATOR_TRC_TEST_FILE not found: {real_trc}")
+
         extractor = BidsMetadataExtractor()
         
         print(f"\\n=== Testing with real TRC file: {real_trc.name} ===")
@@ -389,10 +399,10 @@ class TestIntegrationWithRealTrcFile:
             channels_path = Path(tmpdir) / 'test_channels.tsv'
             events_path = Path(tmpdir) / 'test_events.tsv'
             
-            channels_df.to_csv(channels_path, sep='\\t', index=False)
-            events_df.to_csv(events_path, sep='\\t', index=False)
-            
-            print(f"\\nGenerated test files:")
+            channels_df.to_csv(channels_path, sep='\t', index=False)
+            events_df.to_csv(events_path, sep='\t', index=False)
+
+            print("\nGenerated test files:")
             print(f"  {channels_path} ({channels_path.stat().st_size} bytes)")
             print(f"  {events_path} ({events_path.stat().st_size} bytes)")
         

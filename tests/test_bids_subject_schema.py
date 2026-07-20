@@ -37,18 +37,13 @@ def test_improved_bids_subject():
         print("\n1. TESTING BIDSSUBJECT CREATION & VALIDATION")
         print("-" * 50)
         
-        try:
-            subject = BidsSubject("P001", dataset_path, schema_manager)
-            print(f"✅ Created subject: {subject.get_subject_id()}")
-            print(f"   Subject path: {subject.get_subject_path()}")
-            
-            # Test entity formatting
-            assert str(subject.get_subject_path()).endswith("sub-P001")
-            print("✅ Entity formatting works correctly")
-            
-        except Exception as e:
-            print(f"❌ Failed to create subject: {e}")
-            return False
+        subject = BidsSubject("P001", dataset_path, schema_manager)
+        print(f"✅ Created subject: {subject.get_subject_id()}")
+        print(f"   Subject path: {subject.get_subject_path()}")
+
+        # Test entity formatting
+        assert str(subject.get_subject_path()).endswith("sub-P001")
+        print("✅ Entity formatting works correctly")
         
         # Test 2: File Analysis System
         print("\n2. TESTING FILE ANALYSIS SYSTEM")
@@ -99,21 +94,16 @@ def test_improved_bids_subject():
         ]
         
         for entities in test_entities:
-            try:
-                path = subject._build_target_path(entities, 'ieeg', 'ieeg', '.edf')
-                filename = path.name
-                print(f"✅ Built path: {filename}")
-                
-                # Verify entity order is correct
-                assert filename.startswith('sub-P001')
-                if 'ses' in entities:
-                    assert f"ses-{entities['ses']}" in filename
-                if 'task' in entities:
-                    assert f"task-{entities['task']}" in filename
-                
-            except Exception as e:
-                print(f"❌ Path building failed: {e}")
-                return False
+            path = subject._build_target_path(entities, 'ieeg', 'ieeg', '.edf')
+            filename = path.name
+            print(f"✅ Built path: {filename}")
+
+            # Verify entity order is correct
+            assert filename.startswith('sub-P001')
+            if 'ses' in entities:
+                assert f"ses-{entities['ses']}" in filename
+            if 'task' in entities:
+                assert f"task-{entities['task']}" in filename
         
         # Test 5: Datatype Path Creation
         print("\n5. TESTING DATATYPE PATH CREATION")
@@ -124,17 +114,13 @@ def test_improved_bids_subject():
         
         for datatype in datatypes_to_test:
             for session in sessions_to_test:
-                try:
-                    path = subject.get_datatype_path(datatype, session)
-                    print(f"✅ {datatype} {'(no session)' if session is None else f'ses-{session}'}: {path.name}")
-                    assert path.exists()
-                    
-                    if session:
-                        assert f"ses-{session}" in str(path)
-                    assert datatype in str(path)
-                    
-                except Exception as e:
-                    print(f"❌ Failed to create {datatype} path: {e}")
+                path = subject.get_datatype_path(datatype, session)
+                print(f"✅ {datatype} {'(no session)' if session is None else f'ses-{session}'}: {path.name}")
+                assert path.exists()
+
+                if session:
+                    assert f"ses-{session}" in str(path)
+                assert datatype in str(path)
         
         # Test 6: Optional Metadata System
         print("\n6. TESTING OPTIONAL METADATA SYSTEM")
@@ -190,36 +176,30 @@ def test_improved_bids_subject():
         test_data_path.write_text("dummy data")
         
         entities = {'sub': 'P001', 'task': 'test'}
-        
-        try:
-            # Test channels dataframe creation
-            channels_df = subject._create_channels_dataframe('ieeg', 32)
-            print(f"✅ Created channels dataframe: {len(channels_df)} channels")
-            assert len(channels_df) == 32
-            assert channels_df['type'].iloc[0] == 'SEEG'
-            
-            # Test events dataframe creation
-            events_df = subject._create_events_dataframe()
-            print(f"✅ Created events dataframe: {len(events_df.columns)} columns")
-            assert 'onset' in events_df.columns
-            assert 'duration' in events_df.columns
-            
-            # Test metadata file generation
-            subject._generate_metadata_files(test_data_path, 'ieeg', 'ieeg', entities, {})
-            
-            # Check if files were created
-            json_file = test_data_path.with_suffix('.json')
-            channels_file = test_data_path.parent / 'sub-P001_task-test_channels.tsv'
-            events_file = test_data_path.parent / 'sub-P001_task-test_events.tsv'
-            
-            print(f"✅ JSON sidecar created: {json_file.exists()}")
-            print(f"✅ Channels file created: {channels_file.exists()}")
-            print(f"✅ Events file created: {events_file.exists()}")
-            
-        except Exception as e:
-            print(f"❌ Metadata generation failed: {e}")
-            import traceback
-            traceback.print_exc()
+
+        # Test channels dataframe creation
+        channels_df = subject._create_channels_dataframe('ieeg', 32)
+        print(f"✅ Created channels dataframe: {len(channels_df)} channels")
+        assert len(channels_df) == 32
+        assert channels_df['type'].iloc[0] == 'SEEG'
+
+        # Test events dataframe creation
+        events_df = subject._create_events_dataframe()
+        print(f"✅ Created events dataframe: {len(events_df.columns)} columns")
+        assert 'onset' in events_df.columns
+        assert 'duration' in events_df.columns
+
+        # Test metadata file generation
+        subject._generate_metadata_files(test_data_path, 'ieeg', 'ieeg', entities, {})
+
+        # Check if files were created
+        json_file = test_data_path.with_suffix('.json')
+        channels_file = test_data_path.parent / 'sub-P001_task-test_channels.tsv'
+        events_file = test_data_path.parent / 'sub-P001_task-test_events.tsv'
+
+        print(f"✅ JSON sidecar created: {json_file.exists()}")
+        print(f"✅ Channels file created: {channels_file.exists()}")
+        print(f"✅ Events file created: {events_file.exists()}")
         
         # Test 9: Session and Datatype Listing
         print("\n9. TESTING SESSION & DATATYPE LISTING")
@@ -247,7 +227,6 @@ def test_improved_bids_subject():
     print(f"\n{'='*70}")
     print("✅ ALL IMPROVED BIDSSUBJECT TESTS PASSED!")
     print(f"{'='*70}")
-    return True
 
 
 def test_file_analysis_class():
@@ -266,11 +245,12 @@ def test_file_analysis_class():
     )
     
     print(f"✅ FileAnalysis created: {analysis.source_path}")
-    print(f"   Needs conversion: {analysis.needs_conversion}")
-    print(f"   BIDS datatype: {analysis.bids_datatype}")
-    print(f"   Is valid: {analysis.is_valid}")
-    print(f"   Converter name: {analysis.converter_name}")
-    
+    # No error → valid; no converter → no converter name.
+    assert analysis.is_valid is True
+    assert analysis.error is None
+    assert analysis.converter_name is None
+    assert analysis.metadata == {}  # defaulted by __post_init__
+
     # Test error case
     error_analysis = FileAnalysis(
         source_path=source_path,
@@ -279,20 +259,18 @@ def test_file_analysis_class():
         bids_datatype=None,
         error="File not supported"
     )
-    
+
     print(f"✅ Error analysis: {error_analysis.error}")
-    print(f"   Is valid: {error_analysis.is_valid}")
-    
-    return True
+    # An analysis carrying an error is not valid.
+    assert error_analysis.is_valid is False
+    assert error_analysis.error == "File not supported"
 
 
 if __name__ == "__main__":
-    success1 = test_improved_bids_subject()
-    success2 = test_file_analysis_class()
-    
-    if success1 and success2:
-        print("\n🎉 ALL TESTS PASSED! IMPROVED BIDSSUBJECT IS READY!")
-    else:
-        print("\n❌ SOME TESTS FAILED")
+    # pytest collects the test_* functions directly; this runner just lets the
+    # file be executed as a script. The functions raise on failure.
+    test_improved_bids_subject()
+    test_file_analysis_class()
+    print("\n🎉 ALL TESTS PASSED! IMPROVED BIDSSUBJECT IS READY!")
     
     exit(0 if (success1 and success2) else 1)

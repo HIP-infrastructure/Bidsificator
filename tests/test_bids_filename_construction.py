@@ -64,12 +64,15 @@ class TestBidsFilenameConstruction:
             # Generate TSV files using the clean architecture
             subject._generate_ephys_files(test_data_path, entities, 'ieeg')
             
-            # Verify correct filenames were created
+            # Verify correct filenames were created. channels/events keep the
+            # full entity set, but electrodes/coordsystem are per-session (not
+            # per-task/acq): BIDS omits task and acq from those, so the pipeline
+            # strips them (see BidsSubject._get_inheritance_aware_entities).
             expected_channels = test_data_dir / 'sub-testsubject_ses-01_task-test_acq-01_channels.tsv'
             expected_events = test_data_dir / 'sub-testsubject_ses-01_task-test_acq-01_events.tsv'
-            expected_electrodes = test_data_dir / 'sub-testsubject_ses-01_task-test_acq-01_electrodes.tsv'
-            expected_coordsystem = test_data_dir / 'sub-testsubject_ses-01_task-test_acq-01_coordsystem.json'
-            
+            expected_electrodes = test_data_dir / 'sub-testsubject_ses-01_electrodes.tsv'
+            expected_coordsystem = test_data_dir / 'sub-testsubject_ses-01_coordsystem.json'
+
             assert expected_channels.exists()
             assert expected_events.exists()
             assert expected_electrodes.exists()  # Required for iEEG data
