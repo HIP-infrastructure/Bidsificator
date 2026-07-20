@@ -426,6 +426,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for item in fallback_items:
                 self.ModalityComboBox.addItem(item)
         
+    def _set_session_combobox_text(self, text):
+        """Display `text` in the editable SessionComboBox, even when it is not an item.
+
+        Custom session names (typed by the user) are not always in the item list,
+        and an empty text must clear the selection so session-less files
+        round-trip unchanged through save_current_form_to_data().
+        """
+        index = self.SessionComboBox.findText(text)
+        self.SessionComboBox.setCurrentIndex(index)
+        if index < 0:
+            self.SessionComboBox.setEditText(text)
+        self.SessionComboBox.clearFocus()
+
     def save_current_form_to_data(self):
         """Save current form fields to the currently selected file's data"""
         if self.__current_selected_file_index >= 0 and self.__current_selected_file_index < len(self.__import_files_data["files"]):
@@ -439,9 +452,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             file_data["acquisition"] = self.AcquisitionLineEdit.text()
             file_data["reconstruction"] = self.ReconstructionLineEdit.text()
 
+    def _load_import_file_into_form(self, index: int):
+        """Load file metadata into the import form without saving first.
+
+        Used for programmatic selection (refresh/rebuild) where the form may still
+        show values from a previously selected file. Saving first would corrupt
+        acquisitions (e.g. write acq-02 onto files[0]).
+        """
+        if index < 0 or index >= len(self.__import_files_data["files"]):
+            self.__current_selected_file_index = -1
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+            return
+
+        self.__current_selected_file_index = index
+        file_data = self.__import_files_data["files"][index]
+
+        self.set_import_form_enabled(True)
+        self.BrowseLineEdit.setText(file_data["file_path"])
+        self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
+        # Show the file's real session — an empty session must stay empty, otherwise
+        # the next save_current_form_to_data() writes a session the user never chose
+        # (e.g. "post") onto this file only, splitting its acquisition sequence.
+        session_text = "ses-" + file_data["session"] if file_data["session"] else ""
+        self._set_session_combobox_text(session_text)
+        self.set_comboBox_text(self.TaskComboBox, file_data["task"])
+        self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
+        self.AcquisitionLineEdit.setText(file_data["acquisition"])
+        self.ReconstructionLineEdit.setText(file_data["reconstruction"])
+
     def on_import_file_selected(self):
-        """Update form fields when a file is selected in the list"""
-        # Save current form data before switching
+        """Update form fields when a file is selected in the list (user-driven)."""
+        # Save current form data before switching — only safe for user selection
+        # when the form matches __current_selected_file_index.
         self.save_current_form_to_data()
         
         # Use current row if no selection (e.g., when called manually)
@@ -461,29 +504,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Get the index of selected file
             index = self.ImportFileListWidget.row(selected_items[0])
         
-        self.__current_selected_file_index = index
-        
-        if index >= 0 and index < len(self.__import_files_data["files"]):
-            file_data = self.__import_files_data["files"][index]
-            
-            # Enable form elements when a file is selected
-            self.set_import_form_enabled(True)
-            
-            # Update form fields with file metadata
-            self.BrowseLineEdit.setText(file_data["file_path"])
-            self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
-            # Use ses-post as default if session is empty
-            session_text = "ses-" + file_data["session"] if file_data["session"] else "ses-post"
-            self.set_comboBox_text(self.SessionComboBox, session_text)
-            self.set_comboBox_text(self.TaskComboBox, file_data["task"])
-            self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
-            self.AcquisitionLineEdit.setText(file_data["acquisition"])
-            self.ReconstructionLineEdit.setText(file_data["reconstruction"])
-        else:
-            # Index out of bounds - disable form and clear fields
-            self.__current_selected_file_index = -1
-            self.set_import_form_enabled(False)
-            self.clear_import_form_fields()
+        self._load_import_file_into_form(index)
     
     def remove_file_from_list(self):
         """Remove selected file from the import list"""
@@ -508,6 +529,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         if total_items == 0:
             # No items left - disable form and clear everything
+            self.__current_selected_file_index = -1
             self.set_import_form_enabled(False)
             self.clear_import_form_fields()
             return
@@ -520,11 +542,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Select the item that took the removed item's place
             new_selection = removed_index
         
-        # Set the new selection
-        self.ImportFileListWidget.setCurrentRow(new_selection)
-        
-        # Update form fields with the newly selected item
-        self.on_import_file_selected()
+        # Block signals so selection handlers do not save stale form onto the new index
+        self.ImportFileListWidget.blockSignals(True)
+        try:
+            self.ImportFileListWidget.setCurrentRow(new_selection)
+        finally:
+            self.ImportFileListWidget.blockSignals(False)
+
+        # Load the newly selected file without saving (removed file is gone)
+        self._load_import_file_into_form(new_selection)
 
     def clear_import_form_fields(self):
         """Clear all import form fields"""
@@ -670,6 +696,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         session_names = self._main_controller.get_sessions_for_subject(subject_name)
 
         # Clear and repopulate, but maintain editable functionality
+        displayed_session = self.SessionComboBox.currentText()
         self.SessionComboBox.clear()
 
         # Add existing sessions from this subject
@@ -685,6 +712,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.SessionComboBox.isEditable():
             self.SessionComboBox.setEditable(True)
             self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
+
+        if self.__import_files_data["files"]:
+            # With files pending import, repopulating must not change the
+            # displayed session: the next form save would stamp it onto the
+            # selected file. This fires between two imports of the same list
+            # (worker finished, subject switch), so restore what was shown.
+            self._set_session_combobox_text(displayed_session)
+        else:
+            # No files yet: default to the first entry (ses-post when present).
+            # An editable combobox does not auto-select after clear()+addItems,
+            # so without this the session starts blank and newly added files
+            # silently become session-less.
+            self.SessionComboBox.setCurrentIndex(0)
 
     def show_delete_import_subject_context_menu(self):
         # Create custom context menu
@@ -1123,28 +1163,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return True
 
     def refresh_import_file_list(self):
-        """Refresh the ImportFileListWidget display"""
-        
-        self.ImportFileListWidget.clear()
-        
-        for file_data in self.__import_files_data["files"]:
-            # Show only filename - single subject tab
-            display_text = file_data['file_name']
-            self.ImportFileListWidget.addItem(display_text)
-        
-        # Auto-select first file if available
-        if self.__import_files_data["files"]:
-            self.ImportFileListWidget.setCurrentRow(0)
-            self.__current_selected_file_index = 0
-            # Enable form elements when files are present
-            self.set_import_form_enabled(True)
-            # Manually call file selection to populate form since setCurrentRow may not trigger signals
-            self.on_import_file_selected()
-        else:
-            self.__current_selected_file_index = -1
-            # Disable form elements when no files
-            self.set_import_form_enabled(False)
-            self.clear_import_form_fields()
+        """Refresh the ImportFileListWidget display without corrupting file metadata.
+
+        Must not save the form before loading files[0]: after a rebuild the form may
+        still show the previously selected file (e.g. acq-02), and writing that into
+        files[0] causes duplicate acq-02 exports that overwrite each other.
+        """
+        self.ImportFileListWidget.blockSignals(True)
+        try:
+            self.ImportFileListWidget.clear()
+
+            for file_data in self.__import_files_data["files"]:
+                # Show only filename - single subject tab
+                display_text = file_data['file_name']
+                self.ImportFileListWidget.addItem(display_text)
+
+            if self.__import_files_data["files"]:
+                self.ImportFileListWidget.setCurrentRow(0)
+                # Load form from files[0] without saving stale form values first
+                self._load_import_file_into_form(0)
+            else:
+                self.__current_selected_file_index = -1
+                self.set_import_form_enabled(False)
+                self.clear_import_form_fields()
+        finally:
+            self.ImportFileListWidget.blockSignals(False)
 
     def browse_single_file_fallback(self):
         """Single-file browse as fallback option"""

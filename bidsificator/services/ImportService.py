@@ -1,8 +1,9 @@
 """Service for coordinating file and subject import operations."""
 
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from pathlib import Path
+
 
 from .FileDetectionServiceSchema import FileDetectionService
 
@@ -10,6 +11,43 @@ from .FileDetectionServiceSchema import FileDetectionService
 class ImportService:
     """Handles the coordination of file and subject import operations."""
     
+    @classmethod
+    def _display_modality_for_file(cls, file_path: str, detected_datatype: str) -> str:
+        """
+        Map a detected datatype to the UI/worker display modality string.
+
+        Workers and acquisition matching expect formats like 'ieeg (ieeg)', not bare 'ieeg'.
+        """
+        filename = Path(file_path).name.lower()
+
+        if detected_datatype == 'ieeg':
+            if any(ext in filename for ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']):
+                return 'photo (ieeg)'
+            return 'ieeg (ieeg)'
+        if detected_datatype == 'eeg':
+            return 'eeg (eeg)'
+        if detected_datatype == 'anat':
+            if 't2w' in filename:
+                return 'T2w (anat)'
+            if 't1rho' in filename:
+                return 'T1rho (anat)'
+            if 't2star' in filename or 't2*' in filename:
+                return 'T2* (anat)'
+            if 'flair' in filename:
+                return 'FLAIR (anat)'
+            if 'ct' in filename:
+                return 'CT (anat)'
+            return 'T1w (anat)'
+
+        datatype_to_display = {
+            'func': 'BOLD (func)',
+            'dwi': 'DWI (dwi)',
+            'fmap': 'fieldmap (fmap)',
+            'perf': 'ASL (perf)',
+            'beh': 'events (beh)',
+        }
+        return datatype_to_display.get(detected_datatype, detected_datatype)
+
     @classmethod
     def get_next_acquisition_number(cls, existing_files: List[Dict], 
                                    session: str, modality: str, task: str) -> str:
@@ -107,9 +145,11 @@ class ImportService:
                     continue
                 
                 detected_datatype = detection_result.detected_datatype
+                # Use display modality so acquisition matching and workers stay consistent
+                display_modality = cls._display_modality_for_file(file_path, detected_datatype)
                 
                 # Determine task based on datatype
-                if detected_datatype in ["anat"] or "photo" in detected_datatype:
+                if detected_datatype in ["anat"] or "photo" in display_modality:
                     task = ""  # Anatomy and photos don't use tasks
                 else:
                     task = form_defaults.get("task", "")
@@ -123,7 +163,7 @@ class ImportService:
                 acquisition = cls.get_next_acquisition_number(
                     successful_files + existing_files,  # Include both new and existing
                     session,
-                    detected_datatype,
+                    display_modality,
                     task
                 )
                 
@@ -131,7 +171,7 @@ class ImportService:
                 file_data = {
                     "file_name": os.path.basename(file_path),
                     "file_path": file_path,
-                    "modality": detected_datatype,
+                    "modality": display_modality,
                     "task": task,
                     "session": session,
                     "contrast_agent": form_defaults.get("contrast_agent", "") if detected_datatype == "anat" else "",

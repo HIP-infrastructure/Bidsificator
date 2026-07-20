@@ -118,8 +118,11 @@ class FileEditor(QWidget, Ui_FileEditor):
 
     def _select_current_file(self):
         """Select current file in controller."""
-        # Save current form data before changing selection
-        self._save_form_data()
+        # Only persist form edits when in edit mode. Saving while browsing would
+        # write stale Acquisition/Task values onto the previously selected file
+        # (and onto files[0] during programmatic list rebuilds).
+        if self._controller.edit_mode:
+            self._save_form_data()
         
         current_row = self.FileListWidget.currentRow()
         if current_row >= 0:
@@ -172,17 +175,23 @@ class FileEditor(QWidget, Ui_FileEditor):
     
     def _update_file_list_display(self):
         """Update file list display from controller."""
-        self.FileListWidget.clear()
-        file_names = self._controller.get_file_names_for_list()
-        for file_name in file_names:
-            self.FileListWidget.addItem(file_name)
+        # Block signals so setCurrentRow does not trigger _select_current_file
+        # (which could save stale form data). Controller selects the file explicitly.
+        self.FileListWidget.blockSignals(True)
+        try:
+            self.FileListWidget.clear()
+            file_names = self._controller.get_file_names_for_list()
+            for file_name in file_names:
+                self.FileListWidget.addItem(file_name)
 
-        # Auto-select first file if available, otherwise clear form
-        if file_names:
-            self.FileListWidget.setCurrentRow(0)
-        else:
-            # No files - clear the form fields
-            self._clear_form_fields()
+            # Auto-select first file if available, otherwise clear form
+            if file_names:
+                self.FileListWidget.setCurrentRow(0)
+            else:
+                # No files - clear the form fields
+                self._clear_form_fields()
+        finally:
+            self.FileListWidget.blockSignals(False)
 
     def _update_form_fields(self, file_data):
         """Update form fields from controller data."""

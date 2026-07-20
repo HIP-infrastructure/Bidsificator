@@ -1,7 +1,11 @@
+from pathlib import Path
+
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QPixmap
 from .._metadata import __version__, __authors__, __copyright__, __license__, __description__
+
+LOGO_PATH = Path(__file__).parent.parent / "resources" / "logo.png"
 
 
 class AboutDialog(QDialog):
@@ -13,7 +17,7 @@ class AboutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("About Bidsificator")
         self.setModal(True)
-        self.setFixedSize(400, 250)
+        self.setFixedSize(400, 360)
         
         # Setup UI
         self._setup_ui()
@@ -24,7 +28,17 @@ class AboutDialog(QDialog):
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(30, 30, 30, 30)
-        
+
+        # Logo
+        logo_label = QLabel()
+        logo_label.setPixmap(QPixmap(str(LOGO_PATH)).scaled(
+            96, 96,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        ))
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(logo_label)
+
         # Application name
         app_label = QLabel("Bidsificator")
         app_font = QFont()
