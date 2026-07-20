@@ -20,7 +20,7 @@ PROGRESS_ERROR = -1   # processor hit an unrecoverable error and bailed out
 
 # Import modality display names that map to the BIDS ``anat`` datatype. The
 # suffix is the text before " (anat)" (e.g. "T1w (anat)" -> "T1w"). Defined once
-# here and imported by both QThread workers instead of being re-declared in each.
+# here and imported by both QThread workers instead of being repeated in each.
 ANATOMICAL_MODALITIES: frozenset[str] = frozenset({
     "T1w (anat)", "T2w (anat)", "T1rho (anat)",
     "T2* (anat)", "FLAIR (anat)", "CT (anat)",
