@@ -1,7 +1,11 @@
+import logging
+
 from PyQt6.QtWidgets import QWidget
 
 from ..forms.FileEditor_ui import Ui_FileEditor
 from ..controllers.FileEditorController import FileEditorController
+
+logger = logging.getLogger(__name__)
 
 
 class FileEditor(QWidget, Ui_FileEditor):
@@ -296,8 +300,8 @@ class FileEditor(QWidget, Ui_FileEditor):
                     for display_name, suffix in datatype_mapping[datatype]:
                         self.ModalityComboBox.addItem(display_name)
                         
-        except Exception as e:
-            print(f"Warning: Could not populate modality dropdown from schema: {e}")
+        except Exception:
+            logger.warning("Could not populate modality dropdown from schema", exc_info=True)
             # Fallback to basic items if schema loading fails
             fallback_items = [
                 "T1w (anat)",

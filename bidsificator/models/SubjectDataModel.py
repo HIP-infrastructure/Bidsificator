@@ -1,8 +1,11 @@
 """Model for managing subject data and batch import operations."""
 
+import logging
 import os
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -329,7 +332,7 @@ class SubjectDataModel:
                 subject_data = SubjectData.from_dict(subject_dict)
                 self.add_subject(subject_data)
             except ValueError as e:
-                print(f"Warning: Skipping invalid subject data: {e}")
+                logger.warning("Skipping invalid subject data: %s", e)
         
         # Set selection to first subject if available
         if self.count() > 0:

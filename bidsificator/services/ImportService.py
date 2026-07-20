@@ -1,11 +1,14 @@
 """Service for coordinating file and subject import operations."""
 
+import logging
 import os
 from typing import List, Dict, Any, Tuple
 from pathlib import Path
 
 
 from .FileDetectionServiceSchema import FileDetectionService
+
+logger = logging.getLogger(__name__)
 
 
 class ImportService:
@@ -250,7 +253,7 @@ class ImportService:
             if is_valid:
                 valid_files.append(file_data)
             else:
-                print(f"Warning: Skipping invalid file: {error}")
+                logger.warning("Skipping invalid file: %s", error)
         
         return {
             "subject_id": subject_id,

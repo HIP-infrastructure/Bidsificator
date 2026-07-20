@@ -8,11 +8,14 @@ from pathlib import Path
 from typing import Dict, Any, List
 import tempfile
 import json
+import logging
 
 import dicom2nifti
 import pydicom
 
 from .base import FormatConverter
+
+logger = logging.getLogger(__name__)
 
 
 class DicomToNiftiConverter(FormatConverter):
@@ -189,7 +192,7 @@ class DicomToNiftiConverter(FormatConverter):
             else:
                 metadata['BidsDatatype'] = 'anat'  # Default to anatomical
                 
-        except Exception as e:
-            print(f"Warning: Could not extract full metadata from DICOM: {e}")
-            
+        except Exception:
+            logger.warning("could not extract full metadata from DICOM", exc_info=True)
+
         return metadata

@@ -1,11 +1,14 @@
 """Controller for patient/subject table operations."""
 
+import logging
 from typing import Dict, List, Optional, Any, Tuple
 from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ..core.BidsFolder import BidsFolder
 from ..services.ValidationServiceSchema import ValidationService
+
+logger = logging.getLogger(__name__)
 
 
 class PatientTableController(QObject):
@@ -72,8 +75,8 @@ class PatientTableController(QObject):
             
             return True
             
-        except Exception as e:
-            print(f"Error loading subjects: {e}")
+        except Exception:
+            logger.exception("Error loading subjects")
             self._subjects_data = []
             self._all_optional_keys = {}
             return False

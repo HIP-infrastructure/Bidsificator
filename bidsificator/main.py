@@ -4,12 +4,14 @@ from pathlib import Path
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
+from bidsificator.core.logging_config import setup_logging
 from bidsificator.ui.MainWindow import MainWindow
 
 LOGO_PATH = Path(__file__).parent / "resources" / "logo.png"
 
 
 def main() -> int | bool | None:
+    setup_logging()
     app = QApplication(sys.argv)
     # Application-wide icon: Dock icon on macOS, taskbar/window icon elsewhere
     app.setWindowIcon(QIcon(str(LOGO_PATH)))

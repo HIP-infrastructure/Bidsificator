@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make test` and `make lint` targets.
 - This CHANGELOG.
 - Shared `tests/conftest.py` fixture; committed `tests/test_schema_sanity.py`.
+- Application-wide logging (`bidsificator/core/logging_config.py`): the GUI, the
+  API, and each import worker subprocess configure the root logger, and modules
+  now log through `logging.getLogger(__name__)` instead of `print()`.
 
 ### Fixed
 - Channels TSV validation now flags a missing required `name`/`type`/`units`
@@ -22,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (was 3.10–3.12), the License section points to the actual `LICENSE`, and the
   broken quick-start link now targets an in-page anchor. Also embedded the
   project logo at the top.
+- Import workers no longer hang the GUI forever when their subprocess dies
+  without reporting (crash / OOM kill). `run()` now polls the pipe with a
+  timeout and detects a dead child, emitting an `error` signal within ~5 s.
+- A failed import (subject not found, or a subprocess error) now surfaces an
+  error dialog and status-bar message instead of the "Import complete" success
+  dialog. Previously the workers emitted `finished` unconditionally and the
+  controllers hardcoded `"success": True`.
 
 ### Changed
 - Made the test suite trustworthy: removed hardcoded personal file paths (the
@@ -47,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   methods, the unreachable `on_worker_finished` handler with its `__worker`/
   `__subject_data` attributes, and stale/duplicate imports).
 - Unused `flask-restful` dependency.
+- Leftover unused `ImportBidsFilesWorker` import in `MainWindow` (workers are
+  instantiated in the controllers, not the view).
 
 ### Security
 - The `bidsificator-api` server no longer starts with the Werkzeug debugger
