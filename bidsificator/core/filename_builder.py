@@ -5,11 +5,10 @@ Schema-driven filename construction with validation against BIDS specification.
 Centralizes all filename building logic to ensure consistency and compliance.
 """
 
-from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
+from .bids_constants import get_default_suffix_for_datatype, get_entity_order
 from .schema import BidsSchemaManager
-from .bids_constants import get_entity_order, get_default_suffix_for_datatype
 
 
 class FilenameBuilder:
@@ -21,7 +20,7 @@ class FilenameBuilder:
 
     def build_filename(
         self,
-        entities: Dict[str, str],
+        entities: dict[str, str],
         suffix: str,
         extension: str,
         validate: bool = True
@@ -78,7 +77,7 @@ class FilenameBuilder:
     def build_path(
         self,
         dataset_root: Path,
-        entities: Dict[str, str],
+        entities: dict[str, str],
         datatype: str,
         suffix: str,
         extension: str,
@@ -127,7 +126,7 @@ class FilenameBuilder:
 
         return Path(*path_parts)
 
-    def parse_filename(self, filename: str) -> Tuple[Dict[str, str], str, str]:
+    def parse_filename(self, filename: str) -> tuple[dict[str, str], str, str]:
         """
         Parse a BIDS filename into entities, suffix, and extension.
 
@@ -178,7 +177,7 @@ class FilenameBuilder:
 
         return f"{entity_key}-{value}"
 
-    def _validate_entities(self, entities: Dict[str, str]):
+    def _validate_entities(self, entities: dict[str, str]):
         """Validate entity keys against schema"""
         # Get all valid entity keys from schema
         valid_entities = set(self._entity_order)
@@ -216,7 +215,7 @@ class FilenameBuilder:
         """Get default suffix for a datatype"""
         return get_default_suffix_for_datatype(datatype)
 
-    def suggest_entities_for_datatype(self, datatype: str) -> List[str]:
+    def suggest_entities_for_datatype(self, datatype: str) -> list[str]:
         """
         Suggest commonly used entities for a given datatype.
 

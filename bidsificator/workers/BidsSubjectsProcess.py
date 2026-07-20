@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 from ..core.BidsFolder import BidsFolder
 from ..core.logging_config import setup_logging
@@ -63,7 +63,7 @@ def processBidsSubjects(
             conn.send(PROGRESS_ERROR)
             return
 
-        for index, file in enumerate(subject['files']):
+        for _index, file in enumerate(subject['files']):
             file_path = file["file_path"]
 
             # Skip if file does not exist

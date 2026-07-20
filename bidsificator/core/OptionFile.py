@@ -1,6 +1,8 @@
-import yaml
 from collections import OrderedDict
 from pathlib import Path
+
+import yaml
+
 
 # Custom loader to preserve order
 def ordered_load(stream, Loader=yaml.SafeLoader, object_pairs_hook=OrderedDict):
@@ -50,7 +52,7 @@ class OptionFile:
 
     def __read_file(self, file_path: str):
         """Read the content of the file."""
-        with open(file_path, 'r') as file:
+        with open(file_path) as file:
             config_data = ordered_load(file, yaml.SafeLoader)
         return config_data
 

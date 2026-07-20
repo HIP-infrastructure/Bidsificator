@@ -1,12 +1,14 @@
+import glob
 import os
 from pathlib import Path
-import glob
+
 import yaml
+
 
 class DataCrawler:
     def __init__(self, config_file):
         self.config_data = self.__read_config_file(config_file)
-        
+
         # Support both old and new config formats
         if 'data_paths' in self.config_data:
             # New format
@@ -42,7 +44,7 @@ class DataCrawler:
         return new_subject_data
 
     def __read_config_file(self, file_path):
-        with open(file_path, 'r') as file:
+        with open(file_path) as file:
             config_data = yaml.safe_load(file)
         return config_data
 
@@ -58,8 +60,12 @@ class DataCrawler:
             if same_folder:
                 return self.__find_subject_dirs([self.data_paths['anatomical']], self.subject_pattern)
             else:
-                anatomical_subject_dirs = self.__find_subject_dirs([self.data_paths['anatomical']], self.subject_pattern)
-                functional_subject_dirs = self.__find_subject_dirs([self.data_paths['functional']], self.subject_pattern)
+                anatomical_subject_dirs = self.__find_subject_dirs(
+                    [self.data_paths['anatomical']], self.subject_pattern
+                )
+                functional_subject_dirs = self.__find_subject_dirs(
+                    [self.data_paths['functional']], self.subject_pattern
+                )
                 # Merge the lists and remove duplicates
                 return list(set(anatomical_subject_dirs + functional_subject_dirs))
         else:
@@ -111,7 +117,7 @@ class DataCrawler:
                         if dir_path.exists():
                             # Get all files in directory and filter by extension (case-insensitive)
                             ext_lower = file_extension.lower()
-                            found_files = [str(p) for p in dir_path.iterdir() 
+                            found_files = [str(p) for p in dir_path.iterdir()
                                          if p.is_file() and p.suffix.lower() == ext_lower]
                         if found_files:
                             if data_type not in subject_data["data"]:

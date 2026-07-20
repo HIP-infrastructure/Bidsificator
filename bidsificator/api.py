@@ -1,19 +1,16 @@
-import os
 import json
-import shutil
 import logging
+import os
+import shutil
 from pathlib import Path
-
 from textwrap import dedent
 from urllib.parse import unquote
 
-from flask import Flask
-from flask import request
-from flask import jsonify
+from flasgger import Swagger
+from flask import Flask, jsonify, request
+from flask_caching import Cache
 from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
-from flasgger import Swagger
-from flask_caching import Cache
 
 from .core.BidsFolder import BidsFolder
 from .core.BidsUtilityFunctions import BidsUtilityFunctions
@@ -41,7 +38,8 @@ swagger = Swagger(app, template={
 CORS(app)
 auth = HTTPBasicAuth()
 
-#TODO add_files_to_bids_subject(dataset_name): Check with manu how to handle error return if some files are missing but not all
+#TODO add_files_to_bids_subject(dataset_name): Check with manu how to handle error return
+# if some files are missing but not all
 
 @app.route('/')
 def index():
@@ -110,7 +108,7 @@ def get_all_datasets():
     for dataset in os.listdir(path):
         dataset_description_file_path = path + "/" + dataset + "/dataset_description.json"
         if os.path.exists(dataset_description_file_path):
-            with open(dataset_description_file_path, 'r') as f:
+            with open(dataset_description_file_path) as f:
                 dataset_description = json.load(f)
                 datasets.append(dataset_description)
 
@@ -252,7 +250,7 @@ def get_files_content_from_absolute_path():
     extensions = [".csv", ".tsv", ".txt", ".json"]
     is_text_extension = any(absolute_file_path_to_check.endswith(ext) for ext in extensions)
     if os.path.exists(absolute_file_path_to_check) and is_text_extension:
-        with open(absolute_file_path_to_check, 'r') as f:
+        with open(absolute_file_path_to_check) as f:
           content = f.read()
           return jsonify(content), 200
     else:
@@ -382,7 +380,8 @@ def create_empty_bids_subject(dataset_name):
           in: query
           type: object
           required: true
-          description: A list of subjects to create, each represented as a dictionary with a 'sub' key indicating the subject ID, and a list of key-value pairs for additional subject information.
+          description: A list of subjects to create, each represented as a dictionary with a 'sub' key
+            indicating the subject ID, and a list of key-value pairs for additional subject information.
           schema:
             type: object
             properties:
@@ -410,14 +409,14 @@ def create_empty_bids_subject(dataset_name):
     #Create subject
     subject_id = subject_description["participant_id"]
     subject_description.pop("participant_id", None)
-    
+
     # Strip "sub-" prefix if provided to prevent double prefix
     if subject_id.lower().startswith("sub-"):
         subject_id = subject_id[4:]
-    
+
     try:
-        bids_subject = bids_folder.add_bids_subject(subject_id, subject_description)
-    except ValueError as e:
+        bids_folder.add_bids_subject(subject_id, subject_description)
+    except ValueError:
         return jsonify({ 'data': 'Error: there is already a subject with this ID' }), 400
     #Generate participants.tsv
     bids_folder.generate_participants_tsv(participant_file_path)

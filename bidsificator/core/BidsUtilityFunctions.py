@@ -1,7 +1,8 @@
 import csv
-import os
 import json
+import os
 import shutil
+
 
 class BidsUtilityFunctions:
     @staticmethod
@@ -35,7 +36,7 @@ class BidsUtilityFunctions:
         """
         data = []
         if os.path.exists(filename):
-            with open(filename, 'r', newline='') as file:
+            with open(filename, newline='') as file:
                 reader = csv.reader(file, delimiter='\t')
                 headers = next(reader)  # Read the header row
                 for row in reader:
@@ -59,7 +60,7 @@ class BidsUtilityFunctions:
         """
         json_raw_content = ""
         if os.path.exists(filename):
-            with open(filename, 'r') as f:
+            with open(filename) as f:
                 json_raw_content = json.load(f)
         return json_raw_content
 

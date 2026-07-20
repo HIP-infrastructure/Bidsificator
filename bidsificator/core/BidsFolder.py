@@ -2,7 +2,6 @@ import csv
 import json
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from .BidsSubjectSchema import BidsSubject
 from .schema import BidsSchemaManager
@@ -15,23 +14,23 @@ class BidsFolder:
         self.__path = root_path
         self.__path.mkdir(parents=True, exist_ok=True)
         self.__bids_subjects = []
-        
+
         # Initialize schema manager for schema-driven operations (singleton)
         self.schema_manager = BidsSchemaManager.get_instance()
 
         #read participants.tsv if it exists and return a list of subject_id and their optional keys
         participants_tsv_path = self.__path / "participants.tsv"
         if participants_tsv_path.exists():
-            with open(participants_tsv_path, 'r') as f:
+            with open(participants_tsv_path) as f:
                 reader = csv.DictReader(f, delimiter='\t')
                 for row in reader:
                     subject_id = row["participant_id"]
                     subject_optional_keys = {k: v for k, v in row.items() if k != "participant_id"}
-                    
+
                     # Extract subject ID without 'sub-' prefix for new BidsSubject constructor
                     # Old constructor expected full folder name (sub-coucou11), new expects just ID (coucou11)
                     clean_subject_id = subject_id.replace("sub-", "") if subject_id.startswith("sub-") else subject_id
-                    
+
                     bids_subject = BidsSubject(clean_subject_id, self.__path, self.schema_manager)
                     # Store optional metadata in the subject instance
                     bids_subject.optional_metadata.update(subject_optional_keys)
@@ -42,7 +41,7 @@ class BidsFolder:
         code_path.mkdir(parents=True, exist_ok=True)
         derivatives_path = self.__path / "derivatives"
         derivatives_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Generate required README file for BIDS compliance
         self.generate_readme_file()
 
@@ -109,7 +108,7 @@ class BidsFolder:
         """Generate a README file for BIDS compliance"""
         if not readme_path:
             readme_path = self.__path / "README"
-        
+
         readme_content = f"""# {self.get_dataset_name()}
 
 ## Dataset Description
@@ -132,7 +131,7 @@ Analysis code and processing scripts can be found in the `code/` directory.
 
 Please update this README file with specific information about your dataset, including:
 - Detailed description of the experimental paradigm
-- Information about data collection procedures  
+- Information about data collection procedures
 - Preprocessing steps applied
 - Any relevant methodological details
 - Contact information for questions
@@ -141,7 +140,7 @@ Please update this README file with specific information about your dataset, inc
 
 Please specify the license under which this data is shared.
 """
-        
+
         with open(readme_path, 'w') as f:
             f.write(readme_content)
 
@@ -155,20 +154,20 @@ Please specify the license under which this data is shared.
     def add_bids_subject(self, subject_id: str, subject_description: dict, overwrite: bool = False):
         """
         Add a new BIDS subject to the dataset.
-        
+
         Args:
             subject_id: The subject identifier
             subject_description: Dictionary containing subject metadata
             overwrite: If True, overwrites existing subject; if False, raises error for duplicates
-            
+
         Returns:
             BidsSubject: The created subject instance
-            
+
         Raises:
             ValueError: If subject already exists and overwrite=False
         """
         existing_subject = next((s for s in self.__bids_subjects if s.get_subject_id() == subject_id), None)
-        
+
         if existing_subject:
             if overwrite:
                 # Remove existing subject before creating new one
@@ -192,16 +191,16 @@ Please specify the license under which this data is shared.
                 shutil.rmtree(subject_to_delete)
                 return
 
-    def get_bids_subject(self, subject_id: str) -> Optional[BidsSubject]:
+    def get_bids_subject(self, subject_id: str) -> BidsSubject | None:
         return next((x for x in self.__bids_subjects if x.get_subject_id() == subject_id), None)
 
-    def get_bids_subjects(self) -> Optional[BidsSubject]:
+    def get_bids_subjects(self) -> BidsSubject | None:
         return self.__bids_subjects
-    
+
     def subject_exists(self, subject_id: str) -> bool:
         """Check if a subject with the given ID already exists."""
         return any(subject.get_subject_id() == subject_id for subject in self.__bids_subjects)
-    
+
     def find_existing_subjects(self, subject_ids: list[str]) -> list[str]:
         """Return a list of subject IDs that already exist in the dataset."""
         existing_ids = []
@@ -215,7 +214,9 @@ Please specify the license under which this data is shared.
             participants_tsv_path = self.__path / "participants.tsv"
 
         #get all subjects and make a dict of all their optional keys and remove duplicate
-        all_optional_keys = list({key: None for subject in  self.__bids_subjects for key in subject.get_optional_keys().keys()})
+        all_optional_keys = list(
+            {key: None for subject in  self.__bids_subjects for key in subject.get_optional_keys().keys()}
+        )
 
         #open participants_tsv file and write the header
         with open(participants_tsv_path, 'w', newline='') as f:

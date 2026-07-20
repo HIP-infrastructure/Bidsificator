@@ -14,8 +14,8 @@ Run:
     poetry run pytest tests/test_schema_sanity.py
 """
 
-from bidsificator.core.schema import BidsSchemaManager
 from bidsificator.core.bids_constants import get_entity_order
+from bidsificator.core.schema import BidsSchemaManager
 
 
 def test_schema_versions():

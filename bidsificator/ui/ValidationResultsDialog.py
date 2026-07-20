@@ -2,14 +2,12 @@
 Dialog for displaying detailed BIDS validation results
 """
 
-from PyQt6.QtWidgets import (
-    QDialog, QTreeWidgetItem, QProgressDialog,
-    QMessageBox, QApplication
-)
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QIcon, QFont, QColor
-from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox, QProgressDialog, QTreeWidgetItem
+
 from ..forms.ValidationResultsDialog_ui import Ui_ValidationResultsDialog
 
 
@@ -24,34 +22,34 @@ class ValidationItem:
 
 class ValidationResultsDialog(QDialog):
     """Dialog to display comprehensive BIDS validation results"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         # Setup UI from .ui file
         self.ui = Ui_ValidationResultsDialog()
         self.ui.setupUi(self)
-        
+
         self._setup_connections()
-        
+
     def _setup_connections(self):
         """Setup signal connections"""
         # Connect toggle buttons to filter function
         self.ui.errorButton.clicked.connect(self._filter_display)
         self.ui.warningButton.clicked.connect(self._filter_display)
         self.ui.infoButton.clicked.connect(self._filter_display)
-        
+
         # Connect tree selection to details display
         self.ui.treeWidget.itemSelectionChanged.connect(self._on_selection_changed)
-        
+
         # Connect buttons
         self.ui.exportButton.clicked.connect(self._export_report)
         self.ui.closeButton.clicked.connect(self.accept)
-        
+
         # Set initial column widths
         self.ui.treeWidget.setColumnWidth(0, 100)
         self.ui.treeWidget.setColumnWidth(1, 300)
-    
+
     def display_validation_result(self, validation_result):
         """Display validation results from ValidationService"""
         # Update summary
@@ -61,35 +59,38 @@ class ValidationResultsDialog(QDialog):
         else:
             self.ui.summaryLabel.setText("❌ Dataset Validation Failed")
             self.ui.summaryLabel.setStyleSheet("color: red;")
-        
+
         # Store validation result for filtering
         self.validation_result = validation_result
-        
+
         # Update button texts
         self.ui.errorButton.setText(f"❌ Errors: {len(validation_result.errors)}")
         self.ui.warningButton.setText(f"⚠️ Warnings: {len(validation_result.warnings)}")
         self.ui.infoButton.setText(f"ℹ️ Info: {len(validation_result.info)}")
-        
+
         # Populate tree with current filters
         self._populate_tree()
-    
+
     def _populate_tree(self):
         """Populate tree widget based on current filter settings"""
         if not hasattr(self, 'validation_result'):
             return
-            
+
         # Clear tree
         self.ui.treeWidget.clear()
-        
+
         # Check which types to show
         show_errors = self.ui.errorButton.isChecked()
         show_warnings = self.ui.warningButton.isChecked()
         show_info = self.ui.infoButton.isChecked()
-        
+
         # Group issues by rule type (official validator style)
         grouped_warnings = self.validation_result.get_grouped_warnings()
-        grouped_errors = self.validation_result.get_grouped_errors() if hasattr(self.validation_result, 'get_grouped_errors') else {}
-        
+        grouped_errors = (
+            self.validation_result.get_grouped_errors()
+            if hasattr(self.validation_result, 'get_grouped_errors') else {}
+        )
+
         # Process errors first (if enabled)
         if show_errors:
             for rule, error_info in sorted(grouped_errors.items()):
@@ -100,7 +101,7 @@ class ValidationResultsDialog(QDialog):
                 rule_item.setText(2, error_info['message'])
                 rule_item.setForeground(1, QColor("red"))
                 rule_item.setExpanded(True)
-                
+
                 # Add affected files as children
                 for file_path in sorted(error_info['files']):
                     file_item = QTreeWidgetItem(rule_item)
@@ -112,7 +113,7 @@ class ValidationResultsDialog(QDialog):
                             if error.path == file_path and error.rule == rule:
                                 file_item.setData(0, Qt.ItemDataRole.UserRole, error)
                                 break
-        
+
         # Process warnings (if enabled)
         if show_warnings:
             for rule, warning_info in sorted(grouped_warnings.items()):
@@ -123,7 +124,7 @@ class ValidationResultsDialog(QDialog):
                 rule_item.setText(2, warning_info['message'])
                 rule_item.setForeground(1, QColor("orange"))
                 rule_item.setExpanded(True)
-                
+
                 # Add affected files as children
                 for file_path in sorted(warning_info['files']):
                     file_item = QTreeWidgetItem(rule_item)
@@ -134,7 +135,7 @@ class ValidationResultsDialog(QDialog):
                         if warning.path == file_path and warning.rule == rule:
                             file_item.setData(0, Qt.ItemDataRole.UserRole, warning)
                             break
-        
+
         # Process info (if enabled) - similar to warnings but in blue
         if show_info and hasattr(self.validation_result, 'info') and self.validation_result.info:
             for info in self.validation_result.info:
@@ -145,53 +146,53 @@ class ValidationResultsDialog(QDialog):
                 info_item.setText(2, info.message)
                 info_item.setForeground(1, QColor("blue"))
                 info_item.setData(0, Qt.ItemDataRole.UserRole, info)
-        
+
         # Auto-resize columns
         for i in range(3):
             self.ui.treeWidget.resizeColumnToContents(i)
-    
+
     def _filter_display(self):
         """Handle filter button clicks to show/hide issue types"""
         self._populate_tree()
-    
+
     def _get_relative_path(self, path: str) -> str:
         """Get relative path from dataset root for display"""
         import os
-        
+
         # Get relative path components
         path_parts = path.split(os.sep)
-        
+
         # Try to identify subject/session/datatype
         for i, part in enumerate(path_parts):
             if part.startswith("sub-"):
                 # Found subject, construct relative path from there
                 return os.sep.join(path_parts[i:])
-        
+
         # If no subject found, use filename or last few components
         if len(path_parts) > 2:
             return os.sep.join(path_parts[-2:])
         else:
             return os.path.basename(path)
-    
+
     def _get_location_key(self, path: str) -> str:
         """Extract a meaningful location key from path"""
         import os
-        
+
         # Get relative path components
         path_parts = path.split(os.sep)
-        
+
         # Try to identify subject/session/datatype
         for i, part in enumerate(path_parts):
             if part.startswith("sub-"):
                 # Found subject, construct relative path from there
                 return os.sep.join(path_parts[i:])
-        
+
         # If no subject found, use last 2-3 components
         if len(path_parts) > 2:
             return os.sep.join(path_parts[-3:])
         else:
             return path
-    
+
     def _on_selection_changed(self):
         """Handle tree selection change"""
         items = self.ui.treeWidget.selectedItems()
@@ -206,19 +207,20 @@ class ValidationResultsDialog(QDialog):
                 self.ui.detailsText.setText(details)
             else:
                 self.ui.detailsText.clear()
-    
+
     def _export_report(self):
         """Export validation report to file"""
-        from PyQt6.QtWidgets import QFileDialog
         import json
-        
+
+        from PyQt6.QtWidgets import QFileDialog
+
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Export Validation Report",
             "validation_report.json",
             "JSON Files (*.json);;Text Files (*.txt);;All Files (*.*)"
         )
-        
+
         if filename:
             try:
                 # Collect all issues
@@ -228,7 +230,7 @@ class ValidationResultsDialog(QDialog):
                     "warnings": [],
                     "info": []
                 }
-                
+
                 # Iterate through tree items
                 for i in range(self.ui.treeWidget.topLevelItemCount()):
                     location_item = self.ui.treeWidget.topLevelItem(i)
@@ -247,7 +249,7 @@ class ValidationResultsDialog(QDialog):
                                 report["warnings"].append(issue_dict)
                             else:
                                 report["info"].append(issue_dict)
-                
+
                 # Write report
                 if filename.endswith('.json'):
                     with open(filename, 'w') as f:
@@ -263,7 +265,7 @@ class ValidationResultsDialog(QDialog):
                         f.write("=" * 50 + "\n")
                         for warning in report["warnings"]:
                             f.write(f"- {warning['path']}: {warning['message']}\n")
-                
+
                 QMessageBox.information(self, "Export Complete", f"Report exported to {filename}")
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Failed to export report: {str(e)}")
@@ -271,7 +273,7 @@ class ValidationResultsDialog(QDialog):
 
 class ValidationProgressDialog(QProgressDialog):
     """Progress dialog for validation operations"""
-    
+
     def __init__(self, parent=None):
         super().__init__("Validating BIDS dataset...", "Cancel", 0, 0, parent)
         self.setWindowTitle("BIDS Validation")
@@ -279,10 +281,10 @@ class ValidationProgressDialog(QProgressDialog):
         self.setMinimumDuration(500)
         self.setAutoClose(False)
         self.setAutoReset(False)
-        
+
         # Make it indeterminate progress
         self.setRange(0, 0)
-        
+
     def set_status(self, message: str):
         """Update status message"""
         self.setLabelText(message)
