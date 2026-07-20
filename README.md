@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.png" alt="Bidsificator logo" width="200">
+</p>
+
 # Bidsificator
 
 A PyQt6 desktop application for managing neuroimaging data in BIDS (Brain Imaging Data Structure) format.
@@ -15,9 +19,9 @@ Bidsificator helps neuroscience researchers organize brain imaging data (iEEG, E
 - ✅ **Validation** - Real-time BIDS validation with detailed error reporting
 - 🎨 **User-Friendly GUI** - Intuitive PyQt6 interface for all operations
 - 🚀 **Batch Processing** - Import multiple subjects and sessions efficiently
-- 🔌 **REST API** - Programmatic access via Flask-based API server
+- 🔌 **REST API** - Programmatic access via a Flask-based API server (currently dormant — no active consumers)
 
-[📖 **Full Documentation**](docs/README.md) | [🚀 **Quick Start Guide**](docs/features/contact-labeling.md)
+[📖 **Full Documentation**](docs/README.md) | [🚀 **Quick Start Guide**](#quick-start)
 
 ## Quick Start
 
@@ -30,7 +34,7 @@ poetry install
 # Run the GUI application
 poetry run bidsificator
 
-# Or run the API server (debug mode)
+# Or run the API server (dormant; localhost-only, debugger off by default)
 poetry run bidsificator-api
 ```
 
@@ -53,10 +57,10 @@ poetry run bidsificator-api
 Use `poetry` (installed via `pipx`) to setup the virtual env and run it nicely for you.
 
 ```console
-# Pick a valid Python3 version, e.g. 3.10 or 3.11
-$ poetry env use $(pyenv which python3.10)
-
+# Pick a supported Python version (3.11–3.13)
 $ poetry env use $(pyenv which python3.11)
+
+$ poetry env use $(pyenv which python3.12)
 
 $ poetry install
 ```
@@ -67,11 +71,19 @@ Running the UI.
 $ poetry run bidsificator
 ```
 
-Running the web server (in debug mode), use `gunicorn` or else in production.
+Running the web server. It is **dormant** (no active consumers) and starts
+localhost-only with the Werkzeug debugger **off**. Enable debug mode explicitly
+for local development; use `gunicorn` (or similar) in production.
 
 ```console
+# Safe default (127.0.0.1:5000, debugger off):
 $ poetry run bidsificator-api
+
+# Development, with the debugger enabled:
+$ BIDSIFICATOR_API_DEBUG=1 poetry run bidsificator-api
 ```
+
+Overridable via `BIDSIFICATOR_API_HOST` and `BIDSIFICATOR_API_PORT`.
 
 ### UI
 
@@ -89,7 +101,7 @@ $ poetry run make build-ui
 
 ## Requirements
 
-- Python 3.10-3.12
+- Python 3.11-3.13
 - PyQt6
 - Poetry (for dependency management)
 
@@ -103,7 +115,7 @@ We welcome contributions! For details on:
 
 ## License
 
-[Add your license information here]
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 ## Citation
 

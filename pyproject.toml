@@ -1,10 +1,28 @@
-[tool.poetry]
+[project]
 name = "bidsificator"
 version = "1.13.0"
-description = ""
-authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
-license = "Apache 2.0"
+description = "A PyQt6 application for managing BIDS datasets"
+authors = [{ name = "Florian Sipp", email = "florian.sipp@chuv.ch" }]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
+requires-python = ">=3.11,<3.14"
+keywords = ["BIDS", "neuroimaging", "iEEG", "EEG", "MRI", "data-management"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+# Dependencies stay in [tool.poetry.dependencies] (below) to keep the caret
+# constraints and the existing lock; declared dynamic so Poetry sources them.
+dynamic = ["dependencies"]
+
+[project.urls]
+Repository = "https://github.com/HIP-infrastructure/Bidsificator"
+
+[project.scripts]
+bidsificator = "bidsificator.main:main"
+bidsificator-api = "bidsificator.api:main"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
@@ -36,15 +54,11 @@ flask-httpauth = "^4.8"
 flask_caching = "^2.3.1"
 openpyxl = "^3.1.5"
 
-[tool.poetry.scripts]
-bidsificator = "bidsificator.main:main"
-bidsificator-api = "bidsificator.api:main"
-
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.codespell]
