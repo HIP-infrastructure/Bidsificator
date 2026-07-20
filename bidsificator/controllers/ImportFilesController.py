@@ -1,5 +1,6 @@
 """Controller for single file import tab operations."""
 
+import logging
 from typing import Dict, List, Tuple, Optional, Any
 from PyQt6.QtWidgets import QWidget, QFileDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -8,6 +9,8 @@ from ..models.ImportSessionModel import ImportSessionModel
 from ..services.FileDetectionServiceSchema import FileDetectionService
 from ..services.ImportService import ImportService
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
+
+logger = logging.getLogger(__name__)
 
 
 class ImportFilesController(QObject):
@@ -311,8 +314,8 @@ class ImportFilesController(QObject):
 
             return len(electrodes_files) > 0
 
-        except Exception as e:
-            print(f"Could not check for existing electrodes.tsv: {e}")
+        except Exception:
+            logger.warning("Could not check for existing electrodes.tsv", exc_info=True)
             return False
 
     def start_import(self) -> bool:
@@ -382,8 +385,9 @@ class ImportFilesController(QObject):
         )
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
         self._worker.finished.connect(self._on_import_finished)
+        self._worker.error.connect(self._on_import_error)
         self._worker.start()
-        
+
         return True
     
     def _on_progress_updated(self, progress: int):
@@ -393,13 +397,14 @@ class ImportFilesController(QObject):
     
     def _on_import_finished(self):
         """Handle import completion from worker."""
-        # Prepare results
+        # Prepare results. This handler now runs only on genuine completion
+        # (the worker emits `error` instead of `finished` on failure), so there
+        # is no need for a hardcoded success flag.
         results = {
             "files_imported": self.file_count,
             "subject": self.current_subject,
-            "success": True
         }
-        
+
         self._model.complete_import(results)
         self.import_completed.emit(results)
         
@@ -422,7 +427,24 @@ class ImportFilesController(QObject):
 
         # Emit signal after dialog is dismissed
         self.dialog_dismissed.emit()
-    
+
+    def _on_import_error(self, message: str):
+        """Handle import failure from worker (child crash or reported error)."""
+        # Clean up worker
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
+
+        # Notify the view (status bar) first, then surface a modal. Deliberately
+        # do NOT emit dialog_dismissed here so the error stays in the status bar.
+        self.import_failed.emit(message)
+
+        QMessageBox.critical(
+            self._parent_widget,
+            "Import Failed",
+            f"The file import did not complete:\n\n{message}",
+        )
+
     def get_ui_requirements_for_modality(self, modality: str) -> Dict[str, bool]:
         """
         Get UI visibility requirements for a modality.

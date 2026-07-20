@@ -6,6 +6,7 @@ Converts Micromed TRC files to BIDS-compliant EDF format using MNE-Python.
 
 from pathlib import Path
 from typing import Dict, Any, List
+import logging
 import tempfile
 import warnings
 
@@ -16,6 +17,8 @@ import neo
 import numpy as np
 
 from .base import FormatConverter
+
+logger = logging.getLogger(__name__)
 
 
 class TrcToEdfConverter(FormatConverter):
@@ -135,8 +138,8 @@ class TrcToEdfConverter(FormatConverter):
         # Ensure minimum range for EDF format (at least ±1mV)
         physical_range = max(physical_range, 1e-3)
         
-        print(f"TRC data range: {data_min:.2e} to {data_max:.2e} V")
-        print(f"Setting EDF physical range: ±{physical_range:.2e} V")
+        logger.debug("TRC data range: %.2e to %.2e V", data_min, data_max)
+        logger.debug("Setting EDF physical range: ±%.2e V", physical_range)
         
         # Export to EDF format with calculated physical range
         raw.export(str(output_path), fmt='edf', physical_range=(-physical_range, physical_range), overwrite=True)
@@ -210,8 +213,8 @@ class TrcToEdfConverter(FormatConverter):
                             # Could extract additional metadata from annotations
                             pass
                 
-        except Exception as e:
-            print(f"Warning: Could not extract full metadata from TRC file: {e}")
+        except Exception:
+            logger.warning("could not extract full metadata from TRC file", exc_info=True)
             # Add minimum required metadata if extraction fails
             metadata.update({
                 'SamplingFrequency': 1024,  # Common default

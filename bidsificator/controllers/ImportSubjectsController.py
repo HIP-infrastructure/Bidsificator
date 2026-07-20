@@ -1,5 +1,6 @@
 """Controller for batch subject import operations."""
 
+import logging
 import tempfile
 from typing import List, Dict, Any, Optional, Tuple
 from PyQt6.QtWidgets import QWidget, QMessageBox
@@ -13,6 +14,8 @@ from ..workers.BidsSubjectsProcess import check_subject_conflicts
 from ..core.schema import BidsSchemaManager
 from ..core.BidsSubjectSchema import BidsSubject
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
+
+logger = logging.getLogger(__name__)
 
 
 class ImportSubjectsController(QObject):
@@ -272,6 +275,7 @@ class ImportSubjectsController(QObject):
         self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data, overwrite_existing, task)
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
         self._worker.finished.connect(self._on_import_finished)
+        self._worker.error.connect(self._on_import_error)
         self._worker.start()
         
         return True
@@ -326,12 +330,13 @@ class ImportSubjectsController(QObject):
         total_files = sum(len(subject.files) for subject in self._model.subjects)
         subject_count = self._model.count()
         
+        # This handler now runs only on genuine completion (the worker emits
+        # `error` instead of `finished` on failure), so no success flag is needed.
         results = {
             "subjects_imported": subject_count,
             "total_files": total_files,
-            "success": True
         }
-        
+
         self.import_completed.emit(results)
         
         # Clean up worker
@@ -349,7 +354,24 @@ class ImportSubjectsController(QObject):
 
         # Emit signal after dialog is dismissed
         self.dialog_dismissed.emit()
-    
+
+    def _on_import_error(self, message: str):
+        """Handle import failure from worker (child crash or reported error)."""
+        # Clean up worker
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
+
+        # Notify the view (status bar) first, then surface a modal. Deliberately
+        # do NOT emit dialog_dismissed here so the error stays in the status bar.
+        self.import_failed.emit(message)
+
+        QMessageBox.critical(
+            self._parent_widget,
+            "Import Failed",
+            f"The subject import did not complete:\n\n{message}",
+        )
+
     def _update_file_editor(self):
         """Update file editor with currently selected subject."""
         selected_subject = self._model.get_selected_subject()
@@ -436,9 +458,9 @@ class ImportSubjectsController(QObject):
                     if suffix in dt.suffixes or datatype == suffix:
                         datatype_suffix_pairs.add((datatype, suffix))
                     else:
-                        print(f"Warning: Suffix '{suffix}' not valid for datatype '{datatype}' - skipping")
+                        logger.warning("Suffix '%s' not valid for datatype '%s' - skipping", suffix, datatype)
                 else:
-                    print(f"Warning: Unknown datatype '{datatype}' from modality '{modality}' - skipping")
+                    logger.warning("Unknown datatype '%s' from modality '%s' - skipping", datatype, modality)
         
         # Collect all required entities across all file types
         # Use existing proven schema logic from BidsSubject (same as Tab 2)

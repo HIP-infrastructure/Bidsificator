@@ -4,9 +4,12 @@ Converter Registry
 Manages all available format converters with automatic discovery and priority-based selection.
 """
 
+import logging
 from typing import Dict, List, Optional
 from pathlib import Path
 from .base import FormatConverter
+
+logger = logging.getLogger(__name__)
 
 
 class ConverterRegistry:
@@ -34,28 +37,28 @@ class ConverterRegistry:
         try:
             from .trc_to_edf_pyeeg import TrcToEdfConverterPyEEG
             self.register(TrcToEdfConverterPyEEG())  # Primary choice (priority 10)
-        except ImportError as e:
-            print(f"Warning: Could not import PyEEGFormat TRC to EDF converter: {e}")
+        except ImportError:
+            logger.warning("could not import PyEEGFormat TRC to EDF converter", exc_info=True)
             
         # MNE-based converter as fallback
         try:
             from .trc_to_edf import TrcToEdfConverter
             self.register(TrcToEdfConverter())  # Fallback choice (priority 1)
-        except ImportError as e:
-            print(f"Warning: Could not import MNE TRC to EDF converter: {e}")
+        except ImportError:
+            logger.warning("could not import MNE TRC to EDF converter", exc_info=True)
         
         try:
             from .trc_to_brainvision import TrcToBrainVisionConverter
             self.register(TrcToBrainVisionConverter())  # Alternative (priority 0)
-        except ImportError as e:
-            print(f"Warning: Could not import TRC to BrainVision converter: {e}")
+        except ImportError:
+            logger.warning("could not import TRC to BrainVision converter", exc_info=True)
         
         # DICOM converter
         try:
             from .dicom_to_nifti import DicomToNiftiConverter
             self.register(DicomToNiftiConverter())
-        except ImportError as e:
-            print(f"Warning: Could not import DICOM converter: {e}")
+        except ImportError:
+            logger.warning("could not import DICOM converter", exc_info=True)
     
     def register(self, converter: FormatConverter):
         """Register a format converter"""
@@ -65,7 +68,7 @@ class ConverterRegistry:
                 self.converters[ext] = []
             self.converters[ext].append(converter)
             
-        print(f"Registered converter: {converter.description}")
+        logger.debug("Registered converter: %s", converter.description)
     
     def get_converter(self, file_path: Path, target_format: str = None) -> Optional[FormatConverter]:
         """Get appropriate converter for file"""

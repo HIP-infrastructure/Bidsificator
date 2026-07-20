@@ -8,6 +8,7 @@ Uses the converter registry for format detection and delegates to
 format-specific extractors for actual data extraction.
 """
 
+import logging
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 import pandas as pd
@@ -15,6 +16,8 @@ import pandas as pd
 from ..converters.registry import ConverterRegistry
 from ..core.schema.tsv_schema_mapper import BidsSchemaMapper, ColumnDefinition
 from .ContactLabelingParser import ContactLabelingParser
+
+logger = logging.getLogger(__name__)
 
 
 class BidsMetadataExtractor:
@@ -107,7 +110,7 @@ class BidsMetadataExtractor:
         # If no electrode data but we have a contact labeling file,
         # generate basic electrode entries from channels (without coordinates)
         if len(raw_data) == 0 and contact_labeling_file is not None:
-            print("No electrode coordinates found in file. Generating electrodes from channels for contact labeling.")
+            logger.info("No electrode coordinates found in file. Generating electrodes from channels for contact labeling.")
             raw_data = self._generate_electrodes_from_channels(file_path, datatype)
 
         # Convert to BIDS-compliant DataFrame
@@ -270,7 +273,7 @@ class BidsMetadataExtractor:
             contact_data = self.contact_labeling_parser.parse_file(contact_labeling_file)
 
             if not contact_data:
-                print(f"Warning: No contact data found in {contact_labeling_file}")
+                logger.warning("No contact data found in %s", contact_labeling_file)
                 return electrodes_df
 
             # Validate contact names match
@@ -282,12 +285,12 @@ class BidsMetadataExtractor:
 
                 # Warn about mismatches
                 if validation['missing_in_channels']:
-                    print(f"Warning: Contacts in labeling file not found in electrodes: "
-                          f"{validation['missing_in_channels']}")
+                    logger.warning("Contacts in labeling file not found in electrodes: %s",
+                                   validation['missing_in_channels'])
 
                 if validation['missing_in_labeling']:
-                    print(f"Info: Electrodes without labeling data: "
-                          f"{len(validation['missing_in_labeling'])} contacts")
+                    logger.warning("Electrodes without labeling data: %s contacts",
+                                   len(validation['missing_in_labeling']))
 
                 # Merge annotations into DataFrame (case-insensitive matching)
                 for idx, row in electrodes_df.iterrows():
@@ -303,7 +306,7 @@ class BidsMetadataExtractor:
 
             return electrodes_df
 
-        except Exception as e:
-            print(f"Error merging contact labeling data: {e}")
+        except Exception:
+            logger.exception("Error merging contact labeling data")
             # Return original DataFrame if merging fails
             return electrodes_df

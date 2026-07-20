@@ -5,11 +5,14 @@ Manages the embedded BIDS schema and provides access to parsed schema components
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from .models import BidsEntity, BidsDatatype
 from .parser import BidsSchemaParser
 from .file_extensions import FileExtensionRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class BidsSchemaManager:
@@ -66,7 +69,7 @@ class BidsSchemaManager:
             # Initialize file extension registry
             self.file_registry = FileExtensionRegistry(self)
             
-            print(f"Loaded BIDS schema version {self.get_bids_version()}")
+            logger.info("Loaded BIDS schema version %s", self.get_bids_version())
             
         except FileNotFoundError:
             raise FileNotFoundError(f"BIDS schema file not found: {self.schema_path}")

@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import logging
 from pathlib import Path
 
 from textwrap import dedent
@@ -16,6 +17,9 @@ from flask_caching import Cache
 
 from .core.BidsFolder import BidsFolder
 from .core.BidsUtilityFunctions import BidsUtilityFunctions
+from .core.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 __author__ = "Florian SIPP"
 __email__ = "florian.sipp@chuv.ch"
@@ -529,7 +533,7 @@ def add_files_to_bids_subject(dataset_name):
                     entities=file["entities"],
                     suffix='ieeg'
                 )
-                print(f"Added iEEG file via API: {result.get('target_path', file_path)}")
+                logger.info("Added iEEG file via API: %s", result.get('target_path', file_path))
 
             elif file["modality"] in ["T1w", "T2w", "T1rho", "T2*", "FLAIR", "CT"]:
                 # Use new schema-driven BidsSubject API
@@ -539,12 +543,12 @@ def add_files_to_bids_subject(dataset_name):
                     entities=file["entities"],
                     suffix=file["modality"]
                 )
-                print(f"Added anatomical file via API: {result.get('target_path', file_path)}")
+                logger.info("Added anatomical file via API: %s", result.get('target_path', file_path))
 
             else:
-                print("modality not recognized : ", file["modality"])
+                logger.warning("modality not recognized: %s", file["modality"])
         else:
-            print("file does not exist : ", file_path)
+            logger.warning("file does not exist: %s", file_path)
 
     return jsonify({ 'data': 'Success' }), 200
 
@@ -838,6 +842,7 @@ def remove_key_from_participants_list(dataset_name, key_name):
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
 
 def main():
+    setup_logging()
     # Default to a safe, non-debug, localhost-only server. The Werkzeug debugger
     # exposes stack traces and a PIN-protected RCE console, so it must be opt-in.
     debug = os.environ.get("BIDSIFICATOR_API_DEBUG", "").lower() in ("1", "true", "yes")

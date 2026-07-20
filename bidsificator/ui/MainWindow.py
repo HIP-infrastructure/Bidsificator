@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -14,7 +15,6 @@ from PyQt6.QtGui import QFileSystemModel, QCursor
 from ..core.BidsFolder import BidsFolder
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 from ..forms.MainWindow_ui import Ui_MainWindow
-from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
 from ..ui.AboutDialog import AboutDialog
@@ -24,6 +24,9 @@ from ..services.ImportService import ImportService
 from ..services.ValidationServiceSchema import ValidationService
 from ..services.DataCrawlerService import DataCrawlerService
 from ..controllers.MainController import MainController
+
+logger = logging.getLogger(__name__)
+
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
@@ -236,7 +239,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Handle lookup table update message from controller."""
         # Update status or provide visual feedback
         # For now, just update the statusbar or show in console
-        print(f"Lookup table status: {message}")
+        logger.debug("Lookup table status: %s", message)
 
     def open_db_options(self):
         self.__optionWindow = OptionWindow()
@@ -407,8 +410,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     for display_name, suffix in datatype_mapping[datatype]:
                         self.ModalityComboBox.addItem(display_name)
                         
-        except Exception as e:
-            print(f"Warning: Could not populate modality dropdown from schema: {e}")
+        except Exception:
+            logger.warning("Could not populate modality dropdown from schema", exc_info=True)
             # Fallback to basic items if schema loading fails
             fallback_items = [
                 "T1w (anat)",
@@ -805,7 +808,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.ReconstructionLineEdit.hide()
             # Note: DICOM folder checkbox removed from UI
         else:
-            print("Error : [__UpdateModalityUI] Modality not recognized")
+            logger.warning("[__UpdateModalityUI] Modality not recognized")
 
     def update_task_combobox_UI(self):
         if "Other" in self.TaskComboBox.currentText():

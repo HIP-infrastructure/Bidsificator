@@ -10,6 +10,7 @@ Improvements over BidsSubjectNew:
 """
 
 import json
+import logging
 import shutil
 import pandas as pd
 from pathlib import Path
@@ -26,6 +27,8 @@ from bidsificator.core.bids_constants import (
     DEFAULT_CHANNEL_COUNTS,
     BIDS_DATA_EXTENSIONS
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BidsSubject:
@@ -47,7 +50,7 @@ class BidsSubject:
         # Sanitize and validate subject ID using schema
         sanitized_subject_id = self._sanitize_subject_id(subject_id)
         if sanitized_subject_id != subject_id:
-            print(f"Sanitized subject ID: '{subject_id}' → '{sanitized_subject_id}'")
+            logger.debug("Sanitized subject ID: '%s' → '%s'", subject_id, sanitized_subject_id)
         
         if not self.schema.validate_entity_value('sub', sanitized_subject_id):
             raise ValueError(f"Invalid subject ID '{sanitized_subject_id}' according to BIDS schema")
@@ -121,7 +124,7 @@ class BidsSubject:
         if key in self.optional_metadata:
             del self.optional_metadata[key]
         else:
-            print("Key not found:", key)
+            logger.warning("Key not found: %s", key)
 
     def set_contact_labeling_file(self, file_path: Optional[Path]):
         """
@@ -775,7 +778,7 @@ class BidsSubject:
         if source_path and source_path.exists():
             # Use the original source path if provided
             source_file = source_path
-            print(f"Using original source file for TSV extraction: {source_file}")
+            logger.debug("Using original source file for TSV extraction: %s", source_file)
         else:
             # Fallback: try to find source file that was used to create this data file
             source_file = None
@@ -794,7 +797,7 @@ class BidsSubject:
             # If we can't find source file, use the data file itself for extraction
             if source_file is None:
                 source_file = data_path
-                print(f"No source file found, using data file for TSV extraction: {source_file}")
+                logger.debug("No source file found, using data file for TSV extraction: %s", source_file)
         
         # Generate channels.tsv using proper BIDS filename construction
         channels_filename = self._build_bids_filename(entities, 'channels', '.tsv')
@@ -806,13 +809,13 @@ class BidsSubject:
                 # Validate generated DataFrame
                 is_valid, errors = metadata_extractor.validate_generated_tsv(channels_df, 'channels', datatype)
                 if not is_valid:
-                    print(f"Warning: Generated channels.tsv has validation errors: {errors}")
+                    logger.warning("Generated channels.tsv has validation errors: %s", errors)
                 
                 channels_df.to_csv(channels_path, sep='\t', index=False)
-                print(f"Generated schema-compliant channels.tsv with {len(channels_df)} channels")
-                
-            except Exception as e:
-                print(f"Error generating channels.tsv: {e}")
+                logger.debug("Generated schema-compliant channels.tsv with %d channels", len(channels_df))
+
+            except Exception:
+                logger.exception("Error generating channels.tsv")
                 # Fallback to generic generation
                 channels_df = self._create_channels_dataframe_fallback(datatype)
                 channels_df.to_csv(channels_path, sep='\t', index=False)
@@ -827,13 +830,13 @@ class BidsSubject:
                 # Validate generated DataFrame
                 is_valid, errors = metadata_extractor.validate_generated_tsv(events_df, 'events', datatype)
                 if not is_valid:
-                    print(f"Warning: Generated events.tsv has validation errors: {errors}")
+                    logger.warning("Generated events.tsv has validation errors: %s", errors)
                 
                 events_df.to_csv(events_path, sep='\t', index=False)
-                print(f"Generated schema-compliant events.tsv with {len(events_df)} events")
-                
-            except Exception as e:
-                print(f"Error generating events.tsv: {e}")
+                logger.debug("Generated schema-compliant events.tsv with %d events", len(events_df))
+
+            except Exception:
+                logger.exception("Error generating events.tsv")
                 # Fallback to empty events file
                 events_df = self._create_events_dataframe_fallback()
                 events_df.to_csv(events_path, sep='\t', index=False)
@@ -864,17 +867,17 @@ class BidsSubject:
                     # Validate generated DataFrame
                     is_valid, errors = metadata_extractor.validate_generated_tsv(electrodes_df, 'electrodes', datatype)
                     if not is_valid:
-                        print(f"Warning: Generated electrodes.tsv has validation errors: {errors}")
+                        logger.warning("Generated electrodes.tsv has validation errors: %s", errors)
                     
                     electrodes_df.to_csv(electrodes_path, sep='\t', index=False)
-                    print(f"Generated schema-compliant electrodes.tsv with {len(electrodes_df)} electrodes")
-                    
-                except Exception as e:
-                    print(f"Error generating electrodes.tsv: {e}")
+                    logger.debug("Generated schema-compliant electrodes.tsv with %d electrodes", len(electrodes_df))
+
+                except Exception:
+                    logger.exception("Error generating electrodes.tsv")
                     # Fallback to empty electrodes file with required structure
                     electrodes_df = self._create_electrodes_dataframe_fallback()
                     electrodes_df.to_csv(electrodes_path, sep='\t', index=False)
-                    print(f"Generated fallback electrodes.tsv")
+                    logger.debug("Generated fallback electrodes.tsv")
             
             # Generate coordsystem.json (required when electrodes.tsv is present)
             # Use same inheritance-aware entities as electrodes for consistency
@@ -887,7 +890,7 @@ class BidsSubject:
                 coordsystem_metadata = self._create_coordsystem_metadata()
                 with open(coordsystem_path, 'w') as f:
                     json.dump(coordsystem_metadata, f, indent=2, sort_keys=True)
-                print(f"Generated required coordsystem.json for iEEG electrodes")
+                logger.debug("Generated required coordsystem.json for iEEG electrodes")
     
     def _filter_entities_for_suffix(self, entities: Dict[str, str], datatype: str, suffix: str) -> Dict[str, str]:
         """
@@ -917,7 +920,7 @@ class BidsSubject:
             
         except Exception as e:
             # Fallback: if schema query fails, use original entities
-            print(f"Warning: Could not filter entities for {datatype}/{suffix}: {e}")
+            logger.warning("could not filter entities for %s/%s: %s", datatype, suffix, e, exc_info=True)
             return entities
     
     def _get_directory_for_entities(self, entities: Dict[str, str], datatype: str) -> Path:
@@ -1102,7 +1105,7 @@ class BidsSubject:
         # Write events.json file
         with open(events_json_path, 'w') as f:
             json.dump(events_metadata, f, indent=2, sort_keys=True)
-        print(f"Generated events.json companion file with {len(column_names)} column definitions")
+        logger.debug("Generated events.json companion file with %d column definitions", len(column_names))
     
     def _generate_nirs_files(self, data_path: Path, entities: Dict[str, str]):
         """Generate NIRS-specific files (optodes.tsv, etc.)"""
@@ -1230,22 +1233,22 @@ class BidsSubject:
                                 new_file_path = os.path.join(root, new_file_name)
                                 try:
                                     os.rename(old_file_path, new_file_path)
-                                except OSError as e:
-                                    print(f"Error renaming file {old_file_path} to {new_file_path}: {e}")
+                                except OSError:
+                                    logger.exception("Error renaming file %s to %s", old_file_path, new_file_path)
                                     raise
                     
                     # Rename the subject folder itself
                     try:
                         os.rename(str(old_subject_path), str(new_subject_path))
-                    except OSError as e:
-                        print(f"Error renaming folder {old_subject_path} to {new_subject_path}: {e}")
+                    except OSError:
+                        logger.exception("Error renaming folder %s to %s", old_subject_path, new_subject_path)
                         raise
                     
                     # Update the internal state
                     self.subject_id = new_subject_id
                     self.subject_path = new_subject_path
                 else:
-                    print(f"Warning: Subject path does not exist: {old_subject_path}")
-            except Exception as e:
-                print(f"Error in set_subject_id: {e}")
+                    logger.warning("Subject path does not exist: %s", old_subject_path)
+            except Exception:
+                logger.exception("Error in set_subject_id")
                 raise

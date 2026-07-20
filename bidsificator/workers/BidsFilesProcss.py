@@ -1,6 +1,12 @@
 import os
+import logging
+from pathlib import Path
 
 from ..core.BidsFolder import BidsFolder
+from ..core.logging_config import setup_logging
+from .protocol import PROGRESS_DONE, PROGRESS_ERROR
+
+logger = logging.getLogger(__name__)
 
 
 def processBidsFiles(
@@ -11,36 +17,38 @@ def processBidsFiles(
     anatomical_modalities: set[str],
     contact_labeling_file: str = None,
 ):
+    # This runs in a separate multiprocessing.Process, so configure logging here.
+    setup_logging()
 
     bids_folder = BidsFolder(dataset_path)
     bids_subject = bids_folder.get_bids_subject(subject_name)
 
     if bids_subject is None:
-        conn.send(-1)  # Indicate error
+        logger.error("Subject '%s' not found in dataset '%s'", subject_name, dataset_path)
+        conn.send(PROGRESS_ERROR)
         return
 
     # Attach contact labeling file if provided
     if contact_labeling_file:
         try:
-            from pathlib import Path
             bids_subject.set_contact_labeling_file(Path(contact_labeling_file))
-            print(f"Attached contact labeling file: {contact_labeling_file}")
-        except Exception as e:
-            print(f"Warning: Could not attach contact labeling file: {e}")
+            logger.info("Attached contact labeling file: %s", contact_labeling_file)
+        except Exception:
+            logger.warning("Could not attach contact labeling file: %s", contact_labeling_file, exc_info=True)
 
     for index, file in enumerate(file_list):
         file_path = file["file_path"]
 
         # Skip if file does not exist
         if not os.path.exists(file_path):
-            print(f"File {file_path} does not exist. Skipping.")
+            logger.warning("File %s does not exist. Skipping.", file_path)
             continue
 
         # Define entities for the file
         # Build entities dict, filtering out empty values
         entities = {}
         entities["sub"] = bids_subject.get_subject_id()
-        
+
         if file.get("session", ""):
             entities["ses"] = file.get("session")
         if file.get("task", ""):
@@ -63,10 +71,9 @@ def processBidsFiles(
                     entities=entities,
                     suffix='ieeg'
                 )
-                print(f"Added iEEG file: {result.get('target_path', file_path)}")
-            except Exception as e:
-                print(f"Error processing file {file_path}: {e}")
-                print(f"Skipping file")
+                logger.info("Added iEEG file: %s", result.get('target_path', file_path))
+            except Exception:
+                logger.exception("Error processing file %s; skipping", file_path)
         elif modality == "eeg (eeg)":
             try:
                 # Map modality to datatype for schema-driven BidsSubject
@@ -76,10 +83,9 @@ def processBidsFiles(
                     entities=entities,
                     suffix='eeg'
                 )
-                print(f"Added EEG file: {result.get('target_path', file_path)}")
-            except Exception as e:
-                print(f"Error processing file {file_path}: {e}")
-                print(f"Skipping file")
+                logger.info("Added EEG file: %s", result.get('target_path', file_path))
+            except Exception:
+                logger.exception("Error processing file %s; skipping", file_path)
         elif modality == "photo (ieeg)":
             try:
                 # Photos are stored in ieeg datatype with photo suffix
@@ -89,10 +95,9 @@ def processBidsFiles(
                     entities=entities,
                     suffix='photo'
                 )
-                print(f"Added photo file: {result.get('target_path', file_path)}")
-            except Exception as e:
-                print(f"Error processing photo file {file_path}: {e}")
-                print(f"Skipping file")
+                logger.info("Added photo file: %s", result.get('target_path', file_path))
+            except Exception:
+                logger.exception("Error processing photo file %s; skipping", file_path)
         elif modality in anatomical_modalities:
             try:
                 # Let BidsSubject.add_file() handle ALL conversions (including DICOM)
@@ -104,14 +109,13 @@ def processBidsFiles(
                     entities=entities,
                     suffix=suffix
                 )
-                print(f"Added anatomical file: {result.get('target_path', file_path)}")
-            except Exception as e:
-                print(f"Error processing anatomical file {file_path}: {e}")
-                print(f"Skipping file")
+                logger.info("Added anatomical file: %s", result.get('target_path', file_path))
+            except Exception:
+                logger.exception("Error processing anatomical file %s; skipping", file_path)
         else:
-            print("modality not recognized : ", modality)
+            logger.warning("Modality not recognized: %s", modality)
 
         progress = round(100 * (float(index + 1) / len(file_list)))
         conn.send(progress)  # Send progress to the main thread
 
-    conn.send(101)  # Indicate completion
+    conn.send(PROGRESS_DONE)  # Indicate completion

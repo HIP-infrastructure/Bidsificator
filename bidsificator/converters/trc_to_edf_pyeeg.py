@@ -3,11 +3,14 @@ TRC to EDF converter using PyEEGFormat library
 Reliable, production-tested conversion for Micromed TRC files
 """
 
+import logging
 import platform
 import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from ..converters.base import FormatConverter
+
+logger = logging.getLogger(__name__)
 
 
 class TrcToEdfConverterPyEEG(FormatConverter):
@@ -61,8 +64,8 @@ class TrcToEdfConverterPyEEG(FormatConverter):
                 
             return wrapper
             
-        except ImportError as e:
-            print(f"PyEEGFormat import error: {e}")
+        except ImportError:
+            logger.error("PyEEGFormat import error", exc_info=True)
             raise
     
     def can_convert(self, source_path: Path) -> bool:
@@ -160,9 +163,9 @@ class TrcToEdfConverterPyEEG(FormatConverter):
             if ref_info:
                 metadata['EEGReference'] = ref_info
                 
-        except Exception as e:
+        except Exception:
             # Return minimal metadata on error
-            print(f"Warning: Could not extract full metadata from {source_path}: {e}")
+            logger.warning("could not extract full metadata from %s", source_path, exc_info=True)
             metadata = {
                 'Manufacturer': 'Micromed',
                 'PowerLineFrequency': 50,
@@ -293,8 +296,8 @@ class TrcToEdfConverterPyEEG(FormatConverter):
                 
                 channels_data.append(channel_data)
             
-        except Exception as e:
-            print(f"Warning: Could not extract channel data from {source_path}: {e}")
+        except Exception:
+            logger.warning("could not extract channel data from %s", source_path, exc_info=True)
             # Return empty list - will trigger fallback in metadata extractor
             return []
         
@@ -360,8 +363,8 @@ class TrcToEdfConverterPyEEG(FormatConverter):
             all_events.sort(key=lambda x: x['onset'])
             events_data = all_events
             
-        except Exception as e:
-            print(f"Warning: Could not extract event data from {source_path}: {e}")
+        except Exception:
+            logger.warning("could not extract event data from %s", source_path, exc_info=True)
             # Return empty list - will result in empty events.tsv
             return []
         
