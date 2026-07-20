@@ -11,14 +11,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QStandardPaths
 from PyQt6.QtGui import QFileSystemModel, QCursor
 
-from bidsificator.workers import ImportBidsSubjectsWorker
-
 from ..core.BidsFolder import BidsFolder
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
-from ..core.DataCrawler import DataCrawler
 from ..forms.MainWindow_ui import Ui_MainWindow
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
-from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
 from ..ui.AboutDialog import AboutDialog
@@ -30,8 +26,6 @@ from ..services.DataCrawlerService import DataCrawlerService
 from ..controllers.MainController import MainController
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    __subject_data = []
-    __worker = None
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
     __ImportSubjectFileEditor = None
     __import_files_data = None  # Store files to import for current subject
@@ -600,15 +594,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def parse_subject_to_import(self):
         """Parse subjects for import using the controller."""
-        # Use absolute path relative to the package location
-        config_path = os.path.realpath(
-            os.path.join(
-                os.path.dirname(__file__),
-                "..",
-                "config",
-                "config.yaml"
-            )
-        )
+        config_path = BidsUtilityFunctions.get_config_path()
         self._main_controller.parse_subjects_to_import(config_path)
         # UI update will be handled by controller signal
 
@@ -821,53 +807,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             print("Error : [__UpdateModalityUI] Modality not recognized")
 
-    # Method removed - DICOM checkbox no longer exists in UI
-    # def update_browseFile_UI(self, state):
-
-    def is_dicom_folder(self, folder_path):
-        """Check if a folder contains DICOM files"""
-        from pathlib import Path
-        service = FileDetectionService()
-        return service.is_dicom_folder(Path(folder_path))
-    
-    def browse_for_file_to_add(self):
-        modality = self.ModalityComboBox.currentText()
-        service = FileDetectionService()
-        filters = service.get_file_filters()
-
-        # For anatomy, allow both file and folder selection
-        if "(anat)" in modality:
-            # First try file selection
-            file_filter = filters["(anat)"]
-            file_path = QFileDialog.getOpenFileName(self, "Select a file (or Cancel to browse for DICOM folder)", 
-                                                  self.__browse_folder_path_memory, filter=file_filter)
-            if file_path[0]:
-                self.__browse_folder_path_memory = os.path.dirname(file_path[0])
-                self.BrowseLineEdit.setText(file_path[0])
-            else:
-                # User cancelled file selection, offer folder selection for DICOM
-                reply = QMessageBox.question(self, "DICOM Folder?", 
-                    "Do you want to select a DICOM folder instead?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.Yes:
-                    folder_path = QFileDialog.getExistingDirectory(self, "Select DICOM folder", 
-                                                                 self.__browse_folder_path_memory)
-                    if folder_path:
-                        if self.is_dicom_folder(folder_path):
-                            self.__browse_folder_path_memory = folder_path
-                            self.BrowseLineEdit.setText(folder_path + " [DICOM Folder]")
-                        else:
-                            QMessageBox.warning(self, "Not a DICOM folder", 
-                                "The selected folder doesn't appear to contain DICOM files.")
-        elif any(key in modality for key in filters): # photo or ieeg file
-            file_filter = next(filter for key, filter in filters.items() if key in modality)
-            file_path = QFileDialog.getOpenFileName(self, "Select a file", self.__browse_folder_path_memory, filter=file_filter)
-            if file_path[0]:
-                self.__browse_folder_path_memory = os.path.dirname(file_path[0])
-                self.BrowseLineEdit.setText(file_path[0])
-        else:
-            QMessageBox.warning(self, "Modality not recognized", "Please select a modality first")
-
     def update_task_combobox_UI(self):
         if "Other" in self.TaskComboBox.currentText():
             task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
@@ -881,103 +820,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
                 # Note: FileEditor TaskComboBox updates removed
                 self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-
-    def add_file_to_list(self):
-        #Need to validate focus for ui elements in order to get all the values
-        self.TaskComboBox.clearFocus()
-        self.SessionComboBox.clearFocus()
-        self.ContrastAgentLineEdit.clearFocus()
-        self.AcquisitionLineEdit.clearFocus()
-        self.ReconstructionLineEdit.clearFocus()
-
-        #Get file path and check if it's a DICOM folder
-        file_path_raw = self.BrowseLineEdit.text()
-        is_dicom_folder = "[DICOM Folder]" in file_path_raw
-        file_path = file_path_raw.replace(" [DICOM Folder]", "") if is_dicom_folder else file_path_raw
-        #Get file name (handle DICOM folders)
-        if is_dicom_folder:
-            file_name = f"{os.path.basename(file_path)} [DICOM Folder]"
-        else:
-            file_name = os.path.basename(file_path)
-        #Get the modality
-        modality = self.ModalityComboBox.currentText()
-        #According to modality get the task and relevant elements from ui
-        if "(anat)" in modality:
-            task = ""
-            session = self.SessionComboBox.currentText()
-            contrast_agent = self.ContrastAgentLineEdit.text()
-            acquisition = self.AcquisitionLineEdit.text()
-            reconstruction = self.ReconstructionLineEdit.text()
-        elif "ieeg (ieeg)" in modality:
-            task = self.TaskComboBox.currentText()
-            session = self.SessionComboBox.currentText()
-            contrast_agent = ""
-            acquisition = self.AcquisitionLineEdit.text()
-            reconstruction = ""
-        elif "eeg (eeg)" in modality:
-            task = self.TaskComboBox.currentText()
-            session = self.SessionComboBox.currentText()
-            contrast_agent = ""
-            acquisition = self.AcquisitionLineEdit.text()
-            reconstruction = ""
-        elif "photo (ieeg)" in modality:
-            task = ""
-            session = self.SessionComboBox.currentText()
-            contrast_agent = ""
-            acquisition = self.AcquisitionLineEdit.text()
-            reconstruction = ""
-        else:
-            print("Error : [__AddFileToList] Modality not recognized")
-
-        subject = {
-            "subject_id": self.SubjectComboBox.currentText(),
-            "files": [
-                {
-                "file_name": file_name,
-                "file_path": file_path,
-                "modality": modality,
-                "task": task,
-                "session": session.removeprefix("ses-"),
-                "contrast_agent": contrast_agent,
-                "acquisition": acquisition,
-                "reconstruction": reconstruction
-                }
-            ]
-        }
-
-        # Check if file path is provided
-        if not file_path:
-            QMessageBox.warning(self, "No File", "Please browse for a file first")
-            return
-            
-        # Check for duplicates
-        for existing_file in self.__import_files_data["files"]:
-            if existing_file["file_path"] == file_path:
-                QMessageBox.warning(self, "Duplicate File", "This file is already in the list")
-                return
-        
-        # Files added to currently selected subject
-        current_subject = self.SubjectComboBox.currentText()
-        self.__import_files_data["subject_id"] = current_subject
-        
-        # Add file to data structure
-        file_data = {
-            "file_name": file_name,
-            "file_path": file_path,
-            "modality": modality,
-            "task": task,
-            "session": session.removeprefix("ses-") if session else "",
-            "contrast_agent": contrast_agent,
-            "acquisition": acquisition,
-            "reconstruction": reconstruction
-        }
-        self.__import_files_data["files"].append(file_data)
-        
-        # Add to list widget with simple filename display
-        self.ImportFileListWidget.addItem(file_name)
-        
-        # Clear browse field for next file
-        self.BrowseLineEdit.clear()
 
     def detect_modality_from_file(self, file_path):
         """Auto-detect modality from filename and extension"""
@@ -1189,10 +1031,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         finally:
             self.ImportFileListWidget.blockSignals(False)
 
-    def browse_single_file_fallback(self):
-        """Single-file browse as fallback option"""
-        self.browse_for_file_to_add()
-
     def browse_clinical_electrode_file(self):
         """Browse for clinical electrode labeling Excel file."""
         from pathlib import Path
@@ -1328,42 +1166,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         comboBox.clearFocus()
 
-    def on_worker_finished(self):
-        """Display a completion message and handle cleanup after the worker thread finishess"""
-
-        print("File import finished")
-        print("Updating Subjects list in the user interface")
-        self.tableWidget.LoadSubjectsInTableWidget(self.fileTreeView.model().rootDirectory().path())
-        self.update_subject_names_dropDown()
-        
-        # Check which type of worker finished to show appropriate message
-        if isinstance(self.__worker, ImportBidsSubjectsWorker):
-            # Count total files from all subjects
-            total_files = sum(len(subject.get("files", [])) for subject in self.__subject_data)
-            subject_count = len(self.__subject_data)
-            QMessageBox.information(
-                self, 
-                "Import Complete", 
-                f"Successfully imported {subject_count} subjects with {total_files} files.\n\n"
-                "Check the dataset folder for the imported files."
-            )
-        else:
-            # Import Files worker (single subject)
-            file_count = len(self.__import_files_data["files"])
-            QMessageBox.information(
-                self, 
-                "Import Complete", 
-                f"Successfully imported {file_count} files.\n\n"
-                "Files remain in the list for review. You can:\n"
-                "• Check/modify any file settings\n" 
-                "• Remove files if needed\n"
-                "• Add more files\n"
-                "• Re-import if there were issues"
-            )
-        
-        print("Cleaning up worker")
-        self.__worker.deleteLater()  # Clean up the worker thread
-    
     def browse_lookup_table(self):
         """Browse for CSV lookup table file."""
         file_path, _ = QFileDialog.getOpenFileName(

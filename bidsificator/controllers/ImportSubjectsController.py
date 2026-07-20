@@ -1,6 +1,5 @@
 """Controller for batch subject import operations."""
 
-import os
 import tempfile
 from typing import List, Dict, Any, Optional, Tuple
 from PyQt6.QtWidgets import QWidget, QMessageBox
@@ -13,6 +12,7 @@ from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 from ..workers.BidsSubjectsProcess import check_subject_conflicts
 from ..core.schema import BidsSchemaManager
 from ..core.BidsSubjectSchema import BidsSubject
+from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 
 
 class ImportSubjectsController(QObject):
@@ -44,15 +44,7 @@ class ImportSubjectsController(QObject):
         self._file_editor_controller = file_editor_controller
         self._model = SubjectDataModel()
         self._worker: Optional[ImportBidsSubjectsWorker] = None
-        # Use absolute path relative to the package location
-        self._config_path = os.path.realpath(
-            os.path.join(
-                os.path.dirname(__file__),
-                "..",
-                "config",
-                "config.yaml"
-            )
-        )
+        self._config_path = BidsUtilityFunctions.get_config_path()
         self._lookup_table_path: Optional[str] = None
         self._subject_mapping: Dict[str, str] = {}
         self._schema_manager = BidsSchemaManager.get_instance()
