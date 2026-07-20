@@ -4,10 +4,10 @@ BIDS Schema data models
 Defines the core data structures for BIDS entities and datatypes.
 """
 
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Any
-from enum import Enum
 import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 
 class EntityFormat(Enum):
@@ -26,7 +26,7 @@ class BidsEntity:
     format: EntityFormat
     pattern: str  # regex pattern
     description: str
-    
+
     def validate(self, value: str) -> bool:
         """Validate entity value against pattern"""
         if self.format == EntityFormat.INDEX:
@@ -36,7 +36,7 @@ class BidsEntity:
             except ValueError:
                 return False
         return bool(re.fullmatch(self.pattern, value))
-    
+
     def format_value(self, value: str) -> str:
         """Format value with entity prefix"""
         return f"{self.key}-{value}"
@@ -46,17 +46,18 @@ class BidsEntity:
 class BidsDatatype:
     """Represents a BIDS datatype/modality"""
     name: str  # "ieeg", "anat", "func", etc.
-    allowed_entities: List[str]
-    required_entities: List[str]
-    suffixes: List[str]  # "T1w", "T2w", "channels", "events"
-    extensions: List[str]  # Extensions from registry
-    metadata_requirements: Dict[str, Any]
-    
-    def build_path(self, entities: Dict[str, str], suffix: str, extension: str) -> str:
+    allowed_entities: list[str]
+    required_entities: list[str]
+    suffixes: list[str]  # "T1w", "T2w", "channels", "events"
+    extensions: list[str]  # Extensions from registry
+    metadata_requirements: dict[str, Any]
+
+    def build_path(self, entities: dict[str, str], suffix: str, extension: str) -> str:
         """Build BIDS-compliant path using FilenameBuilder"""
         # Import here to avoid circular imports
-        from ..filename_builder import FilenameBuilder
         from pathlib import Path
+
+        from ..filename_builder import FilenameBuilder
 
         # Validate required entities
         for req in self.required_entities:
@@ -78,22 +79,22 @@ class BidsDatatype:
 
         # Return as string with forward slashes
         return str(full_path).replace('\\', '/')
-    
-    def get_required_metadata(self, suffix: str = None) -> Dict[str, Any]:
+
+    def get_required_metadata(self, suffix: str = None) -> dict[str, Any]:
         """Get required metadata fields"""
         base_metadata = self.metadata_requirements.get("required", {})
         if suffix and f"suffix_{suffix}" in self.metadata_requirements:
             base_metadata.update(self.metadata_requirements[f"suffix_{suffix}"])
         return base_metadata
-    
-    def get_recommended_metadata(self, suffix: str = None) -> Dict[str, Any]:
+
+    def get_recommended_metadata(self, suffix: str = None) -> dict[str, Any]:
         """Get recommended metadata fields"""
         base_metadata = self.metadata_requirements.get("recommended", {})
         if suffix and f"suffix_{suffix}_recommended" in self.metadata_requirements:
             base_metadata.update(self.metadata_requirements[f"suffix_{suffix}_recommended"])
         return base_metadata
-    
-    def get_all_metadata(self, suffix: str = None) -> Dict[str, Dict[str, Any]]:
+
+    def get_all_metadata(self, suffix: str = None) -> dict[str, dict[str, Any]]:
         """Get both required and recommended metadata fields"""
         return {
             "required": self.get_required_metadata(suffix),

@@ -15,8 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Application-wide logging (`bidsificator/core/logging_config.py`): the GUI, the
   API, and each import worker subprocess configure the root logger, and modules
   now log through `logging.getLogger(__name__)` instead of `print()`.
+- Ruff linting (`E`, `F`, `W`, `I`, `B`, `UP`) and pytest coverage
+  (`--cov=bidsificator`) run in CI on every push/PR. Configuration lives in
+  `pyproject.toml`; generated Qt UI modules and the vendored PyEEGFormat tree are
+  excluded.
 
 ### Fixed
+- Resolved the full existing ruff surface (~3.3k findings): whitespace and
+  import ordering, modernized type hints (PEP 585/604) and `super()` calls,
+  narrowed two bare `except:` clauses, chained re-raises with `from`, and fixed
+  a duplicate `get_subject_id` method and a broken `__main__` runner in
+  `tests/test_bids_subject_schema.py` that referenced undefined names.
 - Channels TSV validation now flags a missing required `name`/`type`/`units`
   column. Previously the required-column set was empty for `channels.tsv`
   (requirement levels weren't wired up from the schema), so missing required
@@ -59,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused `flask-restful` dependency.
 - Leftover unused `ImportBidsFilesWorker` import in `MainWindow` (workers are
   instantiated in the controllers, not the view).
+- Broken API-only `.devcontainer/` (its `api.Dockerfile` copied a nonexistent
+  `requirements.txt` and pinned Python 3.10, unsupported since the Poetry
+  migration).
 
 ### Security
 - The `bidsificator-api` server no longer starts with the Werkzeug debugger

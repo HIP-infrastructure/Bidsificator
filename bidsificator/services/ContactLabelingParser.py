@@ -6,7 +6,8 @@ and converts them to BIDS-compliant electrodes.tsv additional columns.
 """
 
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any
+
 import pandas as pd
 
 
@@ -37,7 +38,7 @@ class ContactLabelingParser:
         # Store a mapping from lowercase contact names to original case
         self._contact_case_mapping = {}
 
-    def parse_file(self, file_path: Path) -> Dict[str, Dict[str, Any]]:
+    def parse_file(self, file_path: Path) -> dict[str, dict[str, Any]]:
         """
         Parse SEEG contact labeling Excel file
 
@@ -63,7 +64,7 @@ class ContactLabelingParser:
         try:
             df = pd.read_excel(file_path)
         except Exception as e:
-            raise ValueError(f"Failed to read Excel file: {e}")
+            raise ValueError(f"Failed to read Excel file: {e}") from e
 
         # Validate structure
         self._validate_structure(df)
@@ -100,7 +101,7 @@ class ContactLabelingParser:
                 f"Expected columns: {expected_columns}"
             )
 
-    def _parse_dataframe(self, df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    def _parse_dataframe(self, df: pd.DataFrame) -> dict[str, dict[str, Any]]:
         """
         Parse DataFrame into contact annotation dictionary
 
@@ -112,7 +113,7 @@ class ContactLabelingParser:
         """
         contact_data = {}
 
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
             contact_name = row.get('contact')
 
             # Skip if no contact name or if it's the header row
@@ -201,8 +202,8 @@ class ContactLabelingParser:
         return value
 
     def validate_against_channels(self,
-                                  contact_data: Dict[str, Dict[str, Any]],
-                                  channel_names: List[str]) -> Dict[str, List[str]]:
+                                  contact_data: dict[str, dict[str, Any]],
+                                  channel_names: list[str]) -> dict[str, list[str]]:
         """
         Validate that contact names match channel names (case-insensitive)
 
@@ -241,8 +242,8 @@ class ContactLabelingParser:
         }
 
     def get_annotations_for_contact(self,
-                                   contact_data: Dict[str, Dict[str, Any]],
-                                   contact_name: str) -> Dict[str, Any]:
+                                   contact_data: dict[str, dict[str, Any]],
+                                   contact_name: str) -> dict[str, Any]:
         """
         Get annotations for a specific contact (case-insensitive)
 

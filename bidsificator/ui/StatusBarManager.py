@@ -1,6 +1,6 @@
 """Manager for status bar messages with styled feedback."""
 
-from typing import Optional
+
 from PyQt6.QtWidgets import QStatusBar
 
 
@@ -32,7 +32,7 @@ class StatusBarManager:
         """
         self._status_bar = status_bar
 
-    def show_progress(self, message: str, progress: Optional[int] = None) -> None:
+    def show_progress(self, message: str, progress: int | None = None) -> None:
         """
         Show a progress message in blue.
 

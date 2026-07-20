@@ -1,7 +1,7 @@
-import multiprocessing as mp
 import logging
+import multiprocessing as mp
 
-from PyQt6.QtCore import pyqtSignal, QThread
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from .BidsFilesProcss import processBidsFiles
 from .protocol import PROGRESS_DONE, PROGRESS_ERROR
@@ -20,7 +20,10 @@ class ImportBidsFilesWorker(QThread):
         self.subject_name = subject_name
         self.file_list = file_list
         self.contact_labeling_file = contact_labeling_file
-        self.anatomical_modalities = {"T1w (anat)", "T2w (anat)", "T1rho (anat)", "T2* (anat)", "FLAIR (anat)", "CT (anat)"}
+        self.anatomical_modalities = {
+            "T1w (anat)", "T2w (anat)", "T1rho (anat)",
+            "T2* (anat)", "FLAIR (anat)", "CT (anat)"
+        }
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()

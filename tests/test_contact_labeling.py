@@ -2,14 +2,15 @@
 Tests for SEEG contact labeling functionality
 """
 
-import pytest
-import pandas as pd
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pandas as pd
+import pytest
 from openpyxl import Workbook
 
-from bidsificator.services.ContactLabelingParser import ContactLabelingParser
 from bidsificator.services.BidsMetadataExtractorService import BidsMetadataExtractor
+from bidsificator.services.ContactLabelingParser import ContactLabelingParser
 
 
 class TestContactLabelingParser:
@@ -384,9 +385,10 @@ class TestEndToEndIntegration:
 
     def test_contact_labeling_file_validation(self, sample_labeling_file):
         """Test that BidsSubject properly validates and stores labeling file"""
+        import tempfile
+
         from bidsificator.core.BidsSubjectSchema import BidsSubject
         from bidsificator.core.schema import BidsSchemaManager
-        import tempfile
 
         # Create temporary dataset directory
         with tempfile.TemporaryDirectory() as tmpdir:

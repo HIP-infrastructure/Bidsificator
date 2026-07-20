@@ -2,24 +2,24 @@ import logging
 
 from PyQt6.QtWidgets import QWidget
 
-from ..forms.FileEditor_ui import Ui_FileEditor
 from ..controllers.FileEditorController import FileEditorController
+from ..forms.FileEditor_ui import Ui_FileEditor
 
 logger = logging.getLogger(__name__)
 
 
 class FileEditor(QWidget, Ui_FileEditor):
     """Pure view component for file editing using FileEditorController."""
-    
+
     def __init__(self):
         super(QWidget, self).__init__()
         self.setupUi(self)
-        
+
         # Initialize controller
         self._controller = FileEditorController(self)
         self._setup_controller_connections()
         self._setup_ui_connections()
-        
+
         # Populate modality dropdown with schema-driven values
         self.populate_modality_dropdown()
 
@@ -28,7 +28,7 @@ class FileEditor(QWidget, Ui_FileEditor):
 
         # Set default selections for comboboxes
         self._set_default_combobox_selections()
-    
+
     def _set_default_combobox_selections(self):
         """Set default selections for comboboxes during initialization."""
         # TaskComboBox should default to first item
@@ -63,11 +63,11 @@ class FileEditor(QWidget, Ui_FileEditor):
         # File list interactions
         self.FileListWidget.itemClicked.connect(self._on_file_list_clicked)
         self.FileListWidget.itemSelectionChanged.connect(self._on_file_list_selection_changed)
-        
+
         # Edit mode buttons
         self.EditPushButton.clicked.connect(self._on_edit_button_clicked)
         self.CancelPushButton.clicked.connect(self._on_cancel_button_clicked)
-        
+
         # Form field changes
         self.ModalityComboBox.currentIndexChanged.connect(self.update_userinterface_for_modality)
         self.ModalityComboBox.currentTextChanged.connect(self._on_field_changed)
@@ -84,7 +84,7 @@ class FileEditor(QWidget, Ui_FileEditor):
         self.PathLineEdit.editingFinished.connect(self._on_field_finished)
 
     # Public interface methods (for backward compatibility)
-    
+
     def add_files_to_list(self, subject):
         """Add files to list using controller."""
         self._controller.add_files_to_list(subject)
@@ -105,13 +105,13 @@ class FileEditor(QWidget, Ui_FileEditor):
     def clear_file_list(self):
         """Clear file list using controller."""
         self._controller.clear_file_list()
-        
+
     def add_file_to_list(self, file_name):
         """Add single file name to UI list widget."""
         self.FileListWidget.addItem(file_name)
 
     # UI Event Handlers
-    
+
     def _on_file_list_clicked(self):
         """Handle file list click."""
         self._select_current_file()
@@ -127,11 +127,11 @@ class FileEditor(QWidget, Ui_FileEditor):
         # (and onto files[0] during programmatic list rebuilds).
         if self._controller.edit_mode:
             self._save_form_data()
-        
+
         current_row = self.FileListWidget.currentRow()
         if current_row >= 0:
             self._controller.select_file(current_row)
-    
+
     def _save_form_data(self):
         """Save current form data to controller."""
         form_data = {
@@ -176,7 +176,7 @@ class FileEditor(QWidget, Ui_FileEditor):
         self._controller.update_selected_file(field_data)
 
     # Controller Signal Handlers
-    
+
     def _update_file_list_display(self):
         """Update file list display from controller."""
         # Block signals so setCurrentRow does not trigger _select_current_file
@@ -200,13 +200,13 @@ class FileEditor(QWidget, Ui_FileEditor):
     def _update_form_fields(self, file_data):
         """Update form fields from controller data."""
         modality = file_data.get("modality", "")
-        
+
         self.set_comboBox_text(self.ModalityComboBox, modality)
-        
+
         session = file_data.get("session", "")
         session_text = f"ses-{session}" if session else ""
         self.set_comboBox_text(self.SessionComboBox, session_text)
-        
+
         self.set_comboBox_text(self.TaskComboBox, file_data.get("task", ""))
         self.ContrastAgentLineEdit.setText(file_data.get("contrast_agent", ""))
         self.AcquisitionLineEdit.setText(file_data.get("acquisition", ""))
@@ -235,9 +235,9 @@ class FileEditor(QWidget, Ui_FileEditor):
         else:
             self.EditPushButton.setText("Edit")
             self.CancelPushButton.setEnabled(False)
-            
+
         self.FileListWidget.setEnabled(not edit_mode)
-        
+
         # Enable/disable form fields based on edit mode
         self.ModalityComboBox.setEnabled(edit_mode)
         self.SessionComboBox.setEnabled(edit_mode)
@@ -246,19 +246,19 @@ class FileEditor(QWidget, Ui_FileEditor):
         self.AcquisitionLineEdit.setEnabled(edit_mode)
         self.ReconstructionLineEdit.setEnabled(edit_mode)
         self.PathLineEdit.setEnabled(edit_mode)
-        
+
     def populate_modality_dropdown(self):
         """Populate ModalityComboBox with available datatypes from schema"""
         try:
             from ..services.FileDetectionServiceSchema import FileDetectionService
-            
+
             # Clear existing items (both static ones from UI and any previous dynamic ones)
             self.ModalityComboBox.clear()
-            
+
             # Get available datatypes from schema
             detection_service = FileDetectionService()
             available_datatypes = detection_service.get_all_datatypes()
-            
+
             # Create display format mapping for UI compatibility
             # The existing UI logic expects formats like "ieeg (ieeg)", "T1w (anat)", etc.
             datatype_mapping = {
@@ -293,13 +293,13 @@ class FileEditor(QWidget, Ui_FileEditor):
                     ('events (beh)', 'events')
                 ]
             }
-            
+
             # Add items for available datatypes
             for datatype in sorted(available_datatypes):
                 if datatype in datatype_mapping:
-                    for display_name, suffix in datatype_mapping[datatype]:
+                    for display_name, _suffix in datatype_mapping[datatype]:
                         self.ModalityComboBox.addItem(display_name)
-                        
+
         except Exception:
             logger.warning("Could not populate modality dropdown from schema", exc_info=True)
             # Fallback to basic items if schema loading fails
@@ -318,10 +318,10 @@ class FileEditor(QWidget, Ui_FileEditor):
         current_text = self.TaskComboBox.currentText()
         self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
         self.TaskComboBox.currentTextChanged.disconnect(self._on_field_changed)
-        
+
         self.TaskComboBox.clear()
         self.TaskComboBox.addItems(tasks)
-        
+
         # Restore selection if possible, otherwise select first item
         if current_text:
             index = self.TaskComboBox.findText(current_text)
@@ -333,22 +333,22 @@ class FileEditor(QWidget, Ui_FileEditor):
         elif self.TaskComboBox.count() > 0:
             # No previous selection, select first item
             self.TaskComboBox.setCurrentIndex(0)
-            
+
         self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.TaskComboBox.currentTextChanged.connect(self._on_field_changed)
 
     # UI Utility Methods
-    
+
     def update_task_combobox_UI(self):
         """Handle task combobox selection using controller."""
         current_text = self.TaskComboBox.currentText()
         if "Other" in current_text:
             # Get current tasks
             current_tasks = [self.TaskComboBox.itemText(i) for i in range(self.TaskComboBox.count())]
-            
+
             # Use controller to handle task selection
             final_task, updated_tasks = self._controller.handle_task_selection(current_text, current_tasks)
-            
+
             if final_task:  # Task was successfully created
                 # Update will be handled by controller signal
                 pass
@@ -356,20 +356,20 @@ class FileEditor(QWidget, Ui_FileEditor):
     def update_userinterface_for_modality(self):
         """Update UI visibility based on modality using controller."""
         modality = self.ModalityComboBox.currentText()
-        
+
         if not modality:
             return
-        
+
         # Extract datatype from modality string (e.g., "ieeg (ieeg)" -> "ieeg")
         if '(' in modality and ')' in modality:
             # Extract the datatype from parentheses
             datatype = modality.split('(')[1].rstrip(')')
         else:
             datatype = modality
-            
+
         # Get UI requirements from controller
         requirements = self._controller.get_modality_ui_requirements(datatype)
-        
+
         # Update visibility based on requirements
         self.SessionLabel.setVisible(requirements.get('show_session', False))
         self.SessionComboBox.setVisible(requirements.get('show_session', False))
@@ -392,7 +392,7 @@ class FileEditor(QWidget, Ui_FileEditor):
             default_index = self._get_default_combobox_index(comboBox)
             comboBox.setCurrentIndex(default_index)
         comboBox.clearFocus()
-    
+
     def _get_default_combobox_index(self, comboBox):
         """Get default index for combobox when text is not found."""
         # TaskComboBox should default to first item when empty

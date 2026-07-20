@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QPixmap
-from .._metadata import __version__, __authors__, __copyright__, __license__, __description__
+from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+from .._metadata import __authors__, __copyright__, __description__, __license__, __version__
 
 LOGO_PATH = Path(__file__).parent.parent / "resources" / "logo.png"
 
@@ -12,17 +13,17 @@ class AboutDialog(QDialog):
     """
     About dialog showing application information and version.
     """
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("About Bidsificator")
         self.setModal(True)
         self.setFixedSize(400, 360)
-        
+
         # Setup UI
         self._setup_ui()
-    
-    
+
+
     def _setup_ui(self):
         """Setup the dialog UI."""
         layout = QVBoxLayout()
@@ -47,7 +48,7 @@ class AboutDialog(QDialog):
         app_label.setFont(app_font)
         app_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(app_label)
-        
+
         # Version
         version_label = QLabel(f"Version {__version__}")
         version_font = QFont()
@@ -55,18 +56,18 @@ class AboutDialog(QDialog):
         version_label.setFont(version_font)
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version_label)
-        
+
         # Description
         desc_label = QLabel(__description__)
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc_label.setWordWrap(True)
         layout.addWidget(desc_label)
-        
+
         # Copyright
         copyright_label = QLabel(__copyright__)
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(copyright_label)
-        
+
         # Author(s)
         if len(__authors__) == 1:
             author_text = f"Author: {__authors__[0]}"
@@ -76,13 +77,13 @@ class AboutDialog(QDialog):
         author_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         author_label.setWordWrap(True)
         layout.addWidget(author_label)
-        
+
         # License
         license_label = QLabel(f"Licensed under {__license__}")
         license_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(license_label)
-        
+
         # Add stretch to fill remaining space
         layout.addStretch()
-        
+
         self.setLayout(layout)

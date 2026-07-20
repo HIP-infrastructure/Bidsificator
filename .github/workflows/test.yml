@@ -42,7 +42,10 @@ jobs:
           poetry config virtualenvs.in-project true
           poetry install --with dev
 
-      - name: Run tests
+      - name: Ruff
+        run: poetry run ruff check bidsificator tests
+
+      - name: Tests with coverage
         env:
           QT_QPA_PLATFORM: offscreen
-        run: poetry run pytest tests/ -v
+        run: poetry run pytest tests/ -v --cov=bidsificator --cov-report=term-missing

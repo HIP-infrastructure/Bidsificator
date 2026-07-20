@@ -1,8 +1,7 @@
 """Regression tests for acquisition auto-increment and form-save corruption."""
 
-from bidsificator.services.ImportService import ImportService
 from bidsificator.services.DataCrawlerService import DataCrawlerService
-
+from bidsificator.services.ImportService import ImportService
 
 
 class TestGetNextAcquisitionNumber:

@@ -5,7 +5,6 @@ NOTE: This module is being migrated to schema-driven design.
 Hardcoded values are being progressively replaced with dynamic schema extraction.
 """
 
-from typing import Dict, List, Optional
 
 # Default metadata values
 DEFAULT_METADATA_VALUES = {
@@ -86,9 +85,9 @@ class _DefaultSuffixesAccessor:
 
 DEFAULT_SUFFIXES = _DefaultSuffixesAccessor()
 
-_entity_order_cache: Optional[List[str]] = None
+_entity_order_cache: list[str] | None = None
 
-def get_entity_order() -> List[str]:
+def get_entity_order() -> list[str]:
     """
     Get canonical entity ordering from BIDS schema.
 
@@ -128,9 +127,9 @@ NIRS_EXTENSIONS = ['.snirf']
 
 # All BIDS data file extensions (excluding metadata)
 BIDS_DATA_EXTENSIONS = (
-    EPHYS_EXTENSIONS + 
-    IMAGING_EXTENSIONS + 
-    MEG_EXTENSIONS + 
+    EPHYS_EXTENSIONS +
+    IMAGING_EXTENSIONS +
+    MEG_EXTENSIONS +
     NIRS_EXTENSIONS
 )
 

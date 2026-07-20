@@ -1,30 +1,28 @@
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (
-    QHeaderView,
     QMenu,
     QTableWidget,
     QTableWidgetItem,
-    QMessageBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor
 
 from ..controllers.PatientTableController import PatientTableController
 
 
 class PatientTableWidget(QTableWidget):
     """Pure view component for patient/subject table using PatientTableController."""
-    
+
     subject_updated = pyqtSignal()
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         # Initialize without controller (will be set later)
         self._controller = None
         self._dataset_path_provider = None
-        
+
         self._setup_ui_connections()
-        
+
         # UI state
         self._selected_item = None
         self._previous_cell_text = None
@@ -73,7 +71,7 @@ class PatientTableWidget(QTableWidget):
         index = self.indexAt(position)
         if not index.isValid():
             return
-        
+
         self._selected_item = self.indexAt(position)
         can_add_key_before = self._selected_item.column() > 0
 
@@ -93,7 +91,7 @@ class PatientTableWidget(QTableWidget):
         index = self.indexAt(position)
         if not index.isValid():
             return
-        
+
         self._selected_item = self.indexAt(position)
 
         context_menu = QMenu(self)
@@ -103,7 +101,7 @@ class PatientTableWidget(QTableWidget):
         context_menu.popup(QCursor.pos())
 
     # Public interface methods (for backward compatibility)
-    
+
     def GetSubjectsKeysFromTable(self):
         """Get subjects keys from table (legacy method)."""
         if self._controller:
@@ -121,7 +119,7 @@ class PatientTableWidget(QTableWidget):
             self._controller.create_subject(subject_name)
 
     # UI Event Handlers
-    
+
     def _add_key_before_selected(self):
         """Add key before selected column using controller."""
         if self._selected_item and self._controller:
@@ -150,7 +148,7 @@ class PatientTableWidget(QTableWidget):
         """Handle item change using controller."""
         if not self._controller:
             return
-        
+
         if item.column() == 0:
             # Subject ID change
             old_subject_id = self._previous_cell_text
@@ -168,7 +166,7 @@ class PatientTableWidget(QTableWidget):
         self._previous_cell_text = item.text()
 
     # Controller Signal Handlers
-    
+
     def _on_subjects_loaded(self):
         """Handle subjects loaded from controller."""
         self._update_table_display()
@@ -200,29 +198,29 @@ class PatientTableWidget(QTableWidget):
         """Update table display from controller data."""
         if not self._controller:
             return
-            
+
         headers, rows = self._controller.get_table_data_matrix()
-        
+
         if not headers or not rows:
             self.setRowCount(0)
             self.setColumnCount(0)
             return
-        
+
         # Disconnect signals during update
         self._disconnect_table_widget()
-        
+
         # Set table dimensions and headers
         self.setRowCount(len(rows))
         self.setColumnCount(len(headers))
         self.setHorizontalHeaderLabels(headers)
-        
+
         # Fill table with data
         for row_idx, row_data in enumerate(rows):
             for col_idx, cell_data in enumerate(row_data):
                 item = QTableWidgetItem(str(cell_data))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.setItem(row_idx, col_idx, item)
-        
+
         # Reconnect signals
         self._connect_table_widget()
 
