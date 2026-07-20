@@ -36,6 +36,16 @@ poetry run make build-ui
 poetry run pytest
 ```
 
+## Changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com). **Every
+PR with a user- or developer-visible effect adds its entry under `[Unreleased]`
+in the same PR** — in the matching subsection (Added / Changed / Deprecated /
+Removed / Fixed / Security), not as a later cleanup. On release, rename
+`[Unreleased]` to the version + date, open a fresh empty `[Unreleased]`, and add
+the version's compare link at the bottom of the file. Purely internal no-op
+changes (typo fixes, comments, formatting) may skip it.
+
 ## Architecture
 
 MVC with a schema-driven core. See the Knowledge Hub for the full picture:
