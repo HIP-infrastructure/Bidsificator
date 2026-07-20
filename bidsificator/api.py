@@ -838,7 +838,12 @@ def remove_key_from_participants_list(dataset_name, key_name):
     return jsonify(BidsUtilityFunctions.read_tsv_safely(participant_file_path)), 200
 
 def main():
-    app.run(debug=True, port=5000)
+    # Default to a safe, non-debug, localhost-only server. The Werkzeug debugger
+    # exposes stack traces and a PIN-protected RCE console, so it must be opt-in.
+    debug = os.environ.get("BIDSIFICATOR_API_DEBUG", "").lower() in ("1", "true", "yes")
+    host = os.environ.get("BIDSIFICATOR_API_HOST", "127.0.0.1")
+    port = int(os.environ.get("BIDSIFICATOR_API_PORT", "5000"))
+    app.run(debug=debug, host=host, port=port)
 
 
 if __name__ == '__main__':
