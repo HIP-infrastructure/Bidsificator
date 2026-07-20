@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bidsificator"
-version = "1.12.0"
+version = "1.13.0"
 description = ""
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
@@ -19,6 +19,9 @@ bids_validator = ">=1.14.5"
 # neurophysiology data conversion
 mne = "^1.11.0"
 neo = "^0.14.3"
+# neo pulls in quantities; <0.16.4 references the removed np.ndarray.ptp and
+# crashes at import under numpy 2.x. Pin the floor to keep the lock installable.
+quantities = ">=0.16.4"
 edfio = "^0.4.12"
 pybv = "^0.7.6"
 
