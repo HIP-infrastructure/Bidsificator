@@ -426,6 +426,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for item in fallback_items:
                 self.ModalityComboBox.addItem(item)
         
+    def _set_session_combobox_text(self, text):
+        """Display `text` in the editable SessionComboBox, even when it is not an item.
+
+        Custom session names (typed by the user) are not always in the item list,
+        and an empty text must clear the selection so session-less files
+        round-trip unchanged through save_current_form_to_data().
+        """
+        index = self.SessionComboBox.findText(text)
+        self.SessionComboBox.setCurrentIndex(index)
+        if index < 0:
+            self.SessionComboBox.setEditText(text)
+        self.SessionComboBox.clearFocus()
+
     def save_current_form_to_data(self):
         """Save current form fields to the currently selected file's data"""
         if self.__current_selected_file_index >= 0 and self.__current_selected_file_index < len(self.__import_files_data["files"]):
@@ -458,8 +471,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_import_form_enabled(True)
         self.BrowseLineEdit.setText(file_data["file_path"])
         self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
-        session_text = "ses-" + file_data["session"] if file_data["session"] else "ses-post"
-        self.set_comboBox_text(self.SessionComboBox, session_text)
+        # Show the file's real session — an empty session must stay empty, otherwise
+        # the next save_current_form_to_data() writes a session the user never chose
+        # (e.g. "post") onto this file only, splitting its acquisition sequence.
+        session_text = "ses-" + file_data["session"] if file_data["session"] else ""
+        self._set_session_combobox_text(session_text)
         self.set_comboBox_text(self.TaskComboBox, file_data["task"])
         self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
         self.AcquisitionLineEdit.setText(file_data["acquisition"])
@@ -680,6 +696,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         session_names = self._main_controller.get_sessions_for_subject(subject_name)
 
         # Clear and repopulate, but maintain editable functionality
+        displayed_session = self.SessionComboBox.currentText()
         self.SessionComboBox.clear()
 
         # Add existing sessions from this subject
@@ -695,6 +712,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.SessionComboBox.isEditable():
             self.SessionComboBox.setEditable(True)
             self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
+
+        if self.__import_files_data["files"]:
+            # With files pending import, repopulating must not change the
+            # displayed session: the next form save would stamp it onto the
+            # selected file. This fires between two imports of the same list
+            # (worker finished, subject switch), so restore what was shown.
+            self._set_session_combobox_text(displayed_session)
+        else:
+            # No files yet: default to the first entry (ses-post when present).
+            # An editable combobox does not auto-select after clear()+addItems,
+            # so without this the session starts blank and newly added files
+            # silently become session-less.
+            self.SessionComboBox.setCurrentIndex(0)
 
     def show_delete_import_subject_context_menu(self):
         # Create custom context menu
