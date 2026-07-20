@@ -106,6 +106,28 @@ class BidsSchemaMapper:
                 requirement_level='recommended'
             )
 
+        # BIDS requires name/type/units in channels.tsv. The schema column
+        # objects don't carry a requirement_level, so these otherwise default to
+        # 'optional' and the validator can never flag a missing required column.
+        # Upgrade them to 'required' (mirrors the required-column fallbacks in
+        # _get_events_columns / _get_electrodes_columns) while preserving any
+        # schema-derived metadata.
+        required_channel_columns = {
+            'name': 'Label of the channel',
+            'type': 'Type of channel',
+            'units': 'Physical unit of the value represented in this channel',
+        }
+        for col_name, description in required_channel_columns.items():
+            existing = columns.get(col_name)
+            columns[col_name] = ColumnDefinition(
+                name=col_name,
+                description=existing.description if existing else description,
+                data_type=existing.data_type if existing else 'string',
+                requirement_level='required',
+                format=existing.format if existing else None,
+                enum=existing.enum if existing else None,
+            )
+
         return columns
     
     def _get_events_columns(self, schema_columns: Dict, datatype: str = None) -> Dict[str, ColumnDefinition]:
