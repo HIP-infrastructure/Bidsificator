@@ -3,7 +3,12 @@ import os
 
 from ..core.BidsFolder import BidsFolder
 from ..core.logging_config import setup_logging
-from .protocol import PROGRESS_DONE, PROGRESS_ERROR
+from .import_processor import (
+    PROGRESS_DONE,
+    PROGRESS_ERROR,
+    add_file_to_subject,
+    resolve_datatype_and_suffix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +33,6 @@ def processBidsSubjects(
     conn,
     dataset_path: str,
     subjects_list: list,
-    anatomical_modalities: set[str],
     overwrite_existing: bool = False,
     task: str = "Rest",
 ):
@@ -38,7 +42,6 @@ def processBidsSubjects(
     # Calculate total files across all subjects for overall progress
     total_files = sum(len(subject['files']) for subject in subjects_list)
     processed_files = 0
-
 
     bids_folder = BidsFolder(dataset_path)
     for subject in subjects_list:
@@ -71,9 +74,8 @@ def processBidsSubjects(
                 logger.warning("File %s does not exist. Skipping.", file_path)
                 continue
 
-            # Define entities for the file, filtering out empty values
-            entities = {}
-            entities["sub"] = bids_subject.get_subject_id()
+            # Build entities for the file, filtering out empty values
+            entities = {"sub": bids_subject.get_subject_id()}
 
             session_value = file.get("session", "")
             if session_value:
@@ -82,28 +84,18 @@ def processBidsSubjects(
                 entities["ses"] = session_clean
                 logger.debug("Session: raw='%s', clean='%s'", session_value, session_clean)
 
-            # Process file based on its modality - use existing hardcoded approach for consistency
             modality = file.get("modality", "")
             logger.debug("Processing file with modality: '%s' - file: %s", modality, file_path)
 
-            # Use schema to determine if task is required for specific modality types
-            # This is the schema-driven improvement while keeping existing patterns
-            if modality == "ieeg (ieeg)":
-                required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'ieeg')
-                if 'task' in required_entities:
-                    entities["task"] = task
-            elif modality == "eeg (eeg)":
-                required_entities = bids_subject.get_required_entities_for_suffix('eeg', 'eeg')
-                if 'task' in required_entities:
-                    entities["task"] = task
-            elif modality == "photo (ieeg)":
-                required_entities = bids_subject.get_required_entities_for_suffix('ieeg', 'photo')
-                if 'task' in required_entities:
-                    entities["task"] = task
-            elif modality in anatomical_modalities:
-                # Anatomical files - extract suffix and check schema
-                suffix = modality.split('(')[0].strip()  # e.g., "T1w (anat)" -> "T1w"
-                required_entities = bids_subject.get_required_entities_for_suffix('anat', suffix)
+            # Resolve the modality once, then reuse it for both the schema-driven
+            # task-required check and the dispatch below.
+            resolved = resolve_datatype_and_suffix(modality)
+
+            # Schema decides whether this suffix requires a task entity. Unlike the
+            # Import Files path, the subjects path applies one shared task value.
+            if resolved is not None:
+                datatype, suffix = resolved
+                required_entities = bids_subject.get_required_entities_for_suffix(datatype, suffix)
                 if 'task' in required_entities:
                     entities["task"] = task
 
@@ -114,58 +106,11 @@ def processBidsSubjects(
             if file.get("contrast_agent", ""):
                 entities["ce"] = file.get("contrast_agent")
 
-            if modality == "ieeg (ieeg)":
-                try:
-                    # Map modality to datatype for schema-driven BidsSubject
-                    result = bids_subject.add_file(
-                        source_path=file_path,
-                        datatype='ieeg',
-                        entities=entities,
-                        suffix='ieeg'
-                    )
-                    logger.info("Added iEEG file: %s", result.get('target_path', file_path))
-                except Exception:
-                    logger.exception("Error processing file %s; skipping", file_path)
-            elif modality == "eeg (eeg)":
-                try:
-                    # Map modality to datatype for schema-driven BidsSubject
-                    result = bids_subject.add_file(
-                        source_path=file_path,
-                        datatype='eeg',
-                        entities=entities,
-                        suffix='eeg'
-                    )
-                    logger.info("Added EEG file: %s", result.get('target_path', file_path))
-                except Exception:
-                    logger.exception("Error processing file %s; skipping", file_path)
-            elif modality == "photo (ieeg)":
-                try:
-                    # Photos are stored in ieeg datatype with photo suffix
-                    result = bids_subject.add_file(
-                        source_path=file_path,
-                        datatype='ieeg',
-                        entities=entities,
-                        suffix='photo'
-                    )
-                    logger.info("Added photo file: %s", result.get('target_path', file_path))
-                except Exception:
-                    logger.exception("Error processing photo file %s; skipping", file_path)
-            elif modality in anatomical_modalities:
-                try:
-                    # Let BidsSubject.add_file() handle ALL conversions (including DICOM)
-                    # Map modality display name to suffix
-                    suffix = str(modality).replace(" (anat)", "")
-                    result = bids_subject.add_file(
-                        source_path=file_path,
-                        datatype='anat',
-                        entities=entities,
-                        suffix=suffix
-                    )
-                    logger.info("Added anatomical file: %s", result.get('target_path', file_path))
-                except Exception:
-                    logger.exception("Error processing anatomical file %s; skipping", file_path)
-            else:
+            if resolved is None:
                 logger.warning("Modality not recognized: %s", modality)
+            else:
+                datatype, suffix = resolved
+                add_file_to_subject(bids_subject, file_path, datatype, suffix, entities)
 
             # Update overall progress across all subjects
             processed_files += 1
