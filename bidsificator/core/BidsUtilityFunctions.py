@@ -1,8 +1,26 @@
 import csv
 import os
 import json
+import shutil
 
 class BidsUtilityFunctions:
+    @staticmethod
+    def get_config_path() -> str:
+        """
+        Return the absolute path to the active config.yaml, creating it from
+        config.example.yaml on first run if it does not yet exist.
+
+        config.yaml is user-local and git-ignored; config.example.yaml is the
+        committed template. This lets a fresh clone start without a manual copy
+        instead of crashing with FileNotFoundError.
+        """
+        config_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+        config_path = os.path.realpath(os.path.join(config_dir, "config.yaml"))
+        if not os.path.exists(config_path):
+            example_path = os.path.realpath(os.path.join(config_dir, "config.example.yaml"))
+            shutil.copy(example_path, config_path)
+        return config_path
+
     @staticmethod
     def read_tsv_safely(filename: str) -> list:
         """

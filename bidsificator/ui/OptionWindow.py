@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget,
@@ -8,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QStandardPaths, QItemSelectionModel
 from ..controllers.OptionController import OptionController
+from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 from ..forms.OptionWindow_ui import Ui_OptionsForm
 
 
@@ -31,15 +31,7 @@ class OptionWindow(QWidget, Ui_OptionsForm):
         # Initialize controller with optional config path
         # This maintains backward compatibility while allowing dependency injection
         if config_path is None:
-            # Use absolute path relative to the package location
-            config_path = os.path.realpath(
-                os.path.join(
-                    os.path.dirname(__file__),
-                    "..",
-                    "config",
-                    "config.yaml"
-                )
-            )
+            config_path = BidsUtilityFunctions.get_config_path()
         self.controller = OptionController(config_path)
         
         # Connect UI signals to handlers

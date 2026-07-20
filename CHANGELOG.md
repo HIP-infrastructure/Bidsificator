@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated stale assertions to match current BIDS-correct behavior (e.g.
   electrodes/coordsystem filenames omit `task`/`acq`; trigger events use a
   generic `trial_type` with the code in the `value` column).
+- `config.yaml` is now user-local and git-ignored; it is auto-created from
+  `config.example.yaml` on first run through a shared
+  `BidsUtilityFunctions.get_config_path()` helper (previously the file was
+  tracked and four call sites hard-coded the path, which would `FileNotFoundError`
+  on a fresh clone once untracked).
+
+### Removed
+- Dead `core/BidsSubject.py` module (376 lines, superseded by
+  `BidsSubjectSchema`) and dead code in `MainWindow` (the unused browse-file
+  methods, the unreachable `on_worker_finished` handler with its `__worker`/
+  `__subject_data` attributes, and stale/duplicate imports).
+- Unused `flask-restful` dependency.
 
 ## [1.13.0] — 2026-07-20
 - Fix import session/acquisition corruption, add app logo. (#15)

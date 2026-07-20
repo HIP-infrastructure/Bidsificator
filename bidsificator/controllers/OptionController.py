@@ -1,8 +1,8 @@
 """Controller for managing options/configuration business logic."""
 
-import os
 from typing import Dict, List, Optional
 from ..core.OptionFile import OptionFile
+from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 from ..core.validators import FileExtensionValidator, SubjectPatternValidator
 
 
@@ -21,15 +21,7 @@ class OptionController:
                         If None, uses default path.
         """
         if config_path is None:
-            # Use absolute path relative to the package location
-            config_path = os.path.realpath(
-                os.path.join(
-                    os.path.dirname(__file__),
-                    "..",
-                    "config",
-                    "config.yaml"
-                )
-            )
+            config_path = BidsUtilityFunctions.get_config_path()
         self.config_path = config_path
         self.model = OptionFile(self.config_path)
     

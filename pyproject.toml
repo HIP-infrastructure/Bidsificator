@@ -22,6 +22,9 @@ neo = "^0.14.3"
 # neo pulls in quantities; <0.16.4 references the removed np.ndarray.ptp and
 # crashes at import under numpy 2.x. Pin the floor to keep the lock installable.
 quantities = ">=0.16.4"
+# edfio and pybv are required at runtime by mne.export(fmt='edf') and
+# mne.export(fmt='brainvision') respectively — they are never imported directly,
+# so do not "clean them up" as unused.
 edfio = "^0.4.12"
 pybv = "^0.7.6"
 
@@ -30,7 +33,6 @@ flasgger = "^0.9.7"
 flask = "^3.1"
 flask-cors = "^6.0"
 flask-httpauth = "^4.8"
-flask-restful = "^0.3.10"
 flask_caching = "^2.3.1"
 openpyxl = "^3.1.5"
 
