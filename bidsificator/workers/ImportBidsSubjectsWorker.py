@@ -4,7 +4,7 @@ import multiprocessing as mp
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from .BidsSubjectsProcess import processBidsSubjects
-from .protocol import PROGRESS_DONE, PROGRESS_ERROR
+from .import_processor import PROGRESS_DONE, PROGRESS_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +20,13 @@ class ImportBidsSubjectsWorker(QThread):
         self.subject_list = subject_list
         self.overwrite_existing = overwrite_existing
         self.task = task
-        self.anatomical_modalities = {
-            "T1w (anat)", "T2w (anat)", "T1rho (anat)",
-            "T2* (anat)", "FLAIR (anat)", "CT (anat)"
-        }
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()
         process = mp.Process(
             target=processBidsSubjects,
             args=(child_conn, self.dataset_path, self.subject_list,
-                  self.anatomical_modalities, self.overwrite_existing, self.task),
+                  self.overwrite_existing, self.task),
         )
         process.start()
 

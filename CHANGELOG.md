@@ -59,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Apache-2.0`, and added the repository URL, keywords, and classifiers.
   Dependencies stay in `[tool.poetry.dependencies]` (declared `dynamic`), so the
   lockfile and resolved versions are unchanged.
+- Deduplicated the import worker processors. The modality dispatch was
+  copy-pasted across `processBidsFiles` and `processBidsSubjects` (and a second
+  time within the latter); it now lives once in a new
+  `workers/import_processor.py` (`resolve_datatype_and_suffix` +
+  `add_file_to_subject`), which also owns the `ANATOMICAL_MODALITIES` set (was
+  duplicated in both workers) and the progress sentinels (absorbing
+  `workers/protocol.py`). Renamed the misspelled `BidsFilesProcss.py` →
+  `BidsFilesProcess.py`. Behavior is unchanged, including the deliberate
+  difference between the two paths (the subjects path applies one shared,
+  schema-required task entity; the files path takes task per file).
 
 ### Removed
 - Dead `core/BidsSubject.py` module (376 lines, superseded by
