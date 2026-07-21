@@ -13,7 +13,7 @@ from ..forms.MainWindow_ui import Ui_MainWindow
 from ..ui.AboutDialog import AboutDialog
 from ..ui.OptionWindow import OptionWindow
 from ..ui.StatusBarManager import StatusBarManager
-from ..ui.tabs.import_files_tab import ImportFilesTabMixin
+from ..ui.tabs.import_files_tab import ImportFilesTab
 from ..ui.tabs.import_subjects_tab import ImportSubjectsTab
 from ..ui.tabs.participants_tab import ParticipantsTabMixin
 from ..ui.ValidationResultsDialog import ValidationProgressDialog, ValidationResultsDialog
@@ -25,15 +25,14 @@ class MainWindow(
     QMainWindow,
     Ui_MainWindow,
     ParticipantsTabMixin,
-    ImportFilesTabMixin,
 ):
     """Main application window.
 
-    The Import Subjects tab is a self-contained `ImportSubjectsTab` QWidget
-    (9d.1); the remaining tabs' slots still live in mixins (see
-    `bidsificator.ui.tabs`). This class owns window setup, the controller
-    wiring, the cross-tab signal handlers, dataset create/open, the validation
-    state, and the status-bar handlers.
+    The Import Files and Import Subjects tabs are self-contained QWidgets
+    (`ImportFilesTab`/`ImportSubjectsTab`, 9d.1–9d.2); only the Participants tab's
+    slots still live in a mixin (see `bidsificator.ui.tabs`). This class owns
+    window setup, the controller wiring, the cross-tab signal handlers, dataset
+    create/open, the validation state, and the file-tree/validation chrome.
     """
 
     _browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
@@ -55,25 +54,24 @@ class MainWindow(
         self._validation_level = "NOT_BIDS"
         self._validation_issues = []
 
-        # Initialize Import Files tab. The file list, current subject, and contact
-        # labeling file live in ImportFilesController/ImportSessionModel — the view
-        # holds no parallel copy.
-        self.setup_import_files_tab()
-
-        # Populate modality dropdown with schema-driven values
-        self.populate_modality_dropdown()
-
-        # Make SessionComboBox editable for custom session names
-        self._setup_session_combobox()
-
         # Initialize MVC Controller
         self._main_controller = MainController(self)
         self._setup_controller_connections()
 
-        # Import Subjects tab is a self-contained QWidget (9d.1): it owns its
-        # widgets + behaviour and wires its own controller signals. Built after
-        # the MainController exists (it takes it by injection) and inserted at
-        # index 2, after the still-inline Participants and Import Files tabs.
+        # The Import Files (9d.2) and Import Subjects (9d.1) tabs are
+        # self-contained QWidgets that own their widgets + behaviour and wire
+        # their own controller signals. Built after the MainController exists
+        # (they take it by injection) and inserted in ASCENDING index order after
+        # the still-inline Participants tab — QTabWidget.insertTab clamps the
+        # index to count(), so files (1) must precede subjects (2).
+        self._import_files_tab = ImportFilesTab(
+            self._main_controller,
+            self._status_bar_manager,
+            self._get_browse_memory,
+            self._set_browse_memory,
+        )
+        self.tabWidget.insertTab(1, self._import_files_tab, "Import Files")
+
         self._import_subjects_tab = ImportSubjectsTab(
             self._main_controller,
             self._status_bar_manager,
@@ -98,7 +96,9 @@ class MainWindow(
         #    First tab
         self.CreateSubjectPushButton.clicked.connect(self.create_subject)
         self.SubjectLineEdit.setCursorPosition(len(self.SubjectLineEdit.text()))
-        self.tableWidget.subject_updated.connect(self.update_subject_names_dropDown)
+        # Cross-tab: a subject added/renamed/removed on the Participants tab must
+        # refresh the Import Files subject dropdown.
+        self.tableWidget.subject_updated.connect(self._import_files_tab.refresh_subject_dropdown)
 
         # Setup file tree context menu
         self.fileTreeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -107,29 +107,10 @@ class MainWindow(
         # Enable multi-selection in file tree for subject operations
         self.fileTreeView.setSelectionMode(self.fileTreeView.SelectionMode.ExtendedSelection)
 
-        #    Second tab
-        #       Add/Remove file
-        self.ModalityComboBox.currentIndexChanged.connect(self.update_modality_UI)
-        # Browse button removed from UI - files selected via "+" button only
-        # Make path field read-only for information display
-        self.BrowseLineEdit.setReadOnly(True)
-        self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
-        self.AddFileButton.clicked.connect(self.add_multiple_files)
-        self.RemoveFileButton.clicked.connect(self.remove_file_from_list)
-        # Import File List Widget connections
-        self.ImportFileListWidget.itemClicked.connect(self.on_import_file_selected)
-        self.ImportFileListWidget.itemSelectionChanged.connect(self.on_import_file_selected)
-        # Clinical electrode labeling file connection
-        self.ClinicalElecPushButton.clicked.connect(self.browse_clinical_electrode_file)
-        self.ClinicalElecLineEdit.setReadOnly(True)  # Make read-only like BrowseLineEdit
-        #    Third tab (Import Subjects) wires itself inside ImportSubjectsTab.
-        #    Buttons
-        self.StartImportPushButton.clicked.connect(self.start_file_import)
+        #    The Import Files (second) and Import Subjects (third) tabs wire
+        #    themselves inside their QWidget classes. The BIDS-validator button is
+        #    window chrome (left pane), so it stays wired here.
         self.BidsValidatorPushButton.clicked.connect(self.validate_bids_dataset)
-
-        # Trigger UI for the first time
-        self.progressBar.setValue(0)  # Second tab progress bar
-        self.update_modality_UI()
 
     def _get_dataset_path(self) -> str:
         """Get current dataset path for PatientTableWidget."""
@@ -168,21 +149,8 @@ class MainWindow(
         dataset_ctrl.validation_started.connect(self._on_validation_started)
         dataset_ctrl.validation_finished.connect(self._on_validation_finished)
 
-        # Import files controller signals (Second tab)
-        import_files_ctrl = self._main_controller.import_files_controller
-        # Cache the controller: it is the single source of truth for this tab.
-        self._import_files_controller = import_files_ctrl
-        import_files_ctrl.file_list_changed.connect(self.refresh_import_file_list)
-        import_files_ctrl.form_data_updated.connect(self._update_form_from_data)
-        import_files_ctrl.progress_updated.connect(self.progressBar.setValue)  # Second tab progress bar
-        import_files_ctrl.progress_updated.connect(self._on_file_import_progress)
-        import_files_ctrl.import_completed.connect(self._on_file_import_completed)
-        import_files_ctrl.import_failed.connect(self._on_import_failed)
-        import_files_ctrl.import_failed.connect(self._show_file_import_failed_dialog)
-        import_files_ctrl.operation_failed.connect(self._on_operation_failed)
-        import_files_ctrl.dialog_dismissed.connect(self._on_dialog_dismissed)
-
-        # Import Subjects tab (ImportSubjectsTab) wires its own controller signals.
+        # The Import Files and Import Subjects tabs wire their own controller
+        # signals inside their QWidget classes.
 
     def _on_dataset_changed(self, dataset_path: str):
         """Handle dataset change from controller."""
@@ -194,7 +162,7 @@ class MainWindow(
         # Only load subjects and update UI if it's a valid dataset
         if self._validation_level != "NOT_BIDS":
             self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
-            self.update_subject_names_dropDown()
+            self._import_files_tab.refresh_subject_dropdown()
 
         # Show validation warning if necessary
         self._show_validation_warning_if_needed()
@@ -206,8 +174,8 @@ class MainWindow(
         if dataset_path:
             self.tableWidget.LoadSubjectsInTableWidget(dataset_path)
 
-        # Update the subject dropdown (second tab)
-        self.update_subject_names_dropDown()
+        # Update the subject dropdown (Import Files tab)
+        self._import_files_tab.refresh_subject_dropdown()
 
     def open_db_options(self):
         self.__optionWindow = OptionWindow()
@@ -338,44 +306,3 @@ class MainWindow(
         """Force refresh of validation state - can be called manually."""
         self._update_validation_state()
         self._update_tabs_based_on_validation()
-
-    # Status bar handler methods
-
-    def _on_file_import_progress(self, progress: int):
-        """Handle file import progress update for status bar."""
-        self._status_bar_manager.show_progress("Importing files...", progress)
-
-    def _on_file_import_completed(self, results: dict):
-        """Handle file import completion: status bar + completion dialog."""
-        file_count = results.get("files_imported", 0)
-        self._status_bar_manager.show_success(f"Successfully imported {file_count} files")
-        QMessageBox.information(
-            self,
-            "Import Complete",
-            f"Successfully imported {file_count} files.\n\n"
-            "Files remain in the list for review. You can:\n"
-            "• Check/modify any file settings\n"
-            "• Remove files if needed\n"
-            "• Add more files\n"
-            "• Re-import if there were issues",
-        )
-
-    def _show_file_import_failed_dialog(self, message: str):
-        """Render a file-import failure (from ImportFilesController) as a modal."""
-        QMessageBox.critical(
-            self,
-            "Import Failed",
-            f"The file import did not complete:\n\n{message}",
-        )
-
-    def _on_operation_failed(self, title: str, message: str):
-        """Render a controller-reported failure (warning) from the Import Files tab."""
-        QMessageBox.warning(self, title, message)
-
-    def _on_import_failed(self, error_message: str):
-        """Handle import failure for status bar."""
-        self._status_bar_manager.show_error(f"Import failed: {error_message}")
-
-    def _on_dialog_dismissed(self):
-        """Handle dialog dismissal - clear status bar."""
-        self._status_bar_manager.clear()
