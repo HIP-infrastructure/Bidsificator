@@ -96,73 +96,6 @@
        <property name="currentIndex">
         <number>0</number>
        </property>
-       <widget class="QWidget" name="ParticipantsTab">
-        <attribute name="title">
-         <string>Participants</string>
-        </attribute>
-        <layout class="QGridLayout" name="gridLayout_2">
-         <item row="0" column="0">
-          <layout class="QHBoxLayout" name="CreateSubjectLayout">
-           <item>
-            <widget class="QLineEdit" name="SubjectLineEdit">
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>28</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>28</height>
-              </size>
-             </property>
-             <property name="inputMask">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="maxLength">
-              <number>32767</number>
-             </property>
-             <property name="cursorPosition">
-              <number>0</number>
-             </property>
-             <property name="placeholderText">
-              <string>sub-&lt;IDENTIFIER123&gt;</string>
-             </property>
-             <property name="cursorMoveStyle">
-              <enum>Qt::CursorMoveStyle::VisualMoveStyle</enum>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="CreateSubjectPushButton">
-             <property name="minimumSize">
-              <size>
-               <width>150</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>150</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="text">
-              <string>Create Subject</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item row="1" column="0">
-          <widget class="PatientTableWidget" name="tableWidget"/>
-         </item>
-        </layout>
-       </widget>
       </widget>
      </widget>
     </item>
@@ -238,13 +171,6 @@
    </property>
   </action>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>PatientTableWidget</class>
-   <extends>QTableWidget</extends>
-   <header>..ui.PatientTableWidget</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -1,23 +1,22 @@
-"""Per-tab UI for MainWindow — mid-migration to standalone QWidgets (9d).
+"""Per-tab UI widgets for MainWindow (per-tab `.ui` split complete, 9d).
 
-Each tab of the main QTabWidget lives in its own file here. The split is being
-converted, one tab per PR, from *mixins into `MainWindow`* to *self-contained
-`QWidget` subclasses* built from their own `.ui` and receiving their
-dependencies by injection:
+Each tab of the main QTabWidget is a self-contained ``QWidget`` subclass built
+from its own ``.ui``, owning its widgets and behaviour and receiving its
+dependencies by injection. ``MainWindow`` is a thin host that constructs these
+and inserts them into the (otherwise empty) tab widget at runtime.
 
-- `ImportFilesTab` (QWidget, 9d.2 — DONE): the per-file metadata form, the file
-  list, modality/session/subject handling, and file import. Built from
-  `forms/ImportFilesTab.ui`. Exposes `refresh_subject_dropdown()` for the host to
-  call when the dataset's subject list changes.
-- `ImportSubjectsTab` (QWidget, 9d.1 — DONE): subject parsing, the subject list
-  + embedded FileEditor sync, the lookup table, and batch import. Built from
-  `forms/ImportSubjectsTab.ui`; owns its widgets, behaviour, and controller
-  signal wiring; MainWindow inserts it into the tab widget at runtime.
-- `ParticipantsTabMixin` (mixin — pending 9d.3): the Participants tab: subject
-  creation, the file-tree view and its context-menu operations.
+- ``ParticipantsTab`` — subject creation and the subject table
+  (``PatientTableWidget``). Built from ``forms/ParticipantsTab.ui``. Exposes
+  ``subject_updated`` (re-emitted from the table), ``subject_controller`` (for the
+  host's file-tree rename/delete ops), and ``refresh_table(path)``. The file-tree
+  browser itself is left-pane chrome and lives on ``MainWindow``, not here.
+- ``ImportFilesTab`` — the per-file metadata form, the file list, the subject
+  dropdown, modality/session/task handling, and file import. Built from
+  ``forms/ImportFilesTab.ui``. Exposes ``refresh_subject_dropdown()``.
+- ``ImportSubjectsTab`` — subject parsing, the subject list + embedded
+  ``FileEditor`` sync, the lookup table, and batch import. Built from
+  ``forms/ImportSubjectsTab.ui``.
 
-The remaining mixins are transitional: `self` is the live `MainWindow`, so their
-slot bodies (and dialog parents) are unchanged and rely on the widgets built by
-`Ui_MainWindow.setupUi` and the state created in `MainWindow.__init__`. They are
-retired as each tab becomes a QWidget.
+Each tab wires its own controller signals and renders its own dialogs (parented
+to the tab); status-bar updates go through the injected ``StatusBarManager``.
 """

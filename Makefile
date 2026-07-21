@@ -1,10 +1,11 @@
 .DEFAULT_GOAL := help
 
-# Hand-authored .ui files whose generated _ui.py is kept in sync here. Add each
-# per-tab widget as it is split out of MainWindow.ui (9d): ImportSubjects +
-# ImportFiles done, Participants to follow.
+# Hand-authored .ui files whose generated _ui.py is kept in sync here. The 9d
+# per-tab split is complete: MainWindow.ui is now the shell + an empty tab
+# widget, and each tab has its own .ui.
 UI_FILES := \
 	bidsificator/forms/MainWindow_ui.py \
+	bidsificator/forms/ParticipantsTab_ui.py \
 	bidsificator/forms/ImportFilesTab_ui.py \
 	bidsificator/forms/ImportSubjectsTab_ui.py
 
