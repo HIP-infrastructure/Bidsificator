@@ -1,7 +1,9 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (
+    QInputDialog,
     QMenu,
+    QMessageBox,
     QTableWidget,
     QTableWidgetItem,
 )
@@ -42,6 +44,7 @@ class PatientTableWidget(QTableWidget):
         self._controller.subject_deleted.connect(self._on_subject_deleted)
         self._controller.keys_updated.connect(self._on_keys_updated)
         self._controller.data_changed.connect(self._on_data_changed)
+        self._controller.operation_failed.connect(self._on_operation_failed)
 
     def _setup_ui_connections(self):
         """Set up UI signal connections."""
@@ -120,22 +123,42 @@ class PatientTableWidget(QTableWidget):
 
     # UI Event Handlers
 
+    def _prompt_new_key_name(self):
+        """Ask the user for a new key name; returns the text (empty if cancelled)."""
+        key_name, ok = QInputDialog.getText(self, "Add Key", "Enter name for the new key:")
+        return key_name if ok else ""
+
     def _add_key_before_selected(self):
         """Add key before selected column using controller."""
         if self._selected_item and self._controller:
-            self._controller.add_key_before(self._selected_item.column())
+            self._controller.add_key_before(self._selected_item.column(), self._prompt_new_key_name())
 
     def _add_key_after_selected(self):
         """Add key after selected column using controller."""
         if self._selected_item and self._controller:
-            self._controller.add_key_after(self._selected_item.column())
+            self._controller.add_key_after(self._selected_item.column(), self._prompt_new_key_name())
 
     def _remove_selected_key(self):
-        """Remove selected key using controller."""
+        """Remove selected key using controller, confirming first."""
         if self._selected_item and self._controller:
             column_to_delete = self._selected_item.column()
             key_to_delete = self.horizontalHeaderItem(column_to_delete).text()
+            # Confirm removal for real keys; the controller guards (and reports)
+            # the reserved subject_id column without a confirmation prompt.
+            if key_to_delete != "subject_id":
+                reply = QMessageBox.question(
+                    self,
+                    "Remove Key",
+                    f"Are you sure you want to remove the '{key_to_delete}' key?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
             self._controller.remove_key(key_to_delete)
+
+    def _on_operation_failed(self, title: str, message: str):
+        """Render a controller-reported failure as a warning dialog."""
+        QMessageBox.warning(self, title, message)
 
     def _delete_selected_subject(self):
         """Delete selected subject using controller."""
