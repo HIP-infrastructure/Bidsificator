@@ -21,6 +21,7 @@ from ..ui.AboutDialog import AboutDialog
 from ..ui.FileEditor import FileEditor
 from ..ui.OptionWindow import OptionWindow
 from ..ui.StatusBarManager import StatusBarManager
+from ..ui.ValidationResultsDialog import ValidationProgressDialog, ValidationResultsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._main_controller.dataset_changed.connect(self._on_dataset_changed)
         self._main_controller.subjects_updated.connect(self._on_subjects_updated)
 
+        # DatasetController is UI-free and reports back via signals; the view owns
+        # the dialogs. Progress dialog for validation is held here so it can be
+        # closed both on completion and on error.
+        self._validation_progress_dialog = None
+        dataset_ctrl = self._main_controller.dataset_controller
+        dataset_ctrl.operation_failed.connect(self._on_dataset_operation_failed)
+        dataset_ctrl.validation_started.connect(self._on_validation_started)
+        dataset_ctrl.validation_finished.connect(self._on_validation_finished)
+
         # Import files controller signals (Second tab)
         import_files_ctrl = self._main_controller.import_files_controller
         # Cache the controller: it is the single source of truth for this tab.
@@ -249,12 +259,60 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         about_dialog.exec()
 
     def create_dataset(self):
-        """Create a new BIDS dataset using the controller."""
-        self._main_controller.create_dataset()
+        """Create a new BIDS dataset: gather inputs here, then delegate to the controller."""
+        default_dir = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DesktopLocation
+        )
+        folder_path = QFileDialog.getExistingDirectory(
+            self, "Select a folder to save the BIDS dataset", default_dir
+        )
+        if not folder_path:
+            return  # user cancelled folder selection
+
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for the dataset"
+        )
+        if not ok:
+            return  # user cancelled the name prompt
+
+        # An empty (but confirmed) name is reported back via operation_failed.
+        self._main_controller.create_dataset(folder_path, dataset_name)
 
     def open_dataset(self):
-        """Open an existing BIDS dataset using the controller."""
-        self._main_controller.open_dataset()
+        """Open an existing BIDS dataset: gather the folder here, then delegate to the controller."""
+        default_dir = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DesktopLocation
+        )
+        folder_path = QFileDialog.getExistingDirectory(self, "Select a folder", default_dir)
+        if not folder_path:
+            return  # user cancelled
+        self._main_controller.open_dataset(folder_path)
+
+    def _on_dataset_operation_failed(self, title: str, message: str):
+        """Show an error/warning for a failed dataset operation (from DatasetController)."""
+        # A dataset error can arrive while the validation progress dialog is open.
+        self._close_validation_progress_dialog()
+        QMessageBox.warning(self, title, message)
+
+    def _on_validation_started(self, message: str):
+        """Open the validation progress dialog (DatasetController signalled a start)."""
+        self._close_validation_progress_dialog()
+        self._validation_progress_dialog = ValidationProgressDialog(self)
+        self._validation_progress_dialog.show()
+        self._validation_progress_dialog.set_status(message)
+
+    def _on_validation_finished(self, validation_result):
+        """Close the progress dialog and show the validation results dialog."""
+        self._close_validation_progress_dialog()
+        results_dialog = ValidationResultsDialog(self)
+        results_dialog.display_validation_result(validation_result)
+        results_dialog.exec()
+
+    def _close_validation_progress_dialog(self):
+        """Close and drop the validation progress dialog if it is open."""
+        if self._validation_progress_dialog is not None:
+            self._validation_progress_dialog.close()
+            self._validation_progress_dialog = None
 
     def load_treeView_UI(self, initial_folder):
         # Define file system model at the root folder chosen by the user
@@ -333,6 +391,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def populate_modality_dropdown(self):
         """Populate ModalityComboBox with available datatypes from schema"""
         try:
+            from ..core.bids_constants import MODALITY_DISPLAY_MAPPING
             from ..services.FileDetectionServiceSchema import FileDetectionService
 
             # Clear existing items (both static ones from UI and any previous dynamic ones)
@@ -342,45 +401,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             detection_service = FileDetectionService()
             available_datatypes = detection_service.get_all_datatypes()
 
-            # Create display format mapping for UI compatibility
-            # The existing UI logic expects formats like "ieeg (ieeg)", "T1w (anat)", etc.
-            datatype_mapping = {
-                'anat': [
-                    ('T1w (anat)', 'T1w'),
-                    ('T2w (anat)', 'T2w'),
-                    ('T1rho (anat)', 'T1rho'),
-                    ('T2* (anat)', 'T2star'),
-                    ('FLAIR (anat)', 'FLAIR'),
-                    ('CT (anat)', 'CT')
-                ],
-                'ieeg': [
-                    ('ieeg (ieeg)', 'ieeg'),
-                    ('photo (ieeg)', 'photo')
-                ],
-                'eeg': [
-                    ('eeg (eeg)', 'eeg')
-                ],
-                'func': [
-                    ('BOLD (func)', 'bold')
-                ],
-                'dwi': [
-                    ('DWI (dwi)', 'dwi')
-                ],
-                'fmap': [
-                    ('fieldmap (fmap)', 'fieldmap')
-                ],
-                'perf': [
-                    ('ASL (perf)', 'asl')
-                ],
-                'beh': [
-                    ('events (beh)', 'events')
-                ]
-            }
-
-            # Add items for available datatypes
+            # Add items for available datatypes using the shared display labels.
             for datatype in sorted(available_datatypes):
-                if datatype in datatype_mapping:
-                    for display_name, _suffix in datatype_mapping[datatype]:
+                if datatype in MODALITY_DISPLAY_MAPPING:
+                    for display_name, _suffix in MODALITY_DISPLAY_MAPPING[datatype]:
                         self.ModalityComboBox.addItem(display_name)
 
         except Exception:
@@ -1273,25 +1297,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if reply == QMessageBox.StandardButton.No:
             return
 
-        # Perform file deletions
-        import os
-        failed_deletions = []
-        successful_deletions = []
+        # Perform the deletions in the model/controller; the view only maps the
+        # resulting paths back to the display names it already knows.
+        name_by_path = {f['path']: f['name'] for f in files_info}
+        paths = [f['path'] for f in files_info]
+        deleted_paths, failed = self._main_controller.delete_dataset_files(paths)
 
-        for file_info in files_info:
-            file_path = file_info['path']
-            file_name = file_info['name']
-
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    successful_deletions.append(file_name)
-                else:
-                    failed_deletions.append((file_name, "File not found"))
-            except PermissionError:
-                failed_deletions.append((file_name, "Permission denied"))
-            except Exception as e:
-                failed_deletions.append((file_name, str(e)))
+        successful_deletions = [
+            name_by_path.get(p, os.path.basename(p)) for p in deleted_paths
+        ]
+        failed_deletions = [
+            (name_by_path.get(p, os.path.basename(p)), reason) for p, reason in failed
+        ]
 
         # Show results
         if successful_deletions and not failed_deletions:
@@ -1347,8 +1364,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             )
 
             if reply == QMessageBox.StandardButton.No:
-                # Try to open a different dataset
-                self._main_controller.open_dataset()
+                # Try to open a different dataset (view gathers the folder).
+                self.open_dataset()
 
         elif self._validation_level == "PARTIAL_BIDS":
             issues_text = "\n".join(f"• {issue}" for issue in self._validation_issues)

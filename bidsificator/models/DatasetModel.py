@@ -363,6 +363,37 @@ class DatasetModel:
         validation_service = ValidationService()
         return validation_service.validate_bids_dataset(self._current_dataset.path, subject_id)
 
+    def delete_files(self, file_paths: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+        """
+        Delete the given files from disk.
+
+        This is the filesystem side of the tree-view "Delete File" action; the
+        view owns confirmation and result dialogs and only hands the paths here.
+
+        Args:
+            file_paths: Absolute paths of the files to delete
+
+        Returns:
+            Tuple of (deleted_paths, failed) where ``failed`` is a list of
+            ``(path, reason)`` tuples for files that could not be deleted.
+        """
+        deleted: list[str] = []
+        failed: list[tuple[str, str]] = []
+
+        for file_path in file_paths:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    deleted.append(file_path)
+                else:
+                    failed.append((file_path, "File not found"))
+            except PermissionError:
+                failed.append((file_path, "Permission denied"))
+            except Exception as e:
+                failed.append((file_path, str(e)))
+
+        return deleted, failed
+
     def get_dataset_statistics(self) -> dict[str, Any]:
         """
         Get statistics about the current dataset.

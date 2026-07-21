@@ -135,3 +135,43 @@ BIDS_DATA_EXTENSIONS = (
 
 # Metadata file extensions
 METADATA_EXTENSIONS = ['.json', '.tsv', '.bval', '.bvec']
+
+# Curated display labels for the modality dropdowns, keyed by BIDS datatype.
+# Each entry is a list of (display label, BIDS suffix) pairs. This is a
+# deliberately hand-picked presentation subset (e.g. "T2* (anat)" shown for
+# suffix "T2star"), not the full per-datatype suffix list the schema exposes,
+# so it lives here as a single definition rather than being derived from the
+# schema. Both modality dropdowns — the Import Files tab (MainWindow) and the
+# File Editor — read this so they stay in lock-step from one source of truth.
+MODALITY_DISPLAY_MAPPING: dict[str, list[tuple[str, str]]] = {
+    'anat': [
+        ('T1w (anat)', 'T1w'),
+        ('T2w (anat)', 'T2w'),
+        ('T1rho (anat)', 'T1rho'),
+        ('T2* (anat)', 'T2star'),
+        ('FLAIR (anat)', 'FLAIR'),
+        ('CT (anat)', 'CT')
+    ],
+    'ieeg': [
+        ('ieeg (ieeg)', 'ieeg'),
+        ('photo (ieeg)', 'photo')
+    ],
+    'eeg': [
+        ('eeg (eeg)', 'eeg')
+    ],
+    'func': [
+        ('BOLD (func)', 'bold')
+    ],
+    'dwi': [
+        ('DWI (dwi)', 'dwi')
+    ],
+    'fmap': [
+        ('fieldmap (fmap)', 'fieldmap')
+    ],
+    'perf': [
+        ('ASL (perf)', 'asl')
+    ],
+    'beh': [
+        ('events (beh)', 'events')
+    ]
+}

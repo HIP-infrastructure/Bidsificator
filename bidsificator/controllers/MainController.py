@@ -76,21 +76,45 @@ class MainController(QObject):
         """Get dataset controller."""
         return self._dataset_controller
 
-    def create_dataset(self):
-        """Create a new dataset."""
-        success, result = self._dataset_controller.create_new_dataset()
+    def create_dataset(self, folder_path: str, dataset_name: str):
+        """
+        Create a new dataset from view-supplied inputs.
+
+        Args:
+            folder_path: Folder chosen by the user to hold the dataset
+            dataset_name: Name entered by the user
+        """
+        success, result = self._dataset_controller.create_new_dataset(folder_path, dataset_name)
         if success:
             self.dataset_changed.emit(result)
             self.subjects_updated.emit()
             self.status_updated.emit(f"Dataset created: {self._dataset_controller.dataset_name}")
 
-    def open_dataset(self):
-        """Open an existing dataset."""
-        success, result = self._dataset_controller.load_existing_dataset()
+    def open_dataset(self, folder_path: str):
+        """
+        Open an existing dataset from a view-supplied folder.
+
+        Args:
+            folder_path: Folder chosen by the user
+        """
+        success, result = self._dataset_controller.load_existing_dataset(folder_path)
         if success:
             self.dataset_changed.emit(result)
             self.subjects_updated.emit()
             self.status_updated.emit(f"Dataset loaded: {self._dataset_controller.dataset_name}")
+
+    def delete_dataset_files(self, file_paths: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+        """
+        Delete files from disk through the dataset controller.
+
+        Args:
+            file_paths: Absolute paths of the files to delete
+
+        Returns:
+            Tuple of (deleted_paths, failed) where ``failed`` is a list of
+            ``(path, reason)`` tuples.
+        """
+        return self._dataset_controller.delete_files(file_paths)
 
     def create_subject(self, subject_name: str):
         """
