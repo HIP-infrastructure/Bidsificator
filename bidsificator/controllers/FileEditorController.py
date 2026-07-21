@@ -3,7 +3,7 @@
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QInputDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QWidget
 
 from ..services.ValidationServiceSchema import ValidationService
 
@@ -16,6 +16,7 @@ class FileEditorController(QObject):
     file_selected = pyqtSignal(dict)  # File data for selected file
     task_list_updated = pyqtSignal(list)  # Task list changed
     edit_mode_changed = pyqtSignal(bool)  # Edit mode enabled/disabled
+    operation_failed = pyqtSignal(str, str)  # (title, message) for the view to render
 
     def __init__(self, parent: QWidget | None = None):
         """
@@ -279,45 +280,35 @@ class FileEditorController(QObject):
                 # Update memory with current file state
                 self._file_memory = files[self._selected_file_index].copy()
 
-    def handle_task_selection(self, task_name: str, current_tasks: list[str]) -> tuple[str, list[str]]:
+    def add_custom_task(self, new_task: str, current_tasks: list[str]) -> tuple[str, list[str]]:
         """
-        Handle task selection, including "Other" option.
+        Add a user-entered custom task to the task list.
+
+        The task name is gathered by the view (the "Other" combobox option opens
+        an input dialog there); this method validates it and, on success, inserts
+        it before the "Other" entry. Empty or invalid names are reported via
+        ``operation_failed(title, message)`` for the view to render.
 
         Args:
-            task_name: Selected task name
-            current_tasks: Current list of available tasks
+            new_task: The task name entered by the user.
+            current_tasks: Current list of available tasks.
 
         Returns:
-            Tuple of (final_task_name, updated_task_list)
+            Tuple of (final_task_name, updated_task_list); ``final_task_name`` is
+            empty when the task was rejected.
         """
-        if "Other" not in task_name:
-            return task_name, current_tasks
-
-        # Handle "Other" selection
-        new_task, ok = QInputDialog.getText(
-            self._parent_widget,
-            "Enter Task Name",
-            "Enter a name for your task"
-        )
-
-        if not ok or not new_task.strip():
-            if not new_task.strip():
-                QMessageBox.warning(
-                    self._parent_widget,
-                    "Task Name empty",
-                    "Please enter a valid name for your task"
-                )
-            return "", current_tasks  # Return empty to indicate cancellation
+        if not new_task.strip():
+            self.operation_failed.emit(
+                "Task Name empty",
+                "Please enter a valid name for your task",
+            )
+            return "", current_tasks
 
         # Validate task name
         validation_service = ValidationService()
         is_valid, error = validation_service.validate_task_name(new_task)
         if not is_valid:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Invalid Task Name",
-                error
-            )
+            self.operation_failed.emit("Invalid Task Name", error)
             return "", current_tasks
 
         # Add new task to the list (insert before "Other")
