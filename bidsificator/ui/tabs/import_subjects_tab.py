@@ -10,7 +10,7 @@ import logging
 import os
 
 from PyQt6.QtGui import QCursor
-from PyQt6.QtWidgets import QFileDialog, QMenu
+from PyQt6.QtWidgets import QFileDialog, QMenu, QMessageBox
 
 from ...core.BidsUtilityFunctions import BidsUtilityFunctions
 
@@ -107,6 +107,16 @@ class ImportSubjectsTabMixin:
         if not selectedIndexes:
             return
 
+        # Confirm here (view) before removing.
+        reply = QMessageBox.question(
+            self,
+            "Remove Subject",
+            "Are you sure you want to remove the selected subject(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
+
         # Get the row indices to remove
         indices_to_remove = [index.row() for index in selectedIndexes]
 
@@ -128,7 +138,42 @@ class ImportSubjectsTabMixin:
         # Get task value from the FileEditor's TaskComboBox
         task = self._import_subject_file_editor.TaskComboBox.currentText()
 
-        self._main_controller.start_subjects_import(task)
+        # The controller calls back into _resolve_subject_conflicts if the dataset
+        # already contains some of the subjects being imported.
+        self._main_controller.start_subjects_import(task, self._resolve_subject_conflicts)
+
+    def _resolve_subject_conflicts(self, existing_subjects: list[str]) -> str:
+        """Ask the user how to handle already-existing subjects.
+
+        Returns "overwrite", "skip", or "cancel" for the controller to act on.
+        """
+        subject_list = "\n".join([f"• {subject}" for subject in existing_subjects])
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Subject Conflicts Detected")
+        if len(existing_subjects) == 1:
+            msg.setText(f"The following subject already exists in the dataset:\n\n{subject_list}")
+        else:
+            msg.setText(
+                f"The following {len(existing_subjects)} subjects already exist in the dataset:\n\n"
+                f"{subject_list}"
+            )
+        msg.setInformativeText("How would you like to proceed?")
+
+        overwrite_btn = msg.addButton("Overwrite Existing", QMessageBox.ButtonRole.AcceptRole)
+        skip_btn = msg.addButton("Skip These Subjects", QMessageBox.ButtonRole.RejectRole)
+        # Cancel is shown but not compared against (anything else is treated as cancel).
+        msg.addButton("Cancel Import", QMessageBox.ButtonRole.NoRole)
+        msg.setDefaultButton(skip_btn)
+        msg.exec()
+
+        clicked_button = msg.clickedButton()
+        if clicked_button == overwrite_btn:
+            return "overwrite"
+        elif clicked_button == skip_btn:
+            return "skip"
+        return "cancel"
 
     def _save_file_editor_changes(self):
         """Save FileEditor changes back to ImportSubjectsController."""
@@ -169,5 +214,18 @@ class ImportSubjectsTabMixin:
         self._main_controller.import_subjects_controller.set_lookup_table(path.strip())
 
     def create_lookup_template(self):
-        """Create a lookup table template file."""
-        self._main_controller.import_subjects_controller.create_lookup_template()
+        """Create a lookup table template file (view gathers the save path)."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Lookup Table Template",
+            "lookup_table.csv",
+            "CSV files (*.csv);;All files (*.*)",
+        )
+        if not file_path:
+            return
+
+        success, message = self._main_controller.import_subjects_controller.save_lookup_template(file_path)
+        if success:
+            QMessageBox.information(self, "Template Created", message)
+        else:
+            QMessageBox.warning(self, "Template Creation Failed", message)

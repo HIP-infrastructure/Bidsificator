@@ -186,6 +186,9 @@ class MainWindow(
         import_subjects_ctrl.progress_updated.connect(self._on_subjects_import_progress)
         import_subjects_ctrl.import_completed.connect(self._on_subjects_import_completed)
         import_subjects_ctrl.import_failed.connect(self._on_import_failed)
+        import_subjects_ctrl.import_failed.connect(self._show_subjects_import_failed_dialog)
+        import_subjects_ctrl.operation_failed.connect(self._on_operation_failed)
+        import_subjects_ctrl.operation_info.connect(self._on_operation_info)
         import_subjects_ctrl.dialog_dismissed.connect(self._on_dialog_dismissed)
         import_subjects_ctrl.lookup_table_updated.connect(self._on_lookup_table_updated)
 
@@ -382,12 +385,30 @@ class MainWindow(
         self._status_bar_manager.show_progress("Importing subjects...", progress)
 
     def _on_subjects_import_completed(self, results: dict):
-        """Handle subjects import completion for status bar."""
+        """Handle subjects import completion: status bar + completion dialog."""
         subject_count = results.get("subjects_imported", 0)
         file_count = results.get("total_files", 0)
         self._status_bar_manager.show_success(
             f"Successfully imported {subject_count} subjects ({file_count} files)"
         )
+        QMessageBox.information(
+            self,
+            "Import Complete",
+            f"Successfully imported {subject_count} subjects with {file_count} files.\n\n"
+            "Check the dataset folder for the imported files.",
+        )
+
+    def _show_subjects_import_failed_dialog(self, message: str):
+        """Render a subjects-import failure (from ImportSubjectsController) as a modal."""
+        QMessageBox.critical(
+            self,
+            "Import Failed",
+            f"The subject import did not complete:\n\n{message}",
+        )
+
+    def _on_operation_info(self, title: str, message: str):
+        """Render a controller-reported informational message from the import tabs."""
+        QMessageBox.information(self, title, message)
 
     def _on_import_failed(self, error_message: str):
         """Handle import failure for status bar."""
