@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error dialog and status-bar message instead of the "Import complete" success
   dialog. Previously the workers emitted `finished` unconditionally and the
   controllers hardcoded `"success": True`.
+- Fixed a latent crash on the Import Files add path: `ImportFilesController.add_multiple_files` and `browse_single_file` called `FileDetectionService.get_all_supported_extensions()` / `get_file_filters()` on the class rather than an instance (`TypeError`). These paths were dead until now (the view reimplemented adding), so the bug had never surfaced; they are the live add path after the state migration below.
 
 ### Changed
 - Made the test suite trustworthy: removed hardcoded personal file paths (the
@@ -69,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BidsFilesProcess.py`. Behavior is unchanged, including the deliberate
   difference between the two paths (the subjects path applies one shared,
   schema-required task entity; the files path takes task per file).
+- Import Files tab now uses a single source of truth (PR 8a of the MVC migration). `MainWindow` previously kept a parallel `__import_files_data` dict (~40 usages) and reimplemented add / remove / modality-detection / acquisition logic, syncing to `ImportFilesController` + `ImportSessionModel` only at import time — the dual-source-of-truth that caused the #15 session/acquisition corruption. The view now delegates add, remove, and subject-change to the controller and reads file state from the model; the file list, current subject, and contact-labeling file live only in the model. The view keeps just the form load/save *timing* (a genuine view concern), now operating on the model. Deleted `set_files_data`/`load_from_legacy_data` and the view's duplicated `_create_file_data`/`_process_selected_files`/`_is_duplicate_file`/`detect_modality_from_file`/`get_next_acquisition_number`/`add_file_to_import_data`/`_select_files_for_import`/`_show_import_results`/`update_selection_after_removal` helpers. Behavior is preserved, including the empty-session round-trip guarding #15; see the related fix above. Modality auto-detection now runs solely through the shared `FileDetectionService` (the view's duplicate `detect_modality_from_file` is gone); for every file type this tool detects — iEEG (`.trc`/`.edf`/`.vhdr`/`.bdf`), anatomical (`.nii`), photos — the resulting modality is unchanged.
 
 ### Removed
 - Dead `core/BidsSubject.py` module (376 lines, superseded by

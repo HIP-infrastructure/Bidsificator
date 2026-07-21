@@ -66,6 +66,16 @@ class ImportFilesController(QObject):
         return self._model.file_model.count()
 
     @property
+    def contact_labeling_file(self) -> str | None:
+        """Get the optional contact-labeling Excel file for the current session."""
+        return self._contact_labeling_file
+
+    @contact_labeling_file.setter
+    def contact_labeling_file(self, path: str | None):
+        """Set (or clear) the contact-labeling Excel file for the current session."""
+        self._contact_labeling_file = path
+
+    @property
     def selected_file_index(self) -> int:
         """Get currently selected file index."""
         return self._model.selected_file_index
@@ -96,7 +106,7 @@ class ImportFilesController(QObject):
             self._browse_memory = memory_path
 
         # Get file filter
-        all_filter = FileDetectionService.get_all_supported_extensions()
+        all_filter = FileDetectionService().get_all_supported_extensions()
 
         # Open multi-file selection dialog
         files, _ = QFileDialog.getOpenFileNames(
@@ -147,7 +157,7 @@ class ImportFilesController(QObject):
         Returns:
             Selected file path or None if cancelled
         """
-        filters = FileDetectionService.get_file_filters()
+        filters = FileDetectionService().get_file_filters()
 
         # For anatomy, allow both file and folder selection
         if "(anat)" in modality:
@@ -485,26 +495,3 @@ class ImportFilesController(QObject):
     def is_import_in_progress(self) -> bool:
         """Check if import is currently in progress."""
         return self._worker is not None and self._worker.isRunning()
-
-
-    def set_files_data(self, subject_id: str, files_data: list[dict], contact_labeling_file: str | None = None) -> None:
-        """
-        Set files data directly from external source (e.g., MainWindow).
-
-        Args:
-            subject_id: Subject identifier
-            files_data: List of file data dictionaries
-            contact_labeling_file: Optional path to contact labeling Excel file
-        """
-        # Store contact labeling file
-        self._contact_labeling_file = contact_labeling_file
-
-        # Load the data into the model
-        data = {
-            "subject_id": subject_id,
-            "files": files_data
-        }
-        self._model.load_from_legacy_data(data)
-        self.file_list_changed.emit()
-        if self._model.file_model.count() > 0:
-            self.selected_file_index = 0
