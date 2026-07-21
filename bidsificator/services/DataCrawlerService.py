@@ -77,20 +77,9 @@ class DataCrawlerService:
 
         # Apply subject mapping if available
         original_subject_id = subject["subject_id"]
-        if subject_mapping and original_subject_id in subject_mapping:
-            mapped_subject_id = subject_mapping[original_subject_id]
-            # Format the ID for display
-            if len(mapped_subject_id) == 7 and mapped_subject_id.isdigit():
-                # Numeric format: split into center ID (first 3 digits) and subject ID (last 4 digits)
-                display_id = f"{mapped_subject_id[:3]}-{mapped_subject_id[3:]}"
-            else:
-                # Custom alphanumeric format: show as-is
-                display_id = mapped_subject_id
-            # Create display name showing original [mapped] format
-            display_name = f"{original_subject_id} [{display_id}]"
-        else:
-            mapped_subject_id = original_subject_id
-            display_name = original_subject_id  # No mapping, show original
+        mapped_subject_id, display_name = cls.format_mapped_subject(
+            original_subject_id, subject_mapping
+        )
 
         # Create processed subject
         processed_subject = {
@@ -101,6 +90,35 @@ class DataCrawlerService:
         }
 
         return processed_subject
+
+    @staticmethod
+    def format_mapped_subject(
+        original_subject_id: str, subject_mapping: dict[str, str] = None
+    ) -> tuple[str, str]:
+        """Resolve an original subject/folder id to its (mapped_id, display_name).
+
+        Single source of truth for how the subject lookup table is applied, used
+        both at crawl time and when a lookup table is (re)loaded after subjects
+        are already parsed. With no mapping (or no entry for this id) the subject
+        keeps its original id and shows its plain name.
+
+        Returns:
+            ``(mapped_subject_id, display_name)`` where ``display_name`` is
+            ``"original [mapped]"`` when a mapping applies, else the original id.
+        """
+        if subject_mapping and original_subject_id in subject_mapping:
+            mapped_subject_id = subject_mapping[original_subject_id]
+            # Numeric format (7 digits): split into center (first 3) + subject (last 4)
+            if len(mapped_subject_id) == 7 and mapped_subject_id.isdigit():
+                display_id = f"{mapped_subject_id[:3]}-{mapped_subject_id[3:]}"
+            else:
+                # Custom alphanumeric format: show as-is
+                display_id = mapped_subject_id
+            display_name = f"{original_subject_id} [{display_id}]"
+        else:
+            mapped_subject_id = original_subject_id
+            display_name = original_subject_id  # No mapping, show original
+        return mapped_subject_id, display_name
 
     @classmethod
     def get_subject_by_id(cls, subjects: list[dict], subject_id: str) -> dict[str, Any]:

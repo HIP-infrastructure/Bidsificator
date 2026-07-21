@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialog. Previously the workers emitted `finished` unconditionally and the
   controllers hardcoded `"success": True`.
 - Fixed a latent crash on the Import Files add path: `ImportFilesController.add_multiple_files` and `browse_single_file` called `FileDetectionService.get_all_supported_extensions()` / `get_file_filters()` on the class rather than an instance (`TypeError`). These paths were dead until now (the view reimplemented adding), so the bug had never surfaced; they are the live add path after the state migration below.
+- The Import Subjects lookup table (subject anonymization) now applies regardless of order. Previously `set_lookup_table` only stored the mapping; it was applied solely at crawl time, so loading the CSV *after* clicking Parse left the already-parsed subjects showing their original folder names (and importing them under those names) — it looked like the lookup "wasn't read". `set_lookup_table` now re-applies the mapping to already-loaded subjects in place (and clearing it reverts them), preserving any per-subject file edits since it re-maps rather than re-crawls. The mapping/display formatting is shared between crawl-time and reload via a new `DataCrawlerService.format_mapped_subject`, and the in-place update is `SubjectDataModel.reapply_subject_mapping`.
 
 ### Changed
 - Made the test suite trustworthy: removed hardcoded personal file paths (the

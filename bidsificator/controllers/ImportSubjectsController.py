@@ -441,6 +441,16 @@ class ImportSubjectsController(QObject):
 
         return False
 
+    def _reapply_mapping_to_loaded_subjects(self):
+        """Re-map already-parsed subjects to the current mapping and refresh the UI.
+
+        No-op when no subjects are loaded yet (the mapping is then applied at the
+        next Parse). Preserves per-subject file edits (re-maps in place, no crawl).
+        """
+        if self._model.count() > 0:
+            self._model.reapply_subject_mapping(self._subject_mapping)
+            self.subjects_loaded.emit()
+
     def set_lookup_table(self, csv_path: str) -> bool:
         """
         Set the lookup table for subject name mapping.
@@ -455,6 +465,8 @@ class ImportSubjectsController(QObject):
             # Clear lookup table
             self._lookup_table_path = None
             self._subject_mapping = {}
+            # Revert any already-parsed subjects to their original names.
+            self._reapply_mapping_to_loaded_subjects()
             self.lookup_table_updated.emit("Lookup table cleared")
             return True
 
@@ -481,6 +493,11 @@ class ImportSubjectsController(QObject):
         # Successfully parsed
         self._lookup_table_path = csv_path
         self._subject_mapping = mapping
+
+        # Apply the mapping to any subjects already parsed, so the anonymization
+        # takes effect regardless of whether the lookup table was loaded before
+        # or after Parse (it is applied at crawl time too, in parse_subjects_to_import).
+        self._reapply_mapping_to_loaded_subjects()
 
         status_message = f"Loaded {len(mapping)} subject mappings"
         self.lookup_table_updated.emit(status_message)
