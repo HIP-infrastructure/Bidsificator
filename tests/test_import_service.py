@@ -58,7 +58,7 @@ def test_acquisition_increments_over_matching_files():
 def test_acquisition_ignores_non_matching_and_bad_values():
     existing = [
         {"session": "01", "modality": "ieeg (ieeg)", "task": "rest", "acquisition": "05"},  # other session
-        {"session": "", "modality": "ieeg (ieeg)", "task": "rest", "acquisition": "oops"},  # unparseable
+        {"session": "", "modality": "ieeg (ieeg)", "task": "rest", "acquisition": "oops"},  # not a number
     ]
     assert ImportService.get_next_acquisition_number(existing, "", "ieeg (ieeg)", "rest") == "01"
 
