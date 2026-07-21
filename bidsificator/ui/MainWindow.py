@@ -174,6 +174,8 @@ class MainWindow(
         import_files_ctrl.progress_updated.connect(self._on_file_import_progress)
         import_files_ctrl.import_completed.connect(self._on_file_import_completed)
         import_files_ctrl.import_failed.connect(self._on_import_failed)
+        import_files_ctrl.import_failed.connect(self._show_file_import_failed_dialog)
+        import_files_ctrl.operation_failed.connect(self._on_operation_failed)
         import_files_ctrl.dialog_dismissed.connect(self._on_dialog_dismissed)
 
         # Import subjects controller signals (Third tab)
@@ -349,9 +351,31 @@ class MainWindow(
         self._status_bar_manager.show_progress("Importing files...", progress)
 
     def _on_file_import_completed(self, results: dict):
-        """Handle file import completion for status bar."""
+        """Handle file import completion: status bar + completion dialog."""
         file_count = results.get("files_imported", 0)
         self._status_bar_manager.show_success(f"Successfully imported {file_count} files")
+        QMessageBox.information(
+            self,
+            "Import Complete",
+            f"Successfully imported {file_count} files.\n\n"
+            "Files remain in the list for review. You can:\n"
+            "• Check/modify any file settings\n"
+            "• Remove files if needed\n"
+            "• Add more files\n"
+            "• Re-import if there were issues",
+        )
+
+    def _show_file_import_failed_dialog(self, message: str):
+        """Render a file-import failure (from ImportFilesController) as a modal."""
+        QMessageBox.critical(
+            self,
+            "Import Failed",
+            f"The file import did not complete:\n\n{message}",
+        )
+
+    def _on_operation_failed(self, title: str, message: str):
+        """Render a controller-reported failure (warning) from the import tabs."""
+        QMessageBox.warning(self, title, message)
 
     def _on_subjects_import_progress(self, progress: int):
         """Handle subjects import progress update for status bar."""

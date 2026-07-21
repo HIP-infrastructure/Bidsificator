@@ -196,20 +196,38 @@ class ImportFilesTabMixin:
         current_subject = self.SubjectComboBox.currentText()
         previous_subject = self._import_files_controller.current_subject
 
-        # The controller owns the "apply to all queued files?" confirmation prompt
-        # (and only prompts when files are present and the subject actually changes).
-        changed = self._import_files_controller.change_subject(current_subject, ask_user=True)
+        # Confirm here (view) before re-tagging queued files. The controller tells
+        # us when a prompt is warranted (files present and the subject changes).
+        if self._import_files_controller.needs_subject_change_confirmation(current_subject):
+            reply = QMessageBox.question(
+                self,
+                "Subject Changed",
+                f"You're switching from '{previous_subject}' to '{current_subject}'.\n\n"
+                f"What would you like to do with the {self._import_files_controller.file_count} files in the list?\n\n"
+                f"• YES: Update all files to use '{current_subject}'\n"
+                f"• NO: Cancel - keep '{previous_subject}' selected",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self._revert_subject_combobox(previous_subject)
+                return
 
+        changed = self._import_files_controller.change_subject(current_subject)
         if changed:
             if previous_subject != current_subject:
                 # Subject actually changed: the contact labeling file no longer applies
                 self.ClinicalElecLineEdit.clear()
                 self._import_files_controller.contact_labeling_file = None
         else:
-            # User cancelled: revert the combobox to the previous subject
-            self._reverting_subject = True
-            self.set_comboBox_text(self.SubjectComboBox, previous_subject)
-            self._reverting_subject = False
+            # An empty subject is rejected by the model: revert the combobox.
+            self._revert_subject_combobox(previous_subject)
+
+    def _revert_subject_combobox(self, previous_subject: str):
+        """Restore the subject combobox without re-triggering on_subject_changed."""
+        self._reverting_subject = True
+        self.set_comboBox_text(self.SubjectComboBox, previous_subject)
+        self._reverting_subject = False
 
     def update_subject_names_dropDown(self):
         """Update subject dropdown using controller data."""
@@ -376,16 +394,35 @@ class ImportFilesTabMixin:
     def add_multiple_files(self):
         """Add files to the import list via the controller (single source of truth)."""
         try:
+            from ...services.FileDetectionServiceSchema import FileDetectionService
+
             # Tag new files with the currently selected subject before adding.
             self._import_files_controller.current_subject = self.SubjectComboBox.currentText()
-            # The controller opens the file dialog, runs schema-driven detection,
-            # de-duplicates, auto-increments acquisitions, updates the model, and
-            # shows the results dialog. Its file_list_changed signal drives
-            # refresh_import_file_list to rebuild the widget.
-            self._import_files_controller.add_multiple_files(
-                self._get_current_form_values(),
-                self._browse_folder_path_memory,
+
+            # Gather the files here (view); the controller runs schema-driven
+            # detection, de-duplicates, auto-increments acquisitions, and updates
+            # the model. Its file_list_changed signal drives refresh_import_file_list.
+            all_filter = FileDetectionService().get_all_supported_extensions()
+            files, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Select files to import",
+                self._browse_folder_path_memory or "",
+                all_filter,
             )
+            if not files:
+                return
+            self._browse_folder_path_memory = str(Path(files[0]).parent)
+
+            count, failed = self._import_files_controller.add_files_from_paths(
+                files, self._get_current_form_values()
+            )
+
+            # Show the import results summary.
+            if count > 0 or failed:
+                message = f"Successfully imported {count} files"
+                if failed:
+                    message += "\n\nFailed files:\n" + "\n".join(failed)
+                QMessageBox.information(self, "Import Results", message)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
 
@@ -485,6 +522,23 @@ class ImportFilesTabMixin:
 
     def start_file_import(self):
         """Start file import using the controller."""
+        # Confirm here (view) before regenerating an existing electrodes.tsv.
+        if self._import_files_controller.import_would_regenerate_electrodes():
+            subject_name = self._import_files_controller.current_subject
+            reply = QMessageBox.question(
+                self,
+                "Regenerate electrodes.tsv?",
+                f"⚠️ The subject '{subject_name}' already has an existing electrodes.tsv file.\n\n"
+                f"Importing with a contact labeling file will completely regenerate "
+                f"this file with the clinical annotations.\n\n"
+                f"⚠️ Warning: Any manual edits to the existing electrodes.tsv will be LOST.\n\n"
+                f"Do you want to continue and regenerate?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,  # Default to No for safety
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
         # Save the current form to the selected file before importing
         self.save_current_form_to_data()
 

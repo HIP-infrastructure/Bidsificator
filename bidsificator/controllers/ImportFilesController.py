@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QWidget
 
 from ..models.ImportSessionModel import ImportSessionModel
 from ..services.FileDetectionServiceSchema import FileDetectionService
@@ -24,6 +24,7 @@ class ImportFilesController(QObject):
     selection_changed = pyqtSignal(int)  # Selected file index changed
     form_data_updated = pyqtSignal(dict)  # Form data for selected file
     dialog_dismissed = pyqtSignal()  # Completion dialog was closed by user
+    operation_failed = pyqtSignal(str, str)  # (title, message) for the view to render
 
     def __init__(self, dataset_path_provider, parent: QWidget | None = None):
         """
@@ -38,7 +39,6 @@ class ImportFilesController(QObject):
         self._get_dataset_path = dataset_path_provider
         self._model = ImportSessionModel()
         self._worker: ImportBidsFilesWorker | None = None
-        self._browse_memory = ""
         self._contact_labeling_file: str | None = None
 
         # Set up default configuration
@@ -91,38 +91,23 @@ class ImportFilesController(QObject):
         if form_data:
             self.form_data_updated.emit(form_data)
 
-    def add_multiple_files(self, form_defaults: dict[str, str], memory_path: str = "") -> tuple[int, list[str]]:
+    def add_files_from_paths(self, files: list[str], form_defaults: dict[str, str]) -> tuple[int, list[str]]:
         """
-        Add multiple files through file dialog.
+        Add the given files to the import session.
+
+        The file-selection dialog now lives in the view; this method takes the
+        chosen paths, adds them to the model, and returns the outcome so the view
+        can show the results summary.
 
         Args:
-            form_defaults: Default form values to apply to files
-            memory_path: Path to remember for file dialog
+            files: Paths chosen by the user (empty is a no-op).
+            form_defaults: Default form values to apply to files.
 
         Returns:
-            Tuple of (successful_count, failed_files)
+            Tuple of (successful_count, failed_files).
         """
-        if memory_path:
-            self._browse_memory = memory_path
-
-        # Get file filter
-        all_filter = FileDetectionService().get_all_supported_extensions()
-
-        # Open multi-file selection dialog
-        files, _ = QFileDialog.getOpenFileNames(
-            self._parent_widget,
-            "Select files to import",
-            self._browse_memory or "",
-            all_filter
-        )
-
         if not files:
             return 0, []
-
-        # Update browse memory
-        if files:
-            import os
-            self._browse_memory = os.path.dirname(files[0])
 
         # Add files to the model
         successful_count, failed_files = self._model.add_files(files, form_defaults)
@@ -133,95 +118,7 @@ class ImportFilesController(QObject):
         if successful_count > 0 and self._model.selected_file_index == -1:
             self.selected_file_index = 0
 
-        # Show results to user
-        if successful_count > 0 or failed_files:
-            message = f"Successfully imported {successful_count} files"
-            if failed_files:
-                message += "\n\nFailed files:\n" + "\n".join(failed_files)
-
-            QMessageBox.information(
-                self._parent_widget,
-                "Import Results",
-                message
-            )
-
         return successful_count, failed_files
-
-    def browse_single_file(self, modality: str) -> str | None:
-        """
-        Browse for a single file based on modality.
-
-        Args:
-            modality: Current modality selection
-
-        Returns:
-            Selected file path or None if cancelled
-        """
-        filters = FileDetectionService().get_file_filters()
-
-        # For anatomy, allow both file and folder selection
-        if "(anat)" in modality:
-            # First try file selection
-            file_filter = filters.get("(anat)", "All files (*)")
-            file_path, _ = QFileDialog.getOpenFileName(
-                self._parent_widget,
-                "Select a file (or Cancel to browse for DICOM folder)",
-                self._browse_memory,
-                file_filter
-            )
-
-            if file_path:
-                import os
-                self._browse_memory = os.path.dirname(file_path)
-                return file_path
-            else:
-                # User cancelled file selection, offer folder selection for DICOM
-                reply = QMessageBox.question(
-                    self._parent_widget,
-                    "DICOM Folder?",
-                    "Do you want to select a DICOM folder instead?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-
-                if reply == QMessageBox.StandardButton.Yes:
-                    folder_path = QFileDialog.getExistingDirectory(
-                        self._parent_widget,
-                        "Select DICOM folder",
-                        self._browse_memory
-                    )
-
-                    if folder_path and FileDetectionService.is_dicom_folder(folder_path):
-                        self._browse_memory = folder_path
-                        return folder_path + " [DICOM Folder]"
-                    elif folder_path:
-                        QMessageBox.warning(
-                            self._parent_widget,
-                            "Not a DICOM folder",
-                            "The selected folder doesn't appear to contain DICOM files."
-                        )
-
-        elif any(key in modality for key in filters):
-            # Regular file selection for other modalities
-            file_filter = next(filter for key, filter in filters.items() if key in modality)
-            file_path, _ = QFileDialog.getOpenFileName(
-                self._parent_widget,
-                "Select a file",
-                self._browse_memory,
-                file_filter
-            )
-
-            if file_path:
-                import os
-                self._browse_memory = os.path.dirname(file_path)
-                return file_path
-        else:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Modality not recognized",
-                "Please select a modality first"
-            )
-
-        return None
 
     def remove_selected_file(self) -> bool:
         """
@@ -231,11 +128,7 @@ class ImportFilesController(QObject):
             True if removed successfully
         """
         if self._model.selected_file_index == -1:
-            QMessageBox.warning(
-                self._parent_widget,
-                "No Selection",
-                "Please select a file to remove"
-            )
+            self.operation_failed.emit("No Selection", "Please select a file to remove")
             return False
 
         success = self._model.remove_selected_file()
@@ -262,40 +155,30 @@ class ImportFilesController(QObject):
         """
         return self._model.update_selected_file_from_form(form_data)
 
-    def change_subject(self, new_subject: str, ask_user: bool = True) -> bool:
+    def needs_subject_change_confirmation(self, new_subject: str) -> bool:
         """
-        Change subject for all files in session.
+        Whether switching to ``new_subject`` should prompt the user first.
+
+        True only when files are already queued and the subject actually changes
+        — the case where the view asks "apply to all queued files?" before
+        calling :meth:`change_subject`.
+        """
+        current_subject = self._model.file_model.current_subject
+        return (not self._model.file_model.is_empty()) and current_subject != new_subject
+
+    def change_subject(self, new_subject: str) -> bool:
+        """
+        Change subject for all files in the session.
+
+        The confirmation prompt (when files are queued) now lives in the view —
+        see :meth:`needs_subject_change_confirmation`; this just applies the change.
 
         Args:
             new_subject: New subject ID
-            ask_user: Whether to ask user for confirmation if files exist
 
         Returns:
             True if changed successfully
         """
-        current_subject = self._model.file_model.current_subject
-
-        # If no files or same subject, just update
-        if (self._model.file_model.is_empty() or
-            current_subject == new_subject):
-            return self._model.change_subject(new_subject)
-
-        # If files exist and asking user is enabled
-        if ask_user and not self._model.file_model.is_empty():
-            reply = QMessageBox.question(
-                self._parent_widget,
-                "Subject Changed",
-                f"You're switching from '{current_subject}' to '{new_subject}'.\n\n"
-                f"What would you like to do with the {self.file_count} files in the list?\n\n"
-                f"• YES: Update all files to use '{new_subject}'\n"
-                f"• NO: Cancel - keep '{current_subject}' selected",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-
-            if reply == QMessageBox.StandardButton.No:
-                return False  # User cancelled the change
-
         return self._model.change_subject(new_subject)
 
     def _check_electrodes_will_be_overwritten(self, dataset_path: str, subject_id: str) -> bool:
@@ -328,63 +211,49 @@ class ImportFilesController(QObject):
             logger.warning("Could not check for existing electrodes.tsv", exc_info=True)
             return False
 
+    def import_would_regenerate_electrodes(self) -> bool:
+        """
+        Whether starting the import would overwrite an existing electrodes.tsv.
+
+        True only when a contact-labeling file is set AND the current subject
+        already has an electrodes.tsv under the loaded dataset — the case the
+        view confirms before calling :meth:`start_import`.
+        """
+        dataset_path = self._get_dataset_path()
+        if not dataset_path or not self._contact_labeling_file:
+            return False
+        subject_name = self._model.get_legacy_data_structure()["subject_id"]
+        return self._check_electrodes_will_be_overwritten(dataset_path, subject_name)
+
     def start_import(self) -> bool:
         """
         Start the import process.
+
+        The electrodes.tsv-regeneration confirmation (when a contact-labeling
+        file is set) is gathered by the view beforehand — see
+        :meth:`import_would_regenerate_electrodes`.
 
         Returns:
             True if started successfully
         """
         dataset_path = self._get_dataset_path()
         if not dataset_path:
-            QMessageBox.warning(
-                self._parent_widget,
-                "No Dataset",
-                "Please load a dataset first"
-            )
+            self.operation_failed.emit("No Dataset", "Please load a dataset first")
             return False
 
         if not self._model.start_import():
-            QMessageBox.warning(
-                self._parent_widget,
-                "Import Failed",
-                self._model.error_message or "Cannot start import"
-            )
+            self.operation_failed.emit("Import Failed", self._model.error_message or "Cannot start import")
             return False
 
         # Check if a worker is already running
         if self._worker and self._worker.isRunning():
-            QMessageBox.warning(
-                self._parent_widget,
-                "Import in Progress",
-                "An import is already in progress"
-            )
+            self.operation_failed.emit("Import in Progress", "An import is already in progress")
             return False
 
         # Prepare data for worker
         legacy_data = self._model.get_legacy_data_structure()
         subject_name = legacy_data["subject_id"]
         files = legacy_data["files"]
-
-        # Check if we need to warn about electrodes.tsv regeneration
-        if self._contact_labeling_file:
-            if self._check_electrodes_will_be_overwritten(dataset_path, subject_name):
-                # Show confirmation dialog
-                reply = QMessageBox.question(
-                    self._parent_widget,
-                    "Regenerate electrodes.tsv?",
-                    f"⚠️ The subject '{subject_name}' already has an existing electrodes.tsv file.\n\n"
-                    f"Importing with a contact labeling file will completely regenerate "
-                    f"this file with the clinical annotations.\n\n"
-                    f"⚠️ Warning: Any manual edits to the existing electrodes.tsv will be LOST.\n\n"
-                    f"Do you want to continue and regenerate?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No  # Default to No for safety
-                )
-
-                if reply == QMessageBox.StandardButton.No:
-                    # User cancelled
-                    return False
 
         # Create and start worker with optional contact labeling file
         self._worker = ImportBidsFilesWorker(
@@ -423,19 +292,8 @@ class ImportFilesController(QObject):
             self._worker.deleteLater()
             self._worker = None
 
-        # Show completion message
-        QMessageBox.information(
-            self._parent_widget,
-            "Import Complete",
-            f"Successfully imported {self.file_count} files.\n\n"
-            "Files remain in the list for review. You can:\n"
-            "• Check/modify any file settings\n"
-            "• Remove files if needed\n"
-            "• Add more files\n"
-            "• Re-import if there were issues"
-        )
-
-        # Emit signal after dialog is dismissed
+        # The view renders the completion dialog (from import_completed) and then
+        # clears the status bar on dialog_dismissed.
         self.dialog_dismissed.emit()
 
     def _on_import_error(self, message: str):
@@ -445,15 +303,10 @@ class ImportFilesController(QObject):
             self._worker.deleteLater()
             self._worker = None
 
-        # Notify the view (status bar) first, then surface a modal. Deliberately
-        # do NOT emit dialog_dismissed here so the error stays in the status bar.
+        # Notify the view, which shows the status-bar error and the modal.
+        # Deliberately do NOT emit dialog_dismissed here so the error stays in
+        # the status bar.
         self.import_failed.emit(message)
-
-        QMessageBox.critical(
-            self._parent_widget,
-            "Import Failed",
-            f"The file import did not complete:\n\n{message}",
-        )
 
     def get_ui_requirements_for_modality(self, modality: str) -> dict[str, bool]:
         """
