@@ -16,8 +16,6 @@ from ..controllers.MainController import MainController
 from ..core.BidsFolder import BidsFolder
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 from ..forms.MainWindow_ui import Ui_MainWindow
-from ..services.FileDetectionServiceSchema import FileDetectionService
-from ..services.ImportService import ImportService
 from ..services.ValidationServiceSchema import ValidationService
 from ..ui.AboutDialog import AboutDialog
 from ..ui.FileEditor import FileEditor
@@ -30,7 +28,6 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow, Ui_MainWindow):
     __browse_folder_path_memory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
     __ImportSubjectFileEditor = None
-    __import_files_data = None  # Store files to import for current subject
     __optionWindow = None
 
     def __init__(self):
@@ -52,12 +49,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Create FileEditor for Import Subjects tab
         self.__ImportSubjectFileEditor = FileEditor()
         self.IS_FileEditorLayout.addWidget(self.__ImportSubjectFileEditor)
-        # Initialize Import Files tab
-        self.__import_files_data = {
-            "subject_id": "",
-            "files": [],
-            "contact_labeling_file": None
-        }
+        # Initialize Import Files tab. The file list, current subject, and contact
+        # labeling file live in ImportFilesController/ImportSessionModel — the view
+        # holds no parallel copy.
         self.setup_import_files_tab()
 
         # Populate modality dropdown with schema-driven values
@@ -152,8 +146,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Import files controller signals (Second tab)
         import_files_ctrl = self._main_controller.import_files_controller
+        # Cache the controller: it is the single source of truth for this tab.
+        self._import_files_controller = import_files_ctrl
         import_files_ctrl.file_list_changed.connect(self.refresh_import_file_list)
-        import_files_ctrl.selection_changed.connect(self._on_import_file_selection_changed)
         import_files_ctrl.form_data_updated.connect(self._update_form_from_data)
         import_files_ctrl.progress_updated.connect(self.progressBar.setValue)  # Second tab progress bar
         import_files_ctrl.progress_updated.connect(self._on_file_import_progress)
@@ -197,20 +192,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Update the subject dropdown (second tab)
         self.update_subject_names_dropDown()
 
-    def _on_import_file_selection_changed(self, index: int):
-        """Handle import file selection change from controller."""
-        self.__current_selected_file_index = index
-
     def _update_form_from_data(self, form_data: dict):
-        """Update form fields from controller data."""
-        if form_data:
-            self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
-            self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
-            self.set_comboBox_text(self.SessionComboBox, form_data.get("session", ""))
-            self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
-            self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
-            self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
-            self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
+        """Populate the import form widgets from a model form-data dict.
+
+        Single place that writes the Import Files form. The session value arrives
+        with its "ses-" prefix (or empty); _set_session_combobox_text keeps an empty
+        session empty so a session-less file round-trips unchanged through
+        save_current_form_to_data().
+        """
+        if not form_data:
+            return
+        self.set_import_form_enabled(True)
+        self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
+        self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
+        self._set_session_combobox_text(form_data.get("session", ""))
+        self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
+        self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
+        self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
+        self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
 
     def _on_subjects_loaded(self):
         """Handle subjects loaded from import subjects controller."""
@@ -282,58 +281,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fileTreeView.header().hide()
 
     def on_subject_changed(self):
-        """Handle subject selection change in Import Files tab"""
-        current_subject = self.SubjectComboBox.currentText()
-
-        # If no files, just update subject
-        if not self.__import_files_data["files"]:
-            self.__import_files_data["subject_id"] = current_subject
-            # Clear contact labeling file when subject changes
-            self.ClinicalElecLineEdit.clear()
-            self.__import_files_data["contact_labeling_file"] = None
+        """Handle subject selection change in Import Files tab."""
+        # Prevent recursive calls when reverting the combobox after a cancel
+        if getattr(self, "_reverting_subject", False):
             return
 
-        # If subject actually changed and there are files, prompt user
-        if self.__import_files_data["subject_id"] != current_subject:
-            # Prevent recursive calls when reverting subject
-            if hasattr(self, '_reverting_subject') and self._reverting_subject:
-                return
+        current_subject = self.SubjectComboBox.currentText()
+        previous_subject = self._import_files_controller.current_subject
 
-            reply = QMessageBox.question(
-                self,
-                "Subject Changed",
-                f"You're switching from '{self.__import_files_data['subject_id']}' to '{current_subject}'.\n\n"
-                f"What would you like to do with the {len(self.__import_files_data['files'])} files in the list?\n\n"
-                f"• YES: Update all files to use '{current_subject}'\n"
-                f"• NO: Cancel - keep '{self.__import_files_data['subject_id']}' selected",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes  # Default to updating files
-            )
+        # The controller owns the "apply to all queued files?" confirmation prompt
+        # (and only prompts when files are present and the subject actually changes).
+        changed = self._import_files_controller.change_subject(current_subject, ask_user=True)
 
-            if reply == QMessageBox.StandardButton.Yes:
-                # Update all existing files to use new subject
-                for file_data in self.__import_files_data["files"]:
-                    file_data["intended_subject"] = current_subject
-                self.__import_files_data["subject_id"] = current_subject
-                # Clear contact labeling file when subject changes
+        if changed:
+            if previous_subject != current_subject:
+                # Subject actually changed: the contact labeling file no longer applies
                 self.ClinicalElecLineEdit.clear()
-                self.__import_files_data["contact_labeling_file"] = None
-            else:
-                # Cancel - revert to original subject selection
-                self._reverting_subject = True
-                self.set_comboBox_text(self.SubjectComboBox, self.__import_files_data["subject_id"])
-                self._reverting_subject = False
-                # Keep everything as it was
+                self._import_files_controller.contact_labeling_file = None
         else:
-            # Same subject, just update
-            self.__import_files_data["subject_id"] = current_subject
+            # User cancelled: revert the combobox to the previous subject
+            self._reverting_subject = True
+            self.set_comboBox_text(self.SubjectComboBox, previous_subject)
+            self._reverting_subject = False
 
     def setup_import_files_tab(self):
         """Initialize the Import Files tab"""
         # Set up the list widget for displaying files
         self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.SingleSelection)
-        # Track the currently selected file index for form persistence
-        self.__current_selected_file_index = -1
         # Initially disable form elements since no files are loaded
         self.set_import_form_enabled(False)
 
@@ -436,67 +410,55 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.SessionComboBox.clearFocus()
 
     def save_current_form_to_data(self):
-        """Save current form fields to the currently selected file's data"""
-        if (self.__current_selected_file_index >= 0
-                and self.__current_selected_file_index < len(self.__import_files_data["files"])):
-            file_data = self.__import_files_data["files"][self.__current_selected_file_index]
-
-            # Update the stored data with current form values
-            file_data["modality"] = self.ModalityComboBox.currentText()
-            file_data["session"] = (
-                self.SessionComboBox.currentText().removeprefix("ses-")
-                if self.SessionComboBox.currentText() else ""
-            )
-            file_data["task"] = self.TaskComboBox.currentText()
-            file_data["contrast_agent"] = self.ContrastAgentLineEdit.text()
-            file_data["acquisition"] = self.AcquisitionLineEdit.text()
-            file_data["reconstruction"] = self.ReconstructionLineEdit.text()
+        """Save current form fields to the currently selected file in the model."""
+        form_data = {
+            "modality": self.ModalityComboBox.currentText(),
+            "session": self.SessionComboBox.currentText(),
+            "task": self.TaskComboBox.currentText(),
+            "contrast_agent": self.ContrastAgentLineEdit.text(),
+            "acquisition": self.AcquisitionLineEdit.text(),
+            "reconstruction": self.ReconstructionLineEdit.text(),
+        }
+        # No-op when there is no selection; strips the "ses-" prefix internally.
+        self._import_files_controller.update_selected_file_from_form(form_data)
 
     def _load_import_file_into_form(self, index: int):
-        """Load file metadata into the import form without saving first.
+        """Load a file's metadata into the import form without saving first.
 
         Used for programmatic selection (refresh/rebuild) where the form may still
         show values from a previously selected file. Saving first would corrupt
         acquisitions (e.g. write acq-02 onto files[0]).
         """
-        if index < 0 or index >= len(self.__import_files_data["files"]):
-            self.__current_selected_file_index = -1
+        model = self._import_files_controller.model
+        if model.file_model.get_file(index) is None:
+            model.selected_file_index = -1
             self.set_import_form_enabled(False)
             self.clear_import_form_fields()
             return
 
-        self.__current_selected_file_index = index
-        file_data = self.__import_files_data["files"][index]
-
-        self.set_import_form_enabled(True)
-        self.BrowseLineEdit.setText(file_data["file_path"])
-        self.set_comboBox_text(self.ModalityComboBox, file_data["modality"])
-        # Show the file's real session — an empty session must stay empty, otherwise
-        # the next save_current_form_to_data() writes a session the user never chose
-        # (e.g. "post") onto this file only, splitting its acquisition sequence.
-        session_text = "ses-" + file_data["session"] if file_data["session"] else ""
-        self._set_session_combobox_text(session_text)
-        self.set_comboBox_text(self.TaskComboBox, file_data["task"])
-        self.ContrastAgentLineEdit.setText(file_data["contrast_agent"])
-        self.AcquisitionLineEdit.setText(file_data["acquisition"])
-        self.ReconstructionLineEdit.setText(file_data["reconstruction"])
+        # Set the model selection directly (the model setter emits no signal) so the
+        # form save/load timing stays under the view's control, then populate.
+        model.selected_file_index = index
+        self._update_form_from_data(model.get_form_data_for_selected_file())
 
     def on_import_file_selected(self):
         """Update form fields when a file is selected in the list (user-driven)."""
         # Save current form data before switching — only safe for user selection
-        # when the form matches __current_selected_file_index.
+        # when the form matches the model's current selection.
         self.save_current_form_to_data()
+
+        model = self._import_files_controller.model
 
         # Use current row if no selection (e.g., when called manually)
         selected_items = self.ImportFileListWidget.selectedItems()
         if not selected_items:
             current_row = self.ImportFileListWidget.currentRow()
-            if current_row >= 0 and current_row < len(self.__import_files_data["files"]):
+            if 0 <= current_row < self._import_files_controller.file_count:
                 index = current_row
             else:
-                self.__current_selected_file_index = -1
+                model.selected_file_index = -1
                 # No file selected - disable form and clear fields only if no files exist
-                if len(self.__import_files_data["files"]) == 0:
+                if self._import_files_controller.file_count == 0:
                     self.set_import_form_enabled(False)
                     self.clear_import_form_fields()
                 return
@@ -507,50 +469,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._load_import_file_into_form(index)
 
     def remove_file_from_list(self):
-        """Remove selected file from the import list"""
+        """Remove the selected file from the import list via the controller."""
         selected_items = self.ImportFileListWidget.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "No Selection", "Please select a file to remove")
             return
 
         index = self.ImportFileListWidget.row(selected_items[0])
-        if index >= 0 and index < len(self.__import_files_data["files"]):
-            # Remove from data structure
-            self.__import_files_data["files"].pop(index)
-            # Remove from list widget
-            self.ImportFileListWidget.takeItem(index)
-
-            # Update selection and form fields
-            self.update_selection_after_removal(index)
-
-    def update_selection_after_removal(self, removed_index):
-        """Update selection and form fields after removing an item"""
-        total_items = self.ImportFileListWidget.count()
-
-        if total_items == 0:
-            # No items left - disable form and clear everything
-            self.__current_selected_file_index = -1
-            self.set_import_form_enabled(False)
-            self.clear_import_form_fields()
-            return
-
-        # Determine which item to select next
-        if removed_index >= total_items:
-            # Removed the last item, select the new last item
-            new_selection = total_items - 1
-        else:
-            # Select the item that took the removed item's place
-            new_selection = removed_index
-
-        # Block signals so selection handlers do not save stale form onto the new index
-        self.ImportFileListWidget.blockSignals(True)
-        try:
-            self.ImportFileListWidget.setCurrentRow(new_selection)
-        finally:
-            self.ImportFileListWidget.blockSignals(False)
-
-        # Load the newly selected file without saving (removed file is gone)
-        self._load_import_file_into_form(new_selection)
+        # Point the model at the clicked row, then let the controller remove it. The
+        # controller re-indexes the selection and emits file_list_changed, which
+        # refresh_import_file_list turns into the rebuilt widget + reloaded form.
+        self._import_files_controller.model.selected_file_index = index
+        self._import_files_controller.remove_selected_file()
 
     def clear_import_form_fields(self):
         """Clear all import form fields"""
@@ -569,11 +499,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.AcquisitionLineEdit.setEnabled(enabled)
         self.ReconstructionLineEdit.setEnabled(enabled)
 
-        # Remove file button (only enable if files exist)
-        self.RemoveFileButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
-
-        # Import button (only enable if files exist)
-        self.StartImportPushButton.setEnabled(enabled and len(self.__import_files_data["files"]) > 0)
+        # Remove/Import buttons only make sense when files are present. Guard the
+        # controller lookup: this runs once during setup_import_files_tab(), before
+        # the controller is created.
+        has_files = (hasattr(self, "_import_files_controller")
+                     and self._import_files_controller.file_count > 0)
+        self.RemoveFileButton.setEnabled(enabled and has_files)
+        self.StartImportPushButton.setEnabled(enabled and has_files)
 
     def create_subject(self):
         """Create a new subject using the controller."""
@@ -660,15 +592,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.SubjectComboBox.clear()
         self.SubjectComboBox.addItems(subject_names)
 
-        # Sync import data with first available subject (or empty if no subjects)
-        if subject_names and not self.__import_files_data["files"]:
-            # Only update if no files exist to avoid unwanted changes
-            self.__import_files_data["subject_id"] = subject_names[0]
-            # Update controller as well
-            self._main_controller.import_files_controller.current_subject = subject_names[0]
+        # Sync the controller's current subject to the first available subject (or
+        # empty if none), but only when no files are queued, to avoid silently
+        # reassigning files the user already added.
+        if subject_names and self._import_files_controller.file_count == 0:
+            self._import_files_controller.current_subject = subject_names[0]
         elif not subject_names:
-            self.__import_files_data["subject_id"] = ""
-            self._main_controller.import_files_controller.current_subject = ""
+            self._import_files_controller.current_subject = ""
 
         # Reconnect signals after update is complete
         self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
@@ -705,7 +635,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.SessionComboBox.setEditable(True)
             self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
 
-        if self.__import_files_data["files"]:
+        if self._import_files_controller.file_count > 0:
             # With files pending import, repopulating must not change the
             # displayed session: the next form save would stamp it onto the
             # selected file. This fires between two imports of the same list
@@ -827,92 +757,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 # Note: FileEditor TaskComboBox updates removed
                 self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
 
-    def detect_modality_from_file(self, file_path):
-        """Auto-detect modality from filename and extension"""
-
-        # Use the new schema-driven service
-        service = FileDetectionService()
-        result = service.detect_file(Path(file_path))
-
-        if not result.detected_datatype:
-            return None
-
-        # Map detected datatype to display format used by dropdown
-        # This matches the format expected by the UI logic
-        datatype_to_display = {
-            'ieeg': 'ieeg (ieeg)',  # Default for most ieeg files
-            'anat': 'T1w (anat)',   # Default for most anatomy files
-            'func': 'BOLD (func)',
-            'dwi': 'DWI (dwi)',
-            'fmap': 'fieldmap (fmap)',
-            'perf': 'ASL (perf)',
-            'beh': 'events (beh)'
-        }
-
-        # For specific file types, try to be more precise
-        filename = Path(file_path).name.lower()
-
-        if result.detected_datatype == 'ieeg':
-            # Check for photo files
-            if any(ext in filename for ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']):
-                return 'photo (ieeg)'
-            else:
-                return 'ieeg (ieeg)'
-        elif result.detected_datatype == 'anat':
-            # Try to detect specific anatomy types from filename
-            if 't2w' in filename:
-                return 'T2w (anat)'
-            elif 't1rho' in filename:
-                return 'T1rho (anat)'
-            elif 't2star' in filename or 't2*' in filename:
-                return 'T2* (anat)'
-            elif 'flair' in filename:
-                return 'FLAIR (anat)'
-            elif 'ct' in filename:
-                return 'CT (anat)'
-            else:
-                return 'T1w (anat)'  # Default
-
-        # For other datatypes, use the mapping
-        return datatype_to_display.get(result.detected_datatype, None)
-
-    def get_next_acquisition_number(self, subject_id, session, modality, task):
-        """Auto-increment acquisition for files with same properties"""
-        return ImportService.get_next_acquisition_number(
-            self.__import_files_data["files"], session, modality, task
-        )
-
     def add_multiple_files(self):
-        """Add multiple files using the controller."""
+        """Add files to the import list via the controller (single source of truth)."""
         try:
-            files = self._select_files_for_import()
-            if not files:
-                return
-
-            form_values = self._get_current_form_values()
-            successful_count, failed_files = self._process_selected_files(files, form_values)
-
-            self.refresh_import_file_list()
-            self._show_import_results(successful_count, failed_files)
-
+            # Tag new files with the currently selected subject before adding.
+            self._import_files_controller.current_subject = self.SubjectComboBox.currentText()
+            # The controller opens the file dialog, runs schema-driven detection,
+            # de-duplicates, auto-increments acquisitions, updates the model, and
+            # shows the results dialog. Its file_list_changed signal drives
+            # refresh_import_file_list to rebuild the widget.
+            self._import_files_controller.add_multiple_files(
+                self._get_current_form_values(),
+                self.__browse_folder_path_memory,
+            )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
-
-    def _select_files_for_import(self):
-        """Select files through file dialog."""
-        file_filter = "All supported files (*.nii *.nii.gz *.trc *.vhdr *.edf *.png *.jpg *.tif)"
-
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Select files to import",
-            self.__browse_folder_path_memory,
-            file_filter
-        )
-
-        if files:
-            self.__browse_folder_path_memory = os.path.dirname(files[0])
-
-        return files
 
     def _get_current_form_values(self):
         """Get current form values for import."""
@@ -925,112 +784,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             'reconstruction': self.ReconstructionLineEdit.text()
         }
 
-    def _process_selected_files(self, files, form_values):
-        """Process each selected file for import."""
-        successful_count = 0
-        failed_files = []
-
-        for file_path in files:
-            if self._is_duplicate_file(file_path):
-                file_name = os.path.basename(file_path)
-                failed_files.append(f"{file_name}: Already in list")
-                continue
-
-            file_data = self._create_file_data(file_path, form_values)
-            if file_data:
-                self.__import_files_data["subject_id"] = form_values['current_subject']
-                self.__import_files_data["files"].append(file_data)
-                successful_count += 1
-            else:
-                file_name = os.path.basename(file_path)
-                failed_files.append(f"{file_name}: Unsupported file type")
-
-        return successful_count, failed_files
-
-    def _is_duplicate_file(self, file_path):
-        """Check if file is already in the import list."""
-        return any(existing_file["file_path"] == file_path
-                  for existing_file in self.__import_files_data["files"])
-
-    def _create_file_data(self, file_path, form_values):
-        """Create file data dictionary for import."""
-        file_name = os.path.basename(file_path)
-        detected_modality = self.detect_modality_from_file(file_path)
-
-        if not detected_modality:
-            return None
-
-        # Set task based on detected modality
-        task_value = "" if "(anat)" in detected_modality or "photo" in detected_modality else form_values['task']
-
-        # Auto-increment acquisition number
-        auto_acquisition = self.get_next_acquisition_number(
-            form_values['current_subject'],
-            form_values['session'].removeprefix("ses-") if form_values['session'] else "",
-            detected_modality,
-            task_value
-        )
-
-        return {
-            "file_name": file_name,
-            "file_path": file_path,
-            "modality": detected_modality,
-            "task": task_value,
-            "session": form_values['session'].removeprefix("ses-") if form_values['session'] else "",
-            "contrast_agent": form_values['contrast_agent'] if "(anat)" in detected_modality else "",
-            "acquisition": auto_acquisition,
-            "reconstruction": form_values['reconstruction'] if "(anat)" in detected_modality else "",
-            "intended_subject": form_values['current_subject']
-        }
-
-    def _show_import_results(self, successful_count, failed_files):
-        """Show results of the import operation."""
-        if successful_count > 0 or failed_files:
-            message = f"Successfully imported {successful_count} files"
-            if failed_files:
-                message += "\n\nFailed files:\n" + "\n".join(failed_files)
-
-            QMessageBox.information(self, "Import Results", message)
-
-    def add_file_to_import_data(self, file_data):
-        """Add file to import data structure"""
-
-        current_subject = self.SubjectComboBox.currentText()
-
-        # Store the intended subject with each file
-        file_data["intended_subject"] = current_subject
-
-        # Check for duplicates
-        for existing_file in self.__import_files_data["files"]:
-            if existing_file["file_path"] == file_data["file_path"]:
-                return False  # Skip duplicate
-
-        # Add file
-        self.__import_files_data["files"].append(file_data)
-        return True
-
     def refresh_import_file_list(self):
-        """Refresh the ImportFileListWidget display without corrupting file metadata.
+        """Rebuild the ImportFileListWidget from the model without corrupting metadata.
 
-        Must not save the form before loading files[0]: after a rebuild the form may
-        still show the previously selected file (e.g. acq-02), and writing that into
-        files[0] causes duplicate acq-02 exports that overwrite each other.
+        Must not save the form before loading: after a rebuild the form may still
+        show the previously selected file (e.g. acq-02), and writing that back would
+        corrupt another file's acquisition. We only read from the model here.
         """
         self.ImportFileListWidget.blockSignals(True)
         try:
             self.ImportFileListWidget.clear()
 
-            for file_data in self.__import_files_data["files"]:
+            names = self._import_files_controller.get_file_names_for_list_widget()
+            for display_text in names:
                 # Show only filename - single subject tab
-                display_text = file_data['file_name']
                 self.ImportFileListWidget.addItem(display_text)
 
-            if self.__import_files_data["files"]:
-                self.ImportFileListWidget.setCurrentRow(0)
-                # Load form from files[0] without saving stale form values first
-                self._load_import_file_into_form(0)
+            if names:
+                model = self._import_files_controller.model
+                index = model.selected_file_index
+                if not 0 <= index < len(names):
+                    index = 0
+                self.ImportFileListWidget.setCurrentRow(index)
+                # Load form from the selected file without saving stale form values first
+                self._load_import_file_into_form(index)
             else:
-                self.__current_selected_file_index = -1
+                self._import_files_controller.model.selected_file_index = -1
                 self.set_import_form_enabled(False)
                 self.clear_import_form_fields()
         finally:
@@ -1064,9 +843,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         f"File: {Path(file_path).name}"
                     )
 
-                    # Update UI and store in data
+                    # Update UI and store on the controller (single source of truth)
                     self.ClinicalElecLineEdit.setText(file_path)
-                    self.__import_files_data["contact_labeling_file"] = file_path
+                    self._import_files_controller.contact_labeling_file = file_path
 
                 except FileNotFoundError as e:
                     QMessageBox.warning(
@@ -1090,9 +869,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def start_file_import(self):
         """Start file import using the controller."""
-        # Save current form data before starting import
+        # Save the current form to the selected file before importing
         self.save_current_form_to_data()
-
 
         # Reset progress bar for this tab
         self.progressBar.setValue(0)
@@ -1100,26 +878,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Show starting message in status bar
         self._status_bar_manager.show_progress("File import in progress...")
 
-        # Sync MainWindow data to controller before starting import
-        self._sync_files_to_controller()
-
-        # Use controller to start import
+        # The controller/model already hold the file list, current subject, and
+        # contact labeling file (single source of truth) — no view->controller sync.
         self._main_controller.start_file_import()
-
-    def _sync_files_to_controller(self):
-        """Sync MainWindow file data to the controller."""
-        if hasattr(self, '_main_controller') and self._main_controller:
-            # Sync the current import data to the controller
-            subject_id = self.__import_files_data["subject_id"]
-            files = self.__import_files_data["files"]
-            contact_labeling_file = self.__import_files_data.get("contact_labeling_file")
-
-            # Set the data in the controller
-            self._main_controller.import_files_controller.set_files_data(
-                subject_id,
-                files,
-                contact_labeling_file
-            )
 
     def start_subjects_import(self):
         """Start subjects import using the controller."""

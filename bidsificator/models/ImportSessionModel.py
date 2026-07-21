@@ -280,6 +280,7 @@ class ImportSessionModel:
             return None
 
         return {
+            "file_path": file_data.file_path,
             "modality": file_data.modality,
             "session": file_data.get_session_with_prefix(),
             "task": file_data.task,
@@ -330,21 +331,3 @@ class ImportSessionModel:
             "subject_id": self._file_model.current_subject,
             "files": self._file_model.get_files_as_dicts()
         }
-
-    def load_from_legacy_data(self, data: dict[str, Any]):
-        """
-        Load data from legacy format.
-
-        Args:
-            data: Dictionary in original MainWindow format
-        """
-        subject_id = data.get("subject_id", "")
-        files_data = data.get("files", [])
-
-        self._file_model.load_from_dicts(files_data, subject_id)
-
-        # Set selection to first file if available
-        if self._file_model.count() > 0:
-            self.selected_file_index = 0
-        else:
-            self.selected_file_index = -1
