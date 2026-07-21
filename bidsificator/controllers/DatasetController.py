@@ -1,24 +1,37 @@
 """Controller for dataset creation, loading, and management operations."""
 
 
-from PyQt6.QtCore import QStandardPaths
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QWidget
 
 from ..models.DatasetModel import DatasetModel
 from ..services.ValidationServiceSchema import ValidationService
-from ..ui.ValidationResultsDialog import ValidationProgressDialog, ValidationResultsDialog
 
 
-class DatasetController:
-    """Controller for coordinating dataset operations between model and UI."""
+class DatasetController(QObject):
+    """Controller for coordinating dataset operations between model and UI.
+
+    This controller is UI-free: gathering user input (folder, dataset name) and
+    rendering dialogs are the view's responsibility. Feedback that used to be
+    shown here via ``QMessageBox`` / the validation dialogs is now emitted as
+    signals the view connects to those dialogs, so the controller no longer
+    imports anything from ``..ui`` (the previously inverted dependency).
+    """
+
+    # Feedback signals — the view connects these to dialogs.
+    operation_failed = pyqtSignal(str, str)   # (title, message) for an error/warning box
+    validation_started = pyqtSignal(str)      # status message for the progress dialog
+    validation_finished = pyqtSignal(object)  # ValidationResult for the results dialog
 
     def __init__(self, parent_widget: QWidget | None = None):
         """
         Initialize dataset controller.
 
         Args:
-            parent_widget: Parent widget for dialogs (optional)
+            parent_widget: Retained for API compatibility; dialogs now live in
+                the view, so this is no longer used to parent them.
         """
+        super().__init__()
         self._parent_widget = parent_widget
         self._model = DatasetModel()
 
@@ -47,68 +60,43 @@ class DatasetController:
         """Get list of subjects in current dataset."""
         return self._model.subjects
 
-    def create_new_dataset(self) -> tuple[bool, str]:
+    def create_new_dataset(self, folder_path: str, dataset_name: str) -> tuple[bool, str]:
         """
-        Create a new BIDS dataset with user interaction.
+        Create a new BIDS dataset from view-supplied inputs.
+
+        Args:
+            folder_path: Folder chosen by the user to hold the dataset
+            dataset_name: Name entered by the user
 
         Returns:
-            Tuple of (success, error_message or dataset_path)
+            Tuple of (success, dataset_path or error_message)
         """
-        # Get folder path from user
-        folder_path = QFileDialog.getExistingDirectory(
-            self._parent_widget,
-            "Select a folder to save the BIDS dataset",
-            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
-        )
-
         if not folder_path:
             return False, "No folder selected"
 
-        # Get dataset name from user
-        dataset_name, ok = QInputDialog.getText(
-            self._parent_widget,
-            "Dataset Name",
-            "Enter a name for the dataset"
-        )
-
-        if not ok or not dataset_name.strip():
-            if not ok:
-                return False, "Operation cancelled"
-            else:
-                QMessageBox.warning(
-                    self._parent_widget,
-                    "Dataset Name empty",
-                    "Please enter a dataset name"
-                )
-                return False, "Empty dataset name"
+        if not dataset_name or not dataset_name.strip():
+            self.operation_failed.emit("Dataset Name empty", "Please enter a dataset name")
+            return False, "Empty dataset name"
 
         # Create the dataset using the model
         success, error_message = self._model.create_dataset(folder_path, dataset_name)
 
         if success:
             return True, self._model.dataset_path
-        else:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Dataset Creation Failed",
-                error_message
-            )
-            return False, error_message
 
-    def load_existing_dataset(self) -> tuple[bool, str]:
+        self.operation_failed.emit("Dataset Creation Failed", error_message)
+        return False, error_message
+
+    def load_existing_dataset(self, folder_path: str) -> tuple[bool, str]:
         """
-        Load an existing BIDS dataset with user interaction.
+        Load an existing BIDS dataset from a view-supplied folder.
+
+        Args:
+            folder_path: Folder chosen by the user
 
         Returns:
-            Tuple of (success, error_message or dataset_path)
+            Tuple of (success, dataset_path or error_message)
         """
-        # Get folder path from user
-        folder_path = QFileDialog.getExistingDirectory(
-            self._parent_widget,
-            "Select a folder",
-            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
-        )
-
         if not folder_path:
             return False, "No folder selected"
 
@@ -117,13 +105,9 @@ class DatasetController:
 
         if success:
             return True, self._model.dataset_path
-        else:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Dataset Loading Failed",
-                error_message
-            )
-            return False, error_message
+
+        self.operation_failed.emit("Dataset Loading Failed", error_message)
+        return False, error_message
 
     def load_dataset_from_path(self, dataset_path: str) -> tuple[bool, str]:
         """
@@ -149,46 +133,34 @@ class DatasetController:
         """
         if not self._model.is_loaded:
             error = "No dataset loaded"
-            QMessageBox.warning(
-                self._parent_widget,
-                "No dataset selected",
-                "Please open a BIDS dataset first"
-            )
+            self.operation_failed.emit("No dataset selected", "Please open a BIDS dataset first")
             return False, error
 
         if not subject_name:
             error = "Subject name cannot be empty"
-            QMessageBox.warning(
-                self._parent_widget,
-                "Subject Name empty",
-                "Please enter a subject name"
-            )
+            self.operation_failed.emit("Subject Name empty", "Please enter a subject name")
             return False, error
 
         if not subject_name.startswith("sub-"):
             error = "Subject name should start with 'sub-'"
-            QMessageBox.warning(
-                self._parent_widget,
-                "Subject Name not valid",
-                error
-            )
+            self.operation_failed.emit("Subject Name not valid", error)
             return False, error
 
         # Use model to add the subject
         success, error_message = self._model.add_subject(subject_name)
 
         if not success:
-            QMessageBox.warning(
-                self._parent_widget,
-                "Subject Creation Failed",
-                error_message
-            )
+            self.operation_failed.emit("Subject Creation Failed", error_message)
 
         return success, error_message
 
     def validate_dataset(self, subject_name: str | None = None) -> tuple[bool, str]:
         """
         Validate the current dataset or a specific subject.
+
+        Emits ``validation_started`` (so the view can show a progress dialog)
+        and ``validation_finished`` with the result (so the view can show the
+        results dialog). On error, emits ``operation_failed`` instead.
 
         Args:
             subject_name: Optional subject to validate specifically
@@ -198,27 +170,16 @@ class DatasetController:
         """
         if not self._model.is_loaded:
             error = "No dataset loaded"
-            QMessageBox.warning(
-                self._parent_widget,
-                "No Dataset found",
-                "Please load a Dataset first"
-            )
+            self.operation_failed.emit("No Dataset found", "Please load a Dataset first")
             return False, error
 
-        # ValidationService already imported at top
-
-        # Show progress dialog
-        progress = ValidationProgressDialog(self._parent_widget)
-        progress.show()
+        # Announce start so the view can open a progress dialog.
+        if subject_name:
+            self.validation_started.emit(f"Validating subject {subject_name}...")
+        else:
+            self.validation_started.emit("Validating entire dataset...")
 
         try:
-            # Update progress message
-            if subject_name:
-                progress.set_status(f"Validating subject {subject_name}...")
-            else:
-                progress.set_status("Validating entire dataset...")
-
-            # Get detailed validation result
             validation_service = ValidationService()
             dataset_path = self._model.current_dataset.path
 
@@ -229,24 +190,29 @@ class DatasetController:
                 # Full dataset validation (includes dataset-level checks)
                 validation_result = validation_service.validate_dataset(dataset_path)
 
-            # Close progress dialog
-            progress.close()
-
-            # Show detailed results dialog
-            results_dialog = ValidationResultsDialog(self._parent_widget)
-            results_dialog.display_validation_result(validation_result)
-            results_dialog.exec()
+            # Hand the result to the view for the results dialog.
+            self.validation_finished.emit(validation_result)
 
             return validation_result.is_valid, validation_result.message
 
         except Exception as e:
-            progress.close()
-            QMessageBox.critical(
-                self._parent_widget,
-                "Validation Error",
-                f"An error occurred during validation: {str(e)}"
+            self.operation_failed.emit(
+                "Validation Error", f"An error occurred during validation: {str(e)}"
             )
             return False, str(e)
+
+    def delete_files(self, file_paths: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+        """
+        Delete files from disk via the model.
+
+        Args:
+            file_paths: Absolute paths of the files to delete
+
+        Returns:
+            Tuple of (deleted_paths, failed) where ``failed`` is a list of
+            ``(path, reason)`` tuples.
+        """
+        return self._model.delete_files(file_paths)
 
     def get_sessions_for_subject(self, subject_id: str) -> list[str]:
         """
@@ -285,4 +251,3 @@ class DatasetController:
             Dataset path or None if no dataset loaded
         """
         return self._model.get_tree_model_data()
-

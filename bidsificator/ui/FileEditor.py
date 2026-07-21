@@ -250,6 +250,7 @@ class FileEditor(QWidget, Ui_FileEditor):
     def populate_modality_dropdown(self):
         """Populate ModalityComboBox with available datatypes from schema"""
         try:
+            from ..core.bids_constants import MODALITY_DISPLAY_MAPPING
             from ..services.FileDetectionServiceSchema import FileDetectionService
 
             # Clear existing items (both static ones from UI and any previous dynamic ones)
@@ -259,45 +260,10 @@ class FileEditor(QWidget, Ui_FileEditor):
             detection_service = FileDetectionService()
             available_datatypes = detection_service.get_all_datatypes()
 
-            # Create display format mapping for UI compatibility
-            # The existing UI logic expects formats like "ieeg (ieeg)", "T1w (anat)", etc.
-            datatype_mapping = {
-                'anat': [
-                    ('T1w (anat)', 'T1w'),
-                    ('T2w (anat)', 'T2w'),
-                    ('T1rho (anat)', 'T1rho'),
-                    ('T2* (anat)', 'T2star'),
-                    ('FLAIR (anat)', 'FLAIR'),
-                    ('CT (anat)', 'CT')
-                ],
-                'ieeg': [
-                    ('ieeg (ieeg)', 'ieeg'),
-                    ('photo (ieeg)', 'photo')
-                ],
-                'eeg': [
-                    ('eeg (eeg)', 'eeg')
-                ],
-                'func': [
-                    ('BOLD (func)', 'bold')
-                ],
-                'dwi': [
-                    ('DWI (dwi)', 'dwi')
-                ],
-                'fmap': [
-                    ('fieldmap (fmap)', 'fieldmap')
-                ],
-                'perf': [
-                    ('ASL (perf)', 'asl')
-                ],
-                'beh': [
-                    ('events (beh)', 'events')
-                ]
-            }
-
-            # Add items for available datatypes
+            # Add items for available datatypes using the shared display labels.
             for datatype in sorted(available_datatypes):
-                if datatype in datatype_mapping:
-                    for display_name, _suffix in datatype_mapping[datatype]:
+                if datatype in MODALITY_DISPLAY_MAPPING:
+                    for display_name, _suffix in MODALITY_DISPLAY_MAPPING[datatype]:
                         self.ModalityComboBox.addItem(display_name)
 
         except Exception:
