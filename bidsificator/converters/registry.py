@@ -32,26 +32,12 @@ class ConverterRegistry:
     def _register_default_converters(self):
         """Register built-in converters - automatically discovers and registers all converters"""
 
-        # TRC converters (multiple options for same source format)
-        # PyEEGFormat converter - higher priority, more reliable
+        # TRC converter (Micromed → EDF via the bundled PyEEGFormat wrapper)
         try:
             from .trc_to_edf_pyeeg import TrcToEdfConverterPyEEG
-            self.register(TrcToEdfConverterPyEEG())  # Primary choice (priority 10)
+            self.register(TrcToEdfConverterPyEEG())
         except ImportError:
             logger.warning("could not import PyEEGFormat TRC to EDF converter", exc_info=True)
-
-        # MNE-based converter as fallback
-        try:
-            from .trc_to_edf import TrcToEdfConverter
-            self.register(TrcToEdfConverter())  # Fallback choice (priority 1)
-        except ImportError:
-            logger.warning("could not import MNE TRC to EDF converter", exc_info=True)
-
-        try:
-            from .trc_to_brainvision import TrcToBrainVisionConverter
-            self.register(TrcToBrainVisionConverter())  # Alternative (priority 0)
-        except ImportError:
-            logger.warning("could not import TRC to BrainVision converter", exc_info=True)
 
         # DICOM converter
         try:

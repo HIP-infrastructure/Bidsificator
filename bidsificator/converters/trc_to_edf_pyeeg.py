@@ -20,7 +20,7 @@ class TrcToEdfConverterPyEEG(FormatConverter):
     def __init__(self):
         super().__init__()
         self.wrapper = self._import_platform_wrapper()
-        self._priority = 10  # Higher priority than MNE-based converter
+        self._priority = 10
 
     @property
     def source_extensions(self) -> list[str]:
@@ -40,7 +40,7 @@ class TrcToEdfConverterPyEEG(FormatConverter):
     @property
     def description(self) -> str:
         """Human-readable description"""
-        return "Micromed TRC → EDF using PyEEGFormat (recommended)"
+        return "Micromed TRC → EDF using PyEEGFormat"
 
     def _import_platform_wrapper(self):
         """Import the platform-specific PyEEGFormat wrapper"""

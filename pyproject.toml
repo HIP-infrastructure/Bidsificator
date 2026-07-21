@@ -34,17 +34,8 @@ pandas = "^2.3"
 dicom2nifti = ">=2.6.2"
 bids_validator = ">=1.14.5"
 
-# neurophysiology data conversion
-mne = "^1.11.0"
-neo = "^0.14.3"
-# neo pulls in quantities; <0.16.4 references the removed np.ndarray.ptp and
-# crashes at import under numpy 2.x. Pin the floor to keep the lock installable.
-quantities = ">=0.16.4"
-# edfio and pybv are required at runtime by mne.export(fmt='edf') and
-# mne.export(fmt='brainvision') respectively — they are never imported directly,
-# so do not "clean them up" as unused.
-edfio = "^0.4.12"
-pybv = "^0.7.6"
+# TRC (Micromed) → EDF conversion is handled by the bundled PyEEGFormat wrapper
+# (bidsificator/core/PyEEGFormat), so no mne/neo stack is needed here.
 
 # API
 flasgger = "^0.9.7"
