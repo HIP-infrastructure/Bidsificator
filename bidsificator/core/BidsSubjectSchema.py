@@ -253,6 +253,11 @@ class BidsSubject:
         """Build a BIDS-compliant target path (delegates to SubjectFileWriter)."""
         return self._file_writer._build_target_path(entities, datatype, suffix, extension)
 
+    def _get_inheritance_aware_entities(self, data_entities: dict[str, str], datatype: str,
+                                        suffix: str) -> dict[str, str]:
+        """Resolve inheritance-aware entities for metadata placement (delegates to SubjectSidecarGenerator)."""
+        return self._sidecar_generator._get_inheritance_aware_entities(data_entities, datatype, suffix)
+
     def _generate_metadata_files(self, data_path: Path, datatype: str, suffix: str,
                                  entities: dict[str, str], user_metadata: dict[str, Any],
                                  source_path: Path = None):
