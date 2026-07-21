@@ -17,7 +17,7 @@ pytest.importorskip("PyQt6")
 
 from PyQt6.QtWidgets import QApplication, QComboBox
 
-from bidsificator.ui.MainWindow import MainWindow
+from bidsificator.ui.tabs.import_files_tab import ImportFilesTab
 
 
 @pytest.fixture(scope="module")
@@ -27,7 +27,7 @@ def qapp():
 
 
 class _SessionComboHolder:
-    """Minimal stand-in for MainWindow exposing only SessionComboBox."""
+    """Minimal stand-in for ImportFilesTab exposing only SessionComboBox."""
 
     def __init__(self):
         self.SessionComboBox = QComboBox()
@@ -36,30 +36,30 @@ class _SessionComboHolder:
 
 
 def _display_session(file_session):
-    """Mirrors MainWindow._load_import_file_into_form session display."""
+    """Mirrors ImportFilesTab._load_import_file_into_form session display."""
     return "ses-" + file_session if file_session else ""
 
 
 def _save_session(displayed_text):
-    """Mirrors MainWindow.save_current_form_to_data session parsing."""
+    """Mirrors ImportFilesTab.save_current_form_to_data session parsing."""
     return displayed_text.removeprefix("ses-") if displayed_text else ""
 
 
 class TestSetSessionComboboxText:
     def test_empty_text_clears_selection(self, qapp):
         holder = _SessionComboHolder()
-        MainWindow._set_session_combobox_text(holder, "")
+        ImportFilesTab._set_session_combobox_text(holder, "")
         assert holder.SessionComboBox.currentText() == ""
 
     def test_known_session_selects_item(self, qapp):
         holder = _SessionComboHolder()
-        MainWindow._set_session_combobox_text(holder, "ses-pre")
+        ImportFilesTab._set_session_combobox_text(holder, "ses-pre")
         assert holder.SessionComboBox.currentIndex() == 1
         assert holder.SessionComboBox.currentText() == "ses-pre"
 
     def test_custom_session_shown_even_if_not_an_item(self, qapp):
         holder = _SessionComboHolder()
-        MainWindow._set_session_combobox_text(holder, "ses-01")
+        ImportFilesTab._set_session_combobox_text(holder, "ses-01")
         assert holder.SessionComboBox.currentText() == "ses-01"
 
 

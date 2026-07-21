@@ -1,20 +1,22 @@
-"""Per-tab UI mixins for MainWindow.
+"""Per-tab UI widgets for MainWindow (per-tab `.ui` split complete, 9d).
 
-MainWindow's per-tab logic is split into three mixins — one per tab of the main
-QTabWidget — so each tab's slots and helpers live in their own file instead of a
-single 1400-line window class:
+Each tab of the main QTabWidget is a self-contained ``QWidget`` subclass built
+from its own ``.ui``, owning its widgets and behaviour and receiving its
+dependencies by injection. ``MainWindow`` is a thin host that constructs these
+and inserts them into the (otherwise empty) tab widget at runtime.
 
-- `ParticipantsTabMixin` — the Participants tab: subject creation, the file-tree
-  view and its context-menu operations (validate / rename / delete).
-- `ImportFilesTabMixin` — the Import Files tab: the per-file metadata form, the
-  file list, modality/session handling, and file import.
-- `ImportSubjectsTabMixin` — the Import Subjects tab: subject parsing, the
-  subject list + embedded FileEditor sync, the lookup table, and batch import.
+- ``ParticipantsTab`` — subject creation and the subject table
+  (``PatientTableWidget``). Built from ``forms/ParticipantsTab.ui``. Exposes
+  ``subject_updated`` (re-emitted from the table), ``subject_controller`` (for the
+  host's file-tree rename/delete ops), and ``refresh_table(path)``. The file-tree
+  browser itself is left-pane chrome and lives on ``MainWindow``, not here.
+- ``ImportFilesTab`` — the per-file metadata form, the file list, the subject
+  dropdown, modality/session/task handling, and file import. Built from
+  ``forms/ImportFilesTab.ui``. Exposes ``refresh_subject_dropdown()``.
+- ``ImportSubjectsTab`` — subject parsing, the subject list + embedded
+  ``FileEditor`` sync, the lookup table, and batch import. Built from
+  ``forms/ImportSubjectsTab.ui``.
 
-These are mixins rather than standalone objects on purpose: `self` is the live
-`MainWindow`, so the slot bodies (and their dialog parents) are unchanged and
-the Qt signal wiring in MainWindow keeps working as-is. They rely on the widgets
-built by `Ui_MainWindow.setupUi` and on the controllers/state created in
-`MainWindow.__init__`, and are only ever mixed into `MainWindow`. The eventual
-per-tab QWidget split (regenerating the `.ui`) supersedes this arrangement.
+Each tab wires its own controller signals and renders its own dialogs (parented
+to the tab); status-bar updates go through the injected ``StatusBarManager``.
 """
