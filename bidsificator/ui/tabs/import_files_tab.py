@@ -1,0 +1,527 @@
+"""Import Files tab behaviour for MainWindow (mixed into MainWindow).
+
+Covers the per-file metadata form, the import file list, modality/session/task
+handling, the subject dropdown, and starting a file import. `self` is the live
+MainWindow; see `bidsificator.ui.tabs` for the arrangement. The file list,
+current subject, and contact-labeling file are owned by the ImportFilesController
+/ ImportSessionModel — this tab reads/writes them, it holds no parallel copy.
+"""
+
+import logging
+from pathlib import Path
+
+from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+
+logger = logging.getLogger(__name__)
+
+
+class ImportFilesTabMixin:
+    """MainWindow slots/helpers for the Import Files tab."""
+
+    def setup_import_files_tab(self):
+        """Initialize the Import Files tab"""
+        # Set up the list widget for displaying files
+        self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.SingleSelection)
+        # Initially disable form elements since no files are loaded
+        self.set_import_form_enabled(False)
+
+    def _setup_session_combobox(self):
+        """
+        Configure SessionComboBox for flexible session input.
+
+        Makes the combobox editable to allow custom session names per BIDS spec.
+        Provides default options with ses-post first (selected by default).
+        """
+        # Add default session options first (before making it editable)
+        self.SessionComboBox.addItems(['ses-post', 'ses-pre'])
+
+        # Set ses-post as current selection
+        self.SessionComboBox.setCurrentIndex(0)
+
+        # Make combobox editable to allow custom session names
+        self.SessionComboBox.setEditable(True)
+
+        # Set placeholder text to guide users
+        self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
+
+    def populate_modality_dropdown(self):
+        """Populate ModalityComboBox with available datatypes from schema"""
+        try:
+            from ...core.bids_constants import MODALITY_DISPLAY_MAPPING
+            from ...services.FileDetectionServiceSchema import FileDetectionService
+
+            # Clear existing items (both static ones from UI and any previous dynamic ones)
+            self.ModalityComboBox.clear()
+
+            # Get available datatypes from schema
+            detection_service = FileDetectionService()
+            available_datatypes = detection_service.get_all_datatypes()
+
+            # Add items for available datatypes using the shared display labels.
+            for datatype in sorted(available_datatypes):
+                if datatype in MODALITY_DISPLAY_MAPPING:
+                    for display_name, _suffix in MODALITY_DISPLAY_MAPPING[datatype]:
+                        self.ModalityComboBox.addItem(display_name)
+
+        except Exception:
+            logger.warning("Could not populate modality dropdown from schema", exc_info=True)
+            # Fallback to basic items if schema loading fails
+            fallback_items = [
+                "T1w (anat)",
+                "T2w (anat)",
+                "ieeg (ieeg)",
+                "eeg (eeg)",
+                "photo (ieeg)"
+            ]
+            for item in fallback_items:
+                self.ModalityComboBox.addItem(item)
+
+    def _set_session_combobox_text(self, text):
+        """Display `text` in the editable SessionComboBox, even when it is not an item.
+
+        Custom session names (typed by the user) are not always in the item list,
+        and an empty text must clear the selection so session-less files
+        round-trip unchanged through save_current_form_to_data().
+        """
+        index = self.SessionComboBox.findText(text)
+        self.SessionComboBox.setCurrentIndex(index)
+        if index < 0:
+            self.SessionComboBox.setEditText(text)
+        self.SessionComboBox.clearFocus()
+
+    def save_current_form_to_data(self):
+        """Save current form fields to the currently selected file in the model."""
+        form_data = {
+            "modality": self.ModalityComboBox.currentText(),
+            "session": self.SessionComboBox.currentText(),
+            "task": self.TaskComboBox.currentText(),
+            "contrast_agent": self.ContrastAgentLineEdit.text(),
+            "acquisition": self.AcquisitionLineEdit.text(),
+            "reconstruction": self.ReconstructionLineEdit.text(),
+        }
+        # No-op when there is no selection; strips the "ses-" prefix internally.
+        self._import_files_controller.update_selected_file_from_form(form_data)
+
+    def _load_import_file_into_form(self, index: int):
+        """Load a file's metadata into the import form without saving first.
+
+        Used for programmatic selection (refresh/rebuild) where the form may still
+        show values from a previously selected file. Saving first would corrupt
+        acquisitions (e.g. write acq-02 onto files[0]).
+        """
+        model = self._import_files_controller.model
+        if model.file_model.get_file(index) is None:
+            model.selected_file_index = -1
+            self.set_import_form_enabled(False)
+            self.clear_import_form_fields()
+            return
+
+        # Set the model selection directly (the model setter emits no signal) so the
+        # form save/load timing stays under the view's control, then populate.
+        model.selected_file_index = index
+        self._update_form_from_data(model.get_form_data_for_selected_file())
+
+    def on_import_file_selected(self):
+        """Update form fields when a file is selected in the list (user-driven)."""
+        # Save current form data before switching — only safe for user selection
+        # when the form matches the model's current selection.
+        self.save_current_form_to_data()
+
+        model = self._import_files_controller.model
+
+        # Use current row if no selection (e.g., when called manually)
+        selected_items = self.ImportFileListWidget.selectedItems()
+        if not selected_items:
+            current_row = self.ImportFileListWidget.currentRow()
+            if 0 <= current_row < self._import_files_controller.file_count:
+                index = current_row
+            else:
+                model.selected_file_index = -1
+                # No file selected - disable form and clear fields only if no files exist
+                if self._import_files_controller.file_count == 0:
+                    self.set_import_form_enabled(False)
+                    self.clear_import_form_fields()
+                return
+        else:
+            # Get the index of selected file
+            index = self.ImportFileListWidget.row(selected_items[0])
+
+        self._load_import_file_into_form(index)
+
+    def remove_file_from_list(self):
+        """Remove the selected file from the import list via the controller."""
+        selected_items = self.ImportFileListWidget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Selection", "Please select a file to remove")
+            return
+
+        index = self.ImportFileListWidget.row(selected_items[0])
+        # Point the model at the clicked row, then let the controller remove it. The
+        # controller re-indexes the selection and emits file_list_changed, which
+        # refresh_import_file_list turns into the rebuilt widget + reloaded form.
+        self._import_files_controller.model.selected_file_index = index
+        self._import_files_controller.remove_selected_file()
+
+    def clear_import_form_fields(self):
+        """Clear all import form fields"""
+        self.BrowseLineEdit.setText("No file selected")
+        self.ContrastAgentLineEdit.clear()
+        self.AcquisitionLineEdit.clear()
+        self.ReconstructionLineEdit.clear()
+
+    def set_import_form_enabled(self, enabled):
+        """Enable or disable import form elements"""
+        # Form input elements
+        self.ModalityComboBox.setEnabled(enabled)
+        self.TaskComboBox.setEnabled(enabled)
+        self.SessionComboBox.setEnabled(enabled)
+        self.ContrastAgentLineEdit.setEnabled(enabled)
+        self.AcquisitionLineEdit.setEnabled(enabled)
+        self.ReconstructionLineEdit.setEnabled(enabled)
+
+        # Remove/Import buttons only make sense when files are present. Guard the
+        # controller lookup: this runs once during setup_import_files_tab(), before
+        # the controller is created.
+        has_files = (hasattr(self, "_import_files_controller")
+                     and self._import_files_controller.file_count > 0)
+        self.RemoveFileButton.setEnabled(enabled and has_files)
+        self.StartImportPushButton.setEnabled(enabled and has_files)
+
+    def on_subject_changed(self):
+        """Handle subject selection change in Import Files tab."""
+        # Prevent recursive calls when reverting the combobox after a cancel
+        if getattr(self, "_reverting_subject", False):
+            return
+
+        current_subject = self.SubjectComboBox.currentText()
+        previous_subject = self._import_files_controller.current_subject
+
+        # The controller owns the "apply to all queued files?" confirmation prompt
+        # (and only prompts when files are present and the subject actually changes).
+        changed = self._import_files_controller.change_subject(current_subject, ask_user=True)
+
+        if changed:
+            if previous_subject != current_subject:
+                # Subject actually changed: the contact labeling file no longer applies
+                self.ClinicalElecLineEdit.clear()
+                self._import_files_controller.contact_labeling_file = None
+        else:
+            # User cancelled: revert the combobox to the previous subject
+            self._reverting_subject = True
+            self.set_comboBox_text(self.SubjectComboBox, previous_subject)
+            self._reverting_subject = False
+
+    def update_subject_names_dropDown(self):
+        """Update subject dropdown using controller data."""
+        if not self._main_controller.is_dataset_loaded():
+            return
+
+        subject_names = self._main_controller.get_current_subjects()
+
+        # Temporarily disconnect signals to prevent unwanted dialogs during update
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.update_subject_details)
+        except TypeError:
+            pass  # Connection doesn't exist
+        try:
+            self.SubjectComboBox.currentTextChanged.disconnect(self.on_subject_changed)
+        except TypeError:
+            pass  # Connection doesn't exist
+
+        self.SubjectComboBox.clear()
+        self.SubjectComboBox.addItems(subject_names)
+
+        # Sync the controller's current subject to the first available subject (or
+        # empty if none), but only when no files are queued, to avoid silently
+        # reassigning files the user already added.
+        if subject_names and self._import_files_controller.file_count == 0:
+            self._import_files_controller.current_subject = subject_names[0]
+        elif not subject_names:
+            self._import_files_controller.current_subject = ""
+
+        # Reconnect signals after update is complete
+        self.SubjectComboBox.currentTextChanged.connect(self.update_subject_details)
+        self.SubjectComboBox.currentTextChanged.connect(self.on_subject_changed)
+
+        # Populate session dropdown for the current subject
+        if subject_names:
+            self.update_subject_details()
+
+    def update_subject_details(self):
+        """Update subject details using controller data."""
+        subject_name = self.SubjectComboBox.currentText()
+
+        if not subject_name or not self._main_controller.is_dataset_loaded():
+            return
+
+        session_names = self._main_controller.get_sessions_for_subject(subject_name)
+
+        # Clear and repopulate, but maintain editable functionality
+        displayed_session = self.SessionComboBox.currentText()
+        self.SessionComboBox.clear()
+
+        # Add existing sessions from this subject
+        if session_names:
+            # Sort sessions to put ses-post first if it exists
+            sorted_sessions = sorted(session_names, key=lambda x: (x != 'ses-post', x))
+            self.SessionComboBox.addItems(sorted_sessions)
+        else:
+            # No sessions yet - add default with ses-post first
+            self.SessionComboBox.addItems(['ses-post', 'ses-pre'])
+
+        # Ensure combobox stays editable after repopulation
+        if not self.SessionComboBox.isEditable():
+            self.SessionComboBox.setEditable(True)
+            self.SessionComboBox.setPlaceholderText("Type session name (e.g., baseline, month6, 01)")
+
+        if self._import_files_controller.file_count > 0:
+            # With files pending import, repopulating must not change the
+            # displayed session: the next form save would stamp it onto the
+            # selected file. This fires between two imports of the same list
+            # (worker finished, subject switch), so restore what was shown.
+            self._set_session_combobox_text(displayed_session)
+        else:
+            # No files yet: default to the first entry (ses-post when present).
+            # An editable combobox does not auto-select after clear()+addItems,
+            # so without this the session starts blank and newly added files
+            # silently become session-less.
+            self.SessionComboBox.setCurrentIndex(0)
+
+    def update_modality_UI(self):
+        if "(anat)" in self.ModalityComboBox.currentText():
+            #session
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task - show for all modalities
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            #contrast
+            self.ContrastAgentLabel.show()
+            self.ContrastAgentLineEdit.show()
+            #acquisition
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
+            #reconstruction
+            self.ReconstructionLabel.show()
+            self.ReconstructionLineEdit.show()
+            # Note: DICOM folder checkbox removed from UI
+        elif "ieeg (ieeg)" in self.ModalityComboBox.currentText():
+            #session
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            #contrast
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
+            #acquisition
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
+            #reconstruction
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
+        elif "photo (ieeg)" in self.ModalityComboBox.currentText():
+            #session
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task - show for all modalities
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            #contrast
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
+            #acquisition
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
+            #reconstruction
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
+        elif "eeg (eeg)" in self.ModalityComboBox.currentText():
+            #session
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            #task
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            #contrast
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
+            #acquisition
+            self.AcquisitionLabel.show()
+            self.AcquisitionLineEdit.show()
+            #reconstruction
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            # Note: DICOM folder checkbox removed from UI
+        else:
+            logger.warning("[__UpdateModalityUI] Modality not recognized")
+
+    def update_task_combobox_UI(self):
+        if "Other" in self.TaskComboBox.currentText():
+            task_name = QInputDialog.getText(self, "Enter Task Name", "Enter a name for your task")[0]
+            if task_name == "":
+                QMessageBox.warning(self, "Dataset Name empty", "Please enter a valid name for your task")
+                return
+            else:
+                self.TaskComboBox.currentTextChanged.disconnect(self.update_task_combobox_UI)
+                #Insert the new task in TaskComboBox
+                self.TaskComboBox.insertItem(self.TaskComboBox.count()-1, task_name)
+                self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
+                # Note: FileEditor TaskComboBox updates removed
+                self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+
+    def add_multiple_files(self):
+        """Add files to the import list via the controller (single source of truth)."""
+        try:
+            # Tag new files with the currently selected subject before adding.
+            self._import_files_controller.current_subject = self.SubjectComboBox.currentText()
+            # The controller opens the file dialog, runs schema-driven detection,
+            # de-duplicates, auto-increments acquisitions, updates the model, and
+            # shows the results dialog. Its file_list_changed signal drives
+            # refresh_import_file_list to rebuild the widget.
+            self._import_files_controller.add_multiple_files(
+                self._get_current_form_values(),
+                self._browse_folder_path_memory,
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
+
+    def _get_current_form_values(self):
+        """Get current form values for import."""
+        return {
+            'current_subject': self.SubjectComboBox.currentText(),
+            'session': self.SessionComboBox.currentText(),
+            'task': self.TaskComboBox.currentText(),
+            'contrast_agent': self.ContrastAgentLineEdit.text(),
+            'acquisition': self.AcquisitionLineEdit.text(),
+            'reconstruction': self.ReconstructionLineEdit.text()
+        }
+
+    def refresh_import_file_list(self):
+        """Rebuild the ImportFileListWidget from the model without corrupting metadata.
+
+        Must not save the form before loading: after a rebuild the form may still
+        show the previously selected file (e.g. acq-02), and writing that back would
+        corrupt another file's acquisition. We only read from the model here.
+        """
+        self.ImportFileListWidget.blockSignals(True)
+        try:
+            self.ImportFileListWidget.clear()
+
+            names = self._import_files_controller.get_file_names_for_list_widget()
+            for display_text in names:
+                # Show only filename - single subject tab
+                self.ImportFileListWidget.addItem(display_text)
+
+            if names:
+                model = self._import_files_controller.model
+                index = model.selected_file_index
+                if not 0 <= index < len(names):
+                    index = 0
+                self.ImportFileListWidget.setCurrentRow(index)
+                # Load form from the selected file without saving stale form values first
+                self._load_import_file_into_form(index)
+            else:
+                self._import_files_controller.model.selected_file_index = -1
+                self.set_import_form_enabled(False)
+                self.clear_import_form_fields()
+        finally:
+            self.ImportFileListWidget.blockSignals(False)
+
+    def browse_clinical_electrode_file(self):
+        """Browse for clinical electrode labeling Excel file."""
+
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        file_dialog.setNameFilter("Excel Files (*.xlsx *.xls)")
+        file_dialog.setWindowTitle("Select Contact Labeling File")
+
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+
+                # Validate file using ContactLabelingParser
+                try:
+                    from ...services.ContactLabelingParser import ContactLabelingParser
+                    parser = ContactLabelingParser()
+                    contact_data = parser.parse_file(Path(file_path))
+
+                    # Show success message
+                    contact_count = len(contact_data)
+                    QMessageBox.information(
+                        self,
+                        "File Loaded",
+                        f"Successfully loaded {contact_count} contacts from labeling file.\n\n"
+                        f"File: {Path(file_path).name}"
+                    )
+
+                    # Update UI and store on the controller (single source of truth)
+                    self.ClinicalElecLineEdit.setText(file_path)
+                    self._import_files_controller.contact_labeling_file = file_path
+
+                except FileNotFoundError as e:
+                    QMessageBox.warning(
+                        self,
+                        "File Not Found",
+                        f"The selected file could not be found:\n{str(e)}"
+                    )
+                except ValueError as e:
+                    QMessageBox.warning(
+                        self,
+                        "Invalid File Format",
+                        f"Could not parse Excel file:\n{str(e)}\n\n"
+                        f"Please ensure the file has the correct structure with a 'contact' column."
+                    )
+                except Exception as e:
+                    QMessageBox.warning(
+                        self,
+                        "Error Loading File",
+                        f"An unexpected error occurred:\n{str(e)}"
+                    )
+
+    def start_file_import(self):
+        """Start file import using the controller."""
+        # Save the current form to the selected file before importing
+        self.save_current_form_to_data()
+
+        # Reset progress bar for this tab
+        self.progressBar.setValue(0)
+
+        # Show starting message in status bar
+        self._status_bar_manager.show_progress("File import in progress...")
+
+        # The controller/model already hold the file list, current subject, and
+        # contact labeling file (single source of truth) — no view->controller sync.
+        self._main_controller.start_file_import()
+
+    def _update_form_from_data(self, form_data: dict):
+        """Populate the import form widgets from a model form-data dict.
+
+        Single place that writes the Import Files form. The session value arrives
+        with its "ses-" prefix (or empty); _set_session_combobox_text keeps an empty
+        session empty so a session-less file round-trips unchanged through
+        save_current_form_to_data().
+        """
+        if not form_data:
+            return
+        self.set_import_form_enabled(True)
+        self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
+        self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
+        self._set_session_combobox_text(form_data.get("session", ""))
+        self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
+        self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
+        self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
+        self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
+
+    def set_comboBox_text(self, comboBox, text):
+        index = comboBox.findText(text)
+        if index >= 0:
+            comboBox.setCurrentIndex(index)
+        else:
+            comboBox.setCurrentIndex(-1)
+
+        comboBox.clearFocus()
