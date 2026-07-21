@@ -48,4 +48,7 @@ jobs:
       - name: Tests with coverage
         env:
           QT_QPA_PLATFORM: offscreen
-        run: poetry run pytest tests/ -v --cov=bidsificator --cov-report=term-missing
+        # Coverage floor is enforced so it can only ratchet up. Generated Qt UI
+        # modules and vendored PyEEGFormat are omitted (see [tool.coverage.run]
+        # in pyproject.toml). Current coverage is ~45%; the floor sits just below.
+        run: poetry run pytest tests/ -v --cov=bidsificator --cov-report=term-missing --cov-fail-under=43

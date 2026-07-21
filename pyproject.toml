@@ -68,6 +68,19 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+source = ["bidsificator"]
+# Generated Qt UI modules and the vendored PyEEGFormat binaries are not our code
+# to cover; the acceptance target for PR 10 is coverage of hand-written code.
+omit = ["bidsificator/forms/*_ui.py", "bidsificator/core/PyEEGFormat/*"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
 [tool.codespell]
 # Ref: https://github.com/codespell-project/codespell#using-a-config-file
 skip = '.git*,*.lock,./bidsificator/schema/bids_schema.json'

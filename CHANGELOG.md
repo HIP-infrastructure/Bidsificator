@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`--cov=bidsificator`) run in CI on every push/PR. Configuration lives in
   `pyproject.toml`; generated Qt UI modules and the vendored PyEEGFormat tree are
   excluded.
+- Grew the test suite (PR 10, test pyramid): 66 new tests across service, controller, and GUI-smoke layers, raising coverage of hand-written code from ~39% to ~45%. `test_subject_lookup_service.py` covers the CSV lookup-table parsing/validation (numeric and CUSTOM modes, per-line error messages, case-insensitive matching, template generation); `test_import_service.py` covers the display-modality mapping, acquisition auto-increment, form/data construction, duplicate detection, and per-file validation; `test_import_files_controller.py` pins the `ImportFilesController` signal contract and dialog-free logic; and `test_mainwindow_smoke.py` constructs `MainWindow` offscreen to verify the full `__init__` wiring and the per-tab mixin arrangement. A coverage floor (`--cov-fail-under=43`) is now enforced in CI so coverage can only ratchet up; the omitted paths (generated `forms/` and vendored `PyEEGFormat/`) are declared under `[tool.coverage.run]` in `pyproject.toml`.
 
 ### Fixed
 - Resolved the full existing ruff surface (~3.3k findings): whitespace and
