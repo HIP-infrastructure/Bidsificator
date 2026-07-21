@@ -81,6 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Broken API-only `.devcontainer/` (its `api.Dockerfile` copied a nonexistent
   `requirements.txt` and pinned Python 3.10, unsupported since the Poetry
   migration).
+- The two unused MNE/neo-based TRC converters (`trc_to_edf.py`, `trc_to_brainvision.py`). TRC→EDF is handled by the bundled PyEEGFormat converter, which was already the only one ever selected: the registry returns the highest-priority converter and nothing requests a specific target format, so the MNE EDF *fallback* only fired on platforms with no PyEEGFormat wrapper and the `.vhdr` BrainVision converter was never reachable at all. Removing them drops the `mne`, `neo`, `quantities`, `edfio`, and `pybv` dependencies (used only by those two files and by `mne.export`'s runtime backends). New converters can be added later if a format PyEEGFormat does not cover comes up.
+- The unused `FileAnalysis` dataclass in `converters/base.py` — a stale duplicate of the canonical schema-driven `core/file_analysis.py`; it was only re-exported from `converters/__init__.py`, never constructed.
 
 ### Security
 - The `bidsificator-api` server no longer starts with the Werkzeug debugger
