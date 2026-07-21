@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QInputDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QWidget
 
 from ..core.BidsFolder import BidsFolder
 from ..services.ValidationServiceSchema import ValidationService
@@ -22,6 +22,7 @@ class PatientTableController(QObject):
     subject_deleted = pyqtSignal(str)  # Subject deleted
     keys_updated = pyqtSignal()  # Table columns/keys updated
     data_changed = pyqtSignal()  # Table data changed
+    operation_failed = pyqtSignal(str, str)  # (title, message) for the view to render
 
     def __init__(self, dataset_path_provider, parent: QWidget | None = None):
         """
@@ -223,19 +224,14 @@ class PatientTableController(QObject):
                 validation_service = ValidationService()
                 is_valid, error = validation_service.validate_subject_name(new_value)
                 if not is_valid:
-                    QMessageBox.warning(
-                        self._parent_widget,
-                        "Invalid Subject ID",
-                        error
-                    )
+                    self.operation_failed.emit("Invalid Subject ID", error)
                     return False
 
                 # Check for duplicates in the actual BidsFolder
                 if self._bids_folder.get_bids_subject(new_value):
-                    QMessageBox.warning(
-                        self._parent_widget,
+                    self.operation_failed.emit(
                         "Duplicate Subject ID",
-                        f"Subject ID '{new_value}' already exists"
+                        f"Subject ID '{new_value}' already exists",
                     )
                     return False
 
@@ -261,15 +257,20 @@ class PatientTableController(QObject):
             return True
 
         except Exception:
-            # Log error appropriately in production
+            logger.exception("Failed to update field '%s' for subject '%s'", field_name, subject_id)
             return False
 
-    def add_key_after(self, column_index: int) -> bool:
+    def add_key_after(self, column_index: int, key_name: str) -> bool:
         """
         Add a new key/column after the specified column.
 
+        The key name is gathered by the view; a name that is empty, already
+        present, or reserved (``subject_id``) is rejected — the duplicate case is
+        reported via ``operation_failed`` for the view to render.
+
         Args:
             column_index: Index to add column after
+            key_name: The key name entered by the user
 
         Returns:
             True if added successfully
@@ -277,24 +278,14 @@ class PatientTableController(QObject):
         if not self._bids_folder:
             return False
 
-        key_name, ok = QInputDialog.getText(
-            self._parent_widget,
-            "Add Key",
-            "Enter name for the new key:"
-        )
-
-        if not ok or not key_name.strip():
+        if not key_name.strip():
             return False
 
         key_name = key_name.strip()
 
         # Check if key already exists
         if key_name in self._all_optional_keys or key_name == "subject_id":
-            QMessageBox.warning(
-                self._parent_widget,
-                "Duplicate Key",
-                f"Key '{key_name}' already exists"
-            )
+            self.operation_failed.emit("Duplicate Key", f"Key '{key_name}' already exists")
             return False
 
         try:
@@ -319,25 +310,31 @@ class PatientTableController(QObject):
             return True
 
         except Exception:
+            logger.exception("Failed to add key '%s'", key_name)
             return False
 
-    def add_key_before(self, column_index: int) -> bool:
+    def add_key_before(self, column_index: int, key_name: str) -> bool:
         """
         Add a new key/column before the specified column.
 
         Args:
             column_index: Index to add column before
+            key_name: The key name entered by the user
 
         Returns:
             True if added successfully
         """
         # For simplicity, use same logic as add_key_after
         # The actual positioning would be handled by the UI
-        return self.add_key_after(column_index)
+        return self.add_key_after(column_index, key_name)
 
     def remove_key(self, key_name: str) -> bool:
         """
         Remove a key/column from the table.
+
+        The view gathers the confirmation before calling this for a removable
+        key; the reserved ``subject_id`` column is guarded here and reported via
+        ``operation_failed`` (no confirmation is shown for it).
 
         Args:
             key_name: Name of key to remove
@@ -349,22 +346,7 @@ class PatientTableController(QObject):
             return False
 
         if key_name == "subject_id":
-            QMessageBox.warning(
-                self._parent_widget,
-                "Cannot Remove",
-                "Subject ID column cannot be removed"
-            )
-            return False
-
-        # Ask for confirmation
-        reply = QMessageBox.question(
-            self._parent_widget,
-            "Remove Key",
-            f"Are you sure you want to remove the '{key_name}' key?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.No:
+            self.operation_failed.emit("Cannot Remove", "Subject ID column cannot be removed")
             return False
 
         try:
@@ -385,6 +367,7 @@ class PatientTableController(QObject):
             return True
 
         except Exception:
+            logger.exception("Failed to remove key '%s'", key_name)
             return False
 
     def get_subjects_data(self) -> list[dict[str, Any]]:
