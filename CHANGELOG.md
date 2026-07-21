@@ -101,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migration).
 - The two unused MNE/neo-based TRC converters (`trc_to_edf.py`, `trc_to_brainvision.py`). TRC→EDF is handled by the bundled PyEEGFormat converter, which was already the only one ever selected: the registry returns the highest-priority converter and nothing requests a specific target format, so the MNE EDF *fallback* only fired on platforms with no PyEEGFormat wrapper and the `.vhdr` BrainVision converter was never reachable at all. Removing them drops the `mne`, `neo`, `quantities`, `edfio`, and `pybv` dependencies (used only by those two files and by `mne.export`'s runtime backends). New converters can be added later if a format PyEEGFormat does not cover comes up.
 - The unused `FileAnalysis` dataclass in `converters/base.py` — a stale duplicate of the canonical schema-driven `core/file_analysis.py`; it was only re-exported from `converters/__init__.py`, never constructed.
+- Dead `ImportFilesController.get_ui_requirements_for_modality` and its now-orphaned `FileDetectionService` import. The method had no callers and called `FileDetectionService.get_modality_requirements()`, which does not exist (it would have raised `AttributeError` if ever reached); the live modality-UI path is `FileEditorController.get_modality_ui_requirements` via `FileDetectionService.get_modality_info(...).ui_requirements`.
 
 ### Security
 - The `bidsificator-api` server no longer starts with the Werkzeug debugger

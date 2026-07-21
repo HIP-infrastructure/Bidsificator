@@ -7,7 +7,6 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
 from ..models.ImportSessionModel import ImportSessionModel
-from ..services.FileDetectionServiceSchema import FileDetectionService
 from ..workers.ImportBidsFilesWorker import ImportBidsFilesWorker
 
 logger = logging.getLogger(__name__)
@@ -307,18 +306,6 @@ class ImportFilesController(QObject):
         # Deliberately do NOT emit dialog_dismissed here so the error stays in
         # the status bar.
         self.import_failed.emit(message)
-
-    def get_ui_requirements_for_modality(self, modality: str) -> dict[str, bool]:
-        """
-        Get UI visibility requirements for a modality.
-
-        Args:
-            modality: Modality string
-
-        Returns:
-            Dictionary with UI element visibility flags
-        """
-        return FileDetectionService.get_modality_requirements(modality)
 
     def clear_session(self):
         """Clear the current import session."""
