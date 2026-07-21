@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QInputDialog, QMessageBox, QWidget
 
 from ..controllers.FileEditorController import FileEditorController
 from ..forms.FileEditor_ui import Ui_FileEditor
@@ -57,6 +57,7 @@ class FileEditor(QWidget, Ui_FileEditor):
         self._controller.file_selected.connect(self._update_form_fields)
         self._controller.edit_mode_changed.connect(self._update_edit_mode_ui)
         self._controller.task_list_updated.connect(self._update_task_list)
+        self._controller.operation_failed.connect(self._on_operation_failed)
 
     def _setup_ui_connections(self):
         """Set up UI signal connections."""
@@ -306,18 +307,25 @@ class FileEditor(QWidget, Ui_FileEditor):
     # UI Utility Methods
 
     def update_task_combobox_UI(self):
-        """Handle task combobox selection using controller."""
+        """Handle task combobox selection, prompting for a name on "Other"."""
         current_text = self.TaskComboBox.currentText()
         if "Other" in current_text:
             # Get current tasks
             current_tasks = [self.TaskComboBox.itemText(i) for i in range(self.TaskComboBox.count())]
 
-            # Use controller to handle task selection
-            final_task, updated_tasks = self._controller.handle_task_selection(current_text, current_tasks)
+            # Gather the custom task name here (view), then let the controller
+            # validate/insert it. Rejections come back via operation_failed.
+            new_task, _ok = QInputDialog.getText(
+                self,
+                "Enter Task Name",
+                "Enter a name for your task",
+            )
+            self._controller.add_custom_task(new_task, current_tasks)
+            # A successful add updates the combobox via the task_list_updated signal.
 
-            if final_task:  # Task was successfully created
-                # Update will be handled by controller signal
-                pass
+    def _on_operation_failed(self, title: str, message: str):
+        """Render a controller-reported failure as a warning dialog."""
+        QMessageBox.warning(self, title, message)
 
     def update_userinterface_for_modality(self):
         """Update UI visibility based on modality using controller."""
