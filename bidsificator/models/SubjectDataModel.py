@@ -222,6 +222,27 @@ class SubjectDataModel:
         """
         return [subject.display_name or subject.subject_id for subject in self._subjects]
 
+    def reapply_subject_mapping(self, subject_mapping: dict[str, str] | None):
+        """Re-apply a subject lookup mapping to already-loaded subjects, in place.
+
+        Updates each subject's ``subject_id`` and ``display_name`` from its
+        ``original_subject_id`` without re-crawling the filesystem, so any file
+        edits made since parsing are preserved. Passing an empty/None mapping
+        reverts every subject to its original (un-anonymized) name. This makes the
+        lookup table order-independent: it takes effect whether it was loaded
+        before or after Parse.
+        """
+        from ..services.DataCrawlerService import DataCrawlerService
+
+        for subject in self._subjects:
+            original_id = subject.original_subject_id or subject.subject_id
+            mapped_id, display_name = DataCrawlerService.format_mapped_subject(
+                original_id, subject_mapping
+            )
+            subject.subject_id = mapped_id
+            subject.original_subject_id = original_id
+            subject.display_name = display_name
+
     def count(self) -> int:
         """Get number of subjects."""
         return len(self._subjects)
