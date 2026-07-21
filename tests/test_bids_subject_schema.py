@@ -274,6 +274,26 @@ def test_file_analysis_class():
     assert error_analysis.error == "File not supported"
 
 
+def test_inheritance_aware_entities_delegation(schema_manager, tmp_path):
+    """BidsSubject must expose _get_inheritance_aware_entities.
+
+    The validation FileRuleValidator reuses a BidsSubject as its schema helper
+    and calls this method for BIDS inheritance-aware association lookups. After
+    the collaborator split (PR #27) the method lived only on
+    SubjectSidecarGenerator, so the call raised AttributeError — silently
+    swallowed by the validator, disabling the inherit fallback. This guards the
+    delegating method that fixes it.
+    """
+    subject = BidsSubject("01", tmp_path, schema_manager)
+
+    # electrodes is an inheritance-critical suffix: when the data file carries
+    # both subject and session, the metadata file keeps the session context.
+    entities = subject._get_inheritance_aware_entities(
+        {"sub": "01", "ses": "01"}, "ieeg", "electrodes"
+    )
+    assert entities == {"sub": "01", "ses": "01"}
+
+
 if __name__ == "__main__":
     # pytest collects the test_* functions directly; this runner just lets the
     # file be executed as a script. The functions raise on failure.
