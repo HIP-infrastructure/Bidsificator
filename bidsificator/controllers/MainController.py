@@ -185,9 +185,13 @@ class MainController(QObject):
         if success:
             self.status_updated.emit("Selected subjects removed")
 
-    def start_subjects_import(self, task: str = "Rest"):
-        """Start batch subjects import process."""
-        success = self._import_subjects_controller.start_batch_import(task)
+    def start_subjects_import(self, task: str = "Rest", conflict_resolver=None):
+        """Start batch subjects import process.
+
+        ``conflict_resolver`` is forwarded to the controller; the view supplies it
+        to resolve subject conflicts (overwrite / skip / cancel).
+        """
+        success = self._import_subjects_controller.start_batch_import(task, conflict_resolver)
         if success:
             self.status_updated.emit("Batch import started...")
 
