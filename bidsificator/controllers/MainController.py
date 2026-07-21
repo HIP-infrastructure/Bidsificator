@@ -149,41 +149,11 @@ class MainController(QObject):
         """Get import files controller."""
         return self._import_files_controller
 
-    def add_multiple_files(self, form_defaults: dict[str, str], memory_path: str = ""):
-        """
-        Add multiple files through import files controller.
-
-        Args:
-            form_defaults: Form default values
-            memory_path: Browse dialog memory path
-        """
-        count, failed = self._import_files_controller.add_multiple_files(form_defaults, memory_path)
-        self.status_updated.emit(f"Added {count} files to import list")
-
-    def remove_selected_import_file(self):
-        """Remove selected file from import list."""
-        success = self._import_files_controller.remove_selected_file()
-        if success:
-            self.status_updated.emit("File removed from import list")
-
     def start_file_import(self):
         """Start single file import process."""
         success = self._import_files_controller.start_import()
         if success:
             self.status_updated.emit("File import started...")
-
-    def update_import_files_subject(self, new_subject: str, ask_user: bool = True):
-        """
-        Update subject for import files.
-
-        Args:
-            new_subject: New subject ID
-            ask_user: Whether to ask user for confirmation
-        """
-        success = self._import_files_controller.change_subject(new_subject, ask_user)
-        if success:
-            self.status_updated.emit(f"Import files subject updated to {new_subject}")
-        return success
 
     # Import Subjects operations
 
