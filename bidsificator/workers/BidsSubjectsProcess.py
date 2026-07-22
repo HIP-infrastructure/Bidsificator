@@ -4,8 +4,9 @@ import os
 from ..core.BidsFolder import BidsFolder
 from ..core.logging_config import setup_logging
 from .import_processor import (
-    PROGRESS_DONE,
-    PROGRESS_ERROR,
+    SKIPPED,
+    ImportItemOutcome,
+    ImportSummary,
     add_file_to_subject,
     resolve_datatype_and_suffix,
 )
@@ -42,6 +43,12 @@ def processBidsSubjects(
     # Calculate total files across all subjects for overall progress
     total_files = sum(len(subject['files']) for subject in subjects_list)
     processed_files = 0
+    summary = ImportSummary()
+
+    def send_progress():
+        # Guard against an all-empty queue (no files anywhere).
+        if total_files:
+            conn.send(round(100 * (float(processed_files) / total_files)))
 
     bids_folder = BidsFolder(dataset_path)
     for subject in subjects_list:
@@ -57,21 +64,35 @@ def processBidsSubjects(
                 overwrite=overwrite_existing
             )
         except ValueError as e:
-            # Subject already exists and overwrite=False
+            # add_bids_subject raises ValueError both when the subject already
+            # exists (overwrite=False) and when the id is schema-invalid, so we
+            # record the real cause (str(e)) rather than a hard-coded label, and
+            # still advance progress past this subject's files so the bar reaches
+            # 100%.
             logger.warning("Skipping subject %s: %s", subject['subject_id'], e)
+            summary.items.append(ImportItemOutcome(
+                path=None, subject=subject['subject_id'], status=SKIPPED, reason=str(e),
+            ))
+            processed_files += len(subject['files'])
+            send_progress()
             continue
 
-        if bids_subject is None:
-            logger.error("Failed to create subject %s in dataset %s", subject['subject_id'], dataset_path)
-            conn.send(PROGRESS_ERROR)
-            return
+        # add_bids_subject never returns None (it returns the subject or raises),
+        # so there is no None-check here.
+        summary.subjects_created += 1
 
-        for _index, file in enumerate(subject['files']):
+        for file in subject['files']:
             file_path = file["file_path"]
 
-            # Skip if file does not exist
+            # Skip if file does not exist (progress still emitted below).
             if not os.path.exists(file_path):
                 logger.warning("File %s does not exist. Skipping.", file_path)
+                summary.items.append(ImportItemOutcome(
+                    path=file_path, subject=bids_subject.get_subject_id(), status=SKIPPED,
+                    reason="Source file not found on disk",
+                ))
+                processed_files += 1
+                send_progress()
                 continue
 
             # Build entities for the file, filtering out empty values
@@ -108,14 +129,19 @@ def processBidsSubjects(
 
             if resolved is None:
                 logger.warning("Modality not recognized: %s", modality)
+                summary.items.append(ImportItemOutcome(
+                    path=file_path, subject=bids_subject.get_subject_id(), status=SKIPPED,
+                    reason=f"Modality not recognized: '{modality}'",
+                ))
             else:
                 datatype, suffix = resolved
-                add_file_to_subject(bids_subject, file_path, datatype, suffix, entities)
+                summary.items.append(
+                    add_file_to_subject(bids_subject, file_path, datatype, suffix, entities)
+                )
 
             # Update overall progress across all subjects
             processed_files += 1
-            overall_progress = round(100 * (float(processed_files) / total_files))
-            conn.send(overall_progress)  # Send overall progress to the main thread
+            send_progress()
 
     bids_folder.generate_participants_tsv()
-    conn.send(PROGRESS_DONE)  # Indicate completion
+    conn.send(summary)  # Terminal message: per-item outcomes + warnings
