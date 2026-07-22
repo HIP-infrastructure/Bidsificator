@@ -299,11 +299,13 @@ class ImportSubjectsController(QObject):
             self._worker.deleteLater()
             self._worker = None
 
-        # The view renders the completion dialog (from import_completed) and then
-        # clears the status bar on dialog_dismissed. The per-state dialog_dismissed
-        # policy (keeping an amber partial-success summary visible) arrives with
-        # the ticket-3 UI.
-        self.dialog_dismissed.emit()
+        # The view clears the status bar on dialog_dismissed. Emit it only for a
+        # clean success; on a partial import the view shows a persistent amber
+        # "finished with N problems" message that must survive the dialog closing,
+        # so we deliberately withhold dialog_dismissed (mirrors the error path).
+        # summary.skipped already includes the merged conflict-dialog skips above.
+        if summary.failed == 0 and summary.skipped == 0 and not summary.warnings:
+            self.dialog_dismissed.emit()
 
     def _on_import_error(self, message: str):
         """Handle import failure from worker (child crash or reported error)."""
