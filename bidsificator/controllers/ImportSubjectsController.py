@@ -14,6 +14,7 @@ from ..core.schema import BidsSchemaManager
 from ..models.SubjectDataModel import SubjectData, SubjectDataModel
 from ..services.SubjectLookupService import SubjectLookupService
 from ..workers.BidsSubjectsProcess import check_subject_conflicts
+from ..workers.import_processor import SKIPPED, ImportItemOutcome
 from ..workers.ImportBidsSubjectsWorker import ImportBidsSubjectsWorker
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,10 @@ class ImportSubjectsController(QObject):
         self._file_editor_controller = file_editor_controller
         self._model = SubjectDataModel()
         self._worker: ImportBidsSubjectsWorker | None = None
+        # Subjects the user chose to skip at the conflict dialog. They are filtered
+        # out before the worker starts, so they never reach the subprocess summary;
+        # the controller merges them back in on completion (REQ-GUI-073).
+        self._skipped_existing: list[str] = []
         self._config_path = BidsUtilityFunctions.get_config_path()
         self._lookup_table_path: str | None = None
         self._subject_mapping: dict[str, str] = {}
@@ -187,6 +192,9 @@ class ImportSubjectsController(QObject):
         Returns:
             True if started successfully
         """
+        # Reset per-run state so a prior run's skips don't leak into this summary.
+        self._skipped_existing = []
+
         dataset_path = self._get_dataset_path()
         if not dataset_path:
             self.operation_failed.emit("No Dataset", "Please load a dataset first")
@@ -229,7 +237,9 @@ class ImportSubjectsController(QObject):
                     overwrite_existing = True
                 elif conflict_result == "skip":
                     overwrite_existing = False
-                    # Filter out conflicting subjects
+                    # Remember the skips so they appear in the completion summary,
+                    # then filter out the conflicting subjects before the worker.
+                    self._skipped_existing = list(existing_subjects)
                     subjects_data = [s for s in subjects_data
                                    if f"sub-{s['subject_id']}" not in existing_subjects]
 
@@ -250,7 +260,7 @@ class ImportSubjectsController(QObject):
         # Create and start worker with overwrite setting and task
         self._worker = ImportBidsSubjectsWorker(dataset_path, subjects_data, overwrite_existing, task)
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
-        self._worker.finished.connect(self._on_import_finished)
+        self._worker.import_finished.connect(self._on_import_finished)
         self._worker.error.connect(self._on_import_error)
         self._worker.start()
 
@@ -260,17 +270,26 @@ class ImportSubjectsController(QObject):
         """Handle progress update from worker."""
         self.progress_updated.emit(progress)
 
-    def _on_import_finished(self):
-        """Handle import completion from worker."""
-        # Calculate results
-        total_files = sum(len(subject.files) for subject in self._model.subjects)
-        subject_count = self._model.count()
+    def _on_import_finished(self, summary):
+        """Handle import completion from worker.
 
-        # This handler now runs only on genuine completion (the worker emits
-        # `error` instead of `finished` on failure), so no success flag is needed.
+        Counts come from the worker's ``ImportSummary`` (what was actually created
+        and placed), not the queued model counts. Subjects the user skipped at the
+        conflict dialog were filtered out before the worker, so they are merged
+        back into the summary here as skipped items (REQ-GUI-073). The ``summary``
+        sub-dict feeds the ticket-3 completion dialog; the flat ``subjects_imported``
+        / ``total_files`` keys keep the current dialog working meanwhile.
+        """
+        for existing in self._skipped_existing:
+            summary.items.append(ImportItemOutcome(
+                path=None, subject=existing, status=SKIPPED,
+                reason="Subject already exists (user chose skip)",
+            ))
+
         results = {
-            "subjects_imported": subject_count,
-            "total_files": total_files,
+            "subjects_imported": summary.subjects_created,
+            "total_files": summary.imported,
+            "summary": summary.to_dict(),
         }
 
         self.import_completed.emit(results)
@@ -281,7 +300,9 @@ class ImportSubjectsController(QObject):
             self._worker = None
 
         # The view renders the completion dialog (from import_completed) and then
-        # clears the status bar on dialog_dismissed.
+        # clears the status bar on dialog_dismissed. The per-state dialog_dismissed
+        # policy (keeping an amber partial-success summary visible) arrives with
+        # the ticket-3 UI.
         self.dialog_dismissed.emit()
 
     def _on_import_error(self, message: str):

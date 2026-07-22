@@ -4,14 +4,16 @@ import multiprocessing as mp
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from .BidsFilesProcess import processBidsFiles
-from .import_processor import PROGRESS_DONE, PROGRESS_ERROR
+from .import_processor import ImportSummary, MessageKind, classify_message
 
 logger = logging.getLogger(__name__)
 
 
 class ImportBidsFilesWorker(QThread):
     update_progressbar_signal = pyqtSignal(int)
-    finished = pyqtSignal()
+    # Carries the ImportSummary from the finished import. Named distinctly (not
+    # `finished`) so it does not shadow QThread.finished.
+    import_finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
     def __init__(self, dataset_path: str, subject_name: str, file_list: list, contact_labeling_file: str = None):
@@ -31,6 +33,7 @@ class ImportBidsFilesWorker(QThread):
         process.start()
 
         failed = False
+        summary = ImportSummary()
         while True:
             # Poll with a timeout instead of a blocking recv(): a child that dies
             # without writing (crash, OOM kill) would otherwise hang the GUI forever.
@@ -42,17 +45,28 @@ class ImportBidsFilesWorker(QThread):
                     break
                 continue  # still working, keep waiting
 
-            progress = parent_conn.recv()
-            if progress == PROGRESS_DONE:
+            message = parent_conn.recv()
+            # Classify by type BEFORE any ordering comparison: a non-int terminal
+            # message would otherwise raise TypeError here and hang the UI.
+            kind = classify_message(message)
+            if kind is MessageKind.SUMMARY:
+                summary = message
                 break
-            elif progress <= PROGRESS_ERROR:
+            elif kind is MessageKind.DONE:
+                break  # legacy bare completion sentinel: empty summary
+            elif kind is MessageKind.ERROR:
                 failed = True
                 logger.error("Import process reported an error")
                 self.error.emit("Error while processing files (see log for details)")
                 break
-            else:
-                self.update_progressbar_signal.emit(progress)
+            elif kind is MessageKind.PROGRESS:
+                self.update_progressbar_signal.emit(message)
+            else:  # MessageKind.UNKNOWN
+                failed = True
+                logger.error("Import process sent an unrecognized message: %r", message)
+                self.error.emit("Import process sent an unrecognized message (see log for details)")
+                break
 
         process.join()
         if not failed:
-            self.finished.emit()
+            self.import_finished.emit(summary)

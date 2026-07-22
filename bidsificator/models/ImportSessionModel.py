@@ -229,6 +229,17 @@ class ImportSessionModel:
         self._state = ImportSessionState.COMPLETED
         self._progress = 100
 
+    def fail_import(self, message: str):
+        """
+        Mark import as failed, leaving the session runnable again.
+
+        Without this transition the session stays ``IMPORTING`` after a worker
+        error, and :meth:`start_import` then refuses every subsequent run.
+        """
+        self._error_message = message
+        self._state = ImportSessionState.ERROR
+        self._progress = 0
+
     def reset_session(self):
         """Reset the session to initial state."""
         self._file_model.clear()

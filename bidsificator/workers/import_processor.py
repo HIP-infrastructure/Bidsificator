@@ -54,6 +54,19 @@ class ImportItemOutcome:
     status: str
     reason: str | None = None
 
+    def to_dict(self) -> dict:
+        """Plain-dict form for the worker/controller boundary.
+
+        The view consumes dicts and never imports this worker module, so the
+        controller converts outcomes to primitives before emitting them.
+        """
+        return {
+            "path": self.path,
+            "subject": self.subject,
+            "status": self.status,
+            "reason": self.reason,
+        }
+
 
 @dataclass
 class ImportSummary:
@@ -84,6 +97,19 @@ class ImportSummary:
     @property
     def total(self) -> int:
         return len(self.items)
+
+    def to_dict(self) -> dict:
+        """Plain-dict form for the worker/controller boundary (see
+        :meth:`ImportItemOutcome.to_dict`)."""
+        return {
+            "imported": self.imported,
+            "failed": self.failed,
+            "skipped": self.skipped,
+            "total": self.total,
+            "subjects_created": self.subjects_created,
+            "items": [item.to_dict() for item in self.items],
+            "warnings": list(self.warnings),
+        }
 
 
 class MessageKind(Enum):

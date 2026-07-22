@@ -23,8 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Import worker subprocesses now tally a structured per-item outcome summary — each queued item recorded as imported, failed, or skipped with a human-readable reason (`str(e)` for conversion failures, never a branch-inferred label) — and send it as the terminal pipe message in place of the bare completion sentinel. A summary-level warnings channel carries failures not tied to one item (e.g. a contact-labeling file that fails to attach), and progress is emitted for every queued item so the bar always reaches 100% even when items are skipped. A pure `classify_message()` helper discriminates pipe messages by type. This is the backend groundwork for accurate import-completion reporting (UR-GUI-009, REQ-GUI-065–070); the summary is not yet surfaced in the UI.
+- Import completion dialogs now report the number of files/subjects actually written from the worker's outcome summary, instead of the queued count. A partial import (some files skipped or failed) now shows the true "imported" number rather than overstating success (UR-GUI-009, REQ-GUI-072). The full failed/skipped breakdown and the completed-with-errors dialog state arrive in a later PR; the outcome summary is now carried end-to-end (worker → controller) ready for it.
 
 ### Fixed
+- After a single-file import failed (subprocess error or crash), the import session stayed in its `IMPORTING` state, so every subsequent attempt was refused with "Cannot start import" and an empty message. The session is now reset on failure and the next import can start (UR-GUI-009, REQ-GUI-074).
+- Import worker readers now classify each pipe message by type before any numeric comparison, so an unexpected terminal message surfaces as a normal error instead of raising inside the reader thread and hanging the GUI (no `finished`/`error` ever emitted). The workers' completion signal was also renamed off `finished` so it no longer shadows `QThread.finished` (UR-GUI-009, REQ-GUI-071/079).
 - Resolved the full existing ruff surface (~3.3k findings): whitespace and
   import ordering, modernized type hints (PEP 585/604) and `super()` calls,
   narrowed two bare `except:` clauses, chained re-raises with `from`, and fixed
