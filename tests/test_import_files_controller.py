@@ -192,13 +192,27 @@ def test_on_import_finished_reports_summary_not_queued_counts(qapp):
     assert ctrl.model.state is ImportSessionState.COMPLETED
 
 
-def test_on_import_finished_emits_dialog_dismissed(qapp):
+def test_on_import_finished_clean_emits_dialog_dismissed(qapp):
     ctrl = _controller("/data")
     dismissed = _capture(ctrl.dialog_dismissed)
 
-    ctrl._on_import_finished(ImportSummary())
+    ctrl._on_import_finished(ImportSummary(items=[ImportItemOutcome("a", "01", IMPORTED)]))
 
     assert len(dismissed) == 1
+
+
+def test_on_import_finished_partial_withholds_dialog_dismissed(qapp):
+    ctrl = _controller("/data")
+    ctrl.current_subject = "01"
+    dismissed = _capture(ctrl.dialog_dismissed)
+
+    ctrl._on_import_finished(ImportSummary(items=[
+        ImportItemOutcome("a", "01", IMPORTED),
+        ImportItemOutcome("b", "01", FAILED, "boom"),
+    ]))
+
+    # A partial import keeps the amber status visible, so no dialog_dismissed.
+    assert dismissed == []
 
 
 def test_on_import_error_unsticks_importing_state(qapp):

@@ -24,6 +24,11 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
 from ...forms.ImportFilesTab_ui import Ui_ImportFilesTab
+from ..import_completion import (
+    CompletionState,
+    ImportCompletionDialog,
+    select_completion_state,
+)
 
 if TYPE_CHECKING:
     from ...controllers.MainController import MainController
@@ -644,19 +649,37 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         self._status_bar.show_progress("Importing files...", progress)
 
     def _on_file_import_completed(self, results: dict):
-        """Handle file import completion: status bar + completion dialog."""
-        file_count = results.get("files_imported", 0)
-        self._status_bar.show_success(f"Successfully imported {file_count} files")
-        QMessageBox.information(
-            self,
-            "Import Complete",
-            f"Successfully imported {file_count} files.\n\n"
-            "Files remain in the list for review. You can:\n"
-            "• Check/modify any file settings\n"
-            "• Remove files if needed\n"
-            "• Add more files\n"
-            "• Re-import if there were issues",
-        )
+        """Handle file import completion: status bar + completion dialog.
+
+        Three states (UR-GUI-009): all imported → green success box; some imported
+        with failures/skips → amber "completed with errors" dialog listing each
+        problem; nothing imported → red. The amber/red status message persists
+        after the dialog closes (the controller withholds ``dialog_dismissed``).
+        """
+        summary = results.get("summary", {})
+        file_count = results.get("files_imported", summary.get("imported", 0))
+        state = select_completion_state(summary)
+
+        if state is CompletionState.SUCCESS:
+            self._status_bar.show_success(f"Successfully imported {file_count} files")
+            QMessageBox.information(
+                self,
+                "Import Complete",
+                f"Successfully imported {file_count} files.\n\n"
+                "Files remain in the list for review. You can:\n"
+                "• Check/modify any file settings\n"
+                "• Remove files if needed\n"
+                "• Add more files\n"
+                "• Re-import if there were issues",
+            )
+            return
+
+        problems = summary.get("failed", 0) + summary.get("skipped", 0) + len(summary.get("warnings") or [])
+        if state is CompletionState.ERROR:
+            self._status_bar.show_error(f"No files imported ({problems} problem(s))")
+        else:
+            self._status_bar.show_warning(f"Import finished with {problems} problem(s)")
+        ImportCompletionDialog(self, state, summary, "file").exec()
 
     def _show_file_import_failed_dialog(self, message: str):
         """Render a file-import failure as a modal."""

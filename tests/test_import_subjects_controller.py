@@ -94,6 +94,23 @@ def test_on_import_finished_merges_conflict_skips_into_summary(qapp):
     assert skipped_subjects == {"sub-alice", "sub-bob"}
 
 
+def test_on_import_finished_partial_withholds_dialog_dismissed(qapp):
+    ctrl = _controller("/data")
+    dismissed = _capture(ctrl.dialog_dismissed)
+    summary = ImportSummary(
+        items=[
+            ImportItemOutcome("f.trc", "x", IMPORTED),
+            ImportItemOutcome("g.trc", "x", SKIPPED, "missing"),
+        ],
+        subjects_created=1,
+    )
+
+    ctrl._on_import_finished(summary)
+
+    # Partial batch import keeps the amber status visible, so no dialog_dismissed.
+    assert dismissed == []
+
+
 # --------------------------------------------------------------------------- #
 # start_batch_import pre-checks -> operation_failed
 # --------------------------------------------------------------------------- #

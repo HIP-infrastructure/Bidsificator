@@ -25,6 +25,11 @@ from PyQt6.QtWidgets import QFileDialog, QMenu, QMessageBox, QWidget
 from ...core.BidsUtilityFunctions import BidsUtilityFunctions
 from ...forms.ImportSubjectsTab_ui import Ui_ImportSubjectsTab
 from ..FileEditor import FileEditor
+from ..import_completion import (
+    CompletionState,
+    ImportCompletionDialog,
+    select_completion_state,
+)
 
 if TYPE_CHECKING:
     from ...controllers.MainController import MainController
@@ -316,18 +321,39 @@ class ImportSubjectsTab(QWidget, Ui_ImportSubjectsTab):
         self._status_bar.show_progress("Importing subjects...", progress)
 
     def _on_subjects_import_completed(self, results: dict):
-        """Handle subjects import completion: status bar + completion dialog."""
-        subject_count = results.get("subjects_imported", 0)
-        file_count = results.get("total_files", 0)
-        self._status_bar.show_success(
-            f"Successfully imported {subject_count} subjects ({file_count} files)"
+        """Handle subjects import completion: status bar + completion dialog (3 states).
+
+        Mirrors the Import Files tab: all imported → green; partial → amber
+        completed-with-errors dialog; nothing imported → red. The header names
+        both subjects and files since a batch run tallies each (UR-GUI-009).
+        """
+        summary = results.get("summary", {})
+        subject_count = results.get("subjects_imported", summary.get("subjects_created", 0))
+        file_count = results.get("total_files", summary.get("imported", 0))
+        state = select_completion_state(summary)
+
+        if state is CompletionState.SUCCESS:
+            self._status_bar.show_success(
+                f"Successfully imported {subject_count} subjects ({file_count} files)"
+            )
+            QMessageBox.information(
+                self,
+                "Import Complete",
+                f"Successfully imported {subject_count} subjects with {file_count} files.\n\n"
+                "Check the dataset folder for the imported files.",
+            )
+            return
+
+        problems = summary.get("failed", 0) + summary.get("skipped", 0) + len(summary.get("warnings") or [])
+        header = (
+            f"Imported {subject_count} subject(s) and {file_count} file(s) — "
+            f"{problems} problem(s)."
         )
-        QMessageBox.information(
-            self,
-            "Import Complete",
-            f"Successfully imported {subject_count} subjects with {file_count} files.\n\n"
-            "Check the dataset folder for the imported files.",
-        )
+        if state is CompletionState.ERROR:
+            self._status_bar.show_error(f"No files imported ({problems} problem(s))")
+        else:
+            self._status_bar.show_warning(f"Import finished with {problems} problem(s)")
+        ImportCompletionDialog(self, state, summary, "file", header=header).exec()
 
     def _show_subjects_import_failed_dialog(self, message: str):
         """Render a subjects-import failure as a modal."""

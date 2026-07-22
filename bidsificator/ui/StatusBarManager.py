@@ -15,11 +15,13 @@ class StatusBarManager:
     # Status icons
     ICON_PROGRESS = "\u23F3"  # Hourglass
     ICON_SUCCESS = "\u2714"   # Check mark
+    ICON_WARNING = "\u26A0"   # Warning triangle
     ICON_ERROR = "\u2718"     # X mark
 
     # Color styles
     STYLE_PROGRESS = "color: #2196F3;"  # Blue
     STYLE_SUCCESS = "color: #4CAF50;"   # Green
+    STYLE_WARNING = "color: #FF9800;"   # Amber
     STYLE_ERROR = "color: #F44336;"     # Red
     STYLE_DEFAULT = ""
 
@@ -57,6 +59,21 @@ class StatusBarManager:
         """
         display_message = f"{self.ICON_SUCCESS} {message}"
         self._status_bar.setStyleSheet(self.STYLE_SUCCESS)
+        self._status_bar.showMessage(display_message)
+
+    def show_warning(self, message: str) -> None:
+        """
+        Show a warning message in amber.
+
+        Used for a "completed with errors" import: unlike a progress/success
+        message, this is meant to persist after the completion dialog closes, so
+        callers deliberately do not clear it on dialog dismissal.
+
+        Args:
+            message: The message to display
+        """
+        display_message = f"{self.ICON_WARNING} {message}"
+        self._status_bar.setStyleSheet(self.STYLE_WARNING)
         self._status_bar.showMessage(display_message)
 
     def show_error(self, message: str) -> None:
