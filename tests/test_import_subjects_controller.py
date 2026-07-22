@@ -22,6 +22,12 @@ from PyQt6.QtWidgets import QApplication
 
 from bidsificator.controllers.FileEditorController import FileEditorController
 from bidsificator.controllers.ImportSubjectsController import ImportSubjectsController
+from bidsificator.workers.import_processor import (
+    IMPORTED,
+    SKIPPED,
+    ImportItemOutcome,
+    ImportSummary,
+)
 
 
 @pytest.fixture(scope="module")
@@ -38,6 +44,54 @@ def _capture(signal):
 
 def _controller(dataset_path=""):
     return ImportSubjectsController(lambda: dataset_path, FileEditorController())
+
+
+# --------------------------------------------------------------------------- #
+# terminal outcome handling (UR-GUI-009 ticket 2)                             #
+# --------------------------------------------------------------------------- #
+
+def test_on_import_finished_reports_summary_counts(qapp):
+    ctrl = _controller("/data")
+    completed = _capture(ctrl.import_completed)
+    dismissed = _capture(ctrl.dialog_dismissed)
+    summary = ImportSummary(
+        items=[
+            ImportItemOutcome("f.trc", "x", IMPORTED),
+            ImportItemOutcome("g.trc", "x", IMPORTED),
+        ],
+        subjects_created=2,
+    )
+
+    ctrl._on_import_finished(summary)
+
+    results = completed[0][0]
+    assert results["subjects_imported"] == 2
+    assert results["total_files"] == 2  # files actually placed, from the summary
+    assert len(dismissed) == 1
+
+
+def test_on_import_finished_merges_conflict_skips_into_summary(qapp):
+    ctrl = _controller("/data")
+    completed = _capture(ctrl.import_completed)
+    # Two subjects the user skipped at the conflict dialog were filtered out
+    # before the worker, so they never reached the subprocess summary.
+    ctrl._skipped_existing = ["sub-alice", "sub-bob"]
+    summary = ImportSummary(
+        items=[ImportItemOutcome("f.trc", "carol", IMPORTED)],
+        subjects_created=1,
+    )
+
+    ctrl._on_import_finished(summary)
+
+    results = completed[0][0]
+    assert results["subjects_imported"] == 1
+    assert results["total_files"] == 1
+    # The user-skipped subjects are merged back in as skipped items (REQ-GUI-073).
+    assert results["summary"]["skipped"] == 2
+    skipped_subjects = {
+        item["subject"] for item in results["summary"]["items"] if item["status"] == SKIPPED
+    }
+    assert skipped_subjects == {"sub-alice", "sub-bob"}
 
 
 # --------------------------------------------------------------------------- #

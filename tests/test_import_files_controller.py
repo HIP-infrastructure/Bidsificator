@@ -17,6 +17,14 @@ pytest.importorskip("PyQt6")
 from PyQt6.QtWidgets import QApplication
 
 from bidsificator.controllers.ImportFilesController import ImportFilesController
+from bidsificator.models.ImportSessionModel import ImportSessionState
+from bidsificator.workers.import_processor import (
+    FAILED,
+    IMPORTED,
+    SKIPPED,
+    ImportItemOutcome,
+    ImportSummary,
+)
 
 
 @pytest.fixture(scope="module")
@@ -154,3 +162,54 @@ def test_import_would_regenerate_electrodes_requires_contact_file(qapp, tmp_path
 
     ctrl.contact_labeling_file = str(tmp_path / "labels.xlsx")
     assert ctrl.import_would_regenerate_electrodes() is True
+
+
+# --------------------------------------------------------------------------- #
+# terminal outcome handling (UR-GUI-009 ticket 2)                             #
+# --------------------------------------------------------------------------- #
+
+def test_on_import_finished_reports_summary_not_queued_counts(qapp):
+    ctrl = _controller("/data")
+    ctrl.current_subject = "01"
+    completed = _capture(ctrl.import_completed)
+    summary = ImportSummary(items=[
+        ImportItemOutcome("a.trc", "01", IMPORTED),
+        ImportItemOutcome("b.trc", "01", FAILED, "conversion exploded"),
+        ImportItemOutcome("c.trc", "01", SKIPPED, "Modality not recognized: 'BOLD (func)'"),
+    ])
+
+    ctrl._on_import_finished(summary)
+
+    assert len(completed) == 1
+    results = completed[0][0]
+    # Reports what actually landed (1), not the three queued.
+    assert results["files_imported"] == 1
+    assert results["subject"] == "01"
+    assert results["summary"]["failed"] == 1
+    assert results["summary"]["skipped"] == 1
+    assert len(results["summary"]["items"]) == 3
+    # Success path reaches COMPLETED.
+    assert ctrl.model.state is ImportSessionState.COMPLETED
+
+
+def test_on_import_finished_emits_dialog_dismissed(qapp):
+    ctrl = _controller("/data")
+    dismissed = _capture(ctrl.dialog_dismissed)
+
+    ctrl._on_import_finished(ImportSummary())
+
+    assert len(dismissed) == 1
+
+
+def test_on_import_error_unsticks_importing_state(qapp):
+    ctrl = _controller("/data")
+    # Simulate a started import that then fails in the worker.
+    ctrl.model.state = ImportSessionState.IMPORTING
+    failures = _capture(ctrl.import_failed)
+
+    ctrl._on_import_error("subprocess died")
+
+    # Must leave IMPORTING so the next start_import is not refused (regression
+    # for the stuck-"Cannot start import" bug).
+    assert ctrl.model.state is ImportSessionState.ERROR
+    assert failures == [("subprocess died",)]

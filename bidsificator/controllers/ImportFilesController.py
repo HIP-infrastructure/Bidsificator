@@ -262,7 +262,7 @@ class ImportFilesController(QObject):
             self._contact_labeling_file
         )
         self._worker.update_progressbar_signal.connect(self._on_progress_updated)
-        self._worker.finished.connect(self._on_import_finished)
+        self._worker.import_finished.connect(self._on_import_finished)
         self._worker.error.connect(self._on_import_error)
         self._worker.start()
 
@@ -273,14 +273,19 @@ class ImportFilesController(QObject):
         self._model.progress = progress
         self.progress_updated.emit(progress)
 
-    def _on_import_finished(self):
-        """Handle import completion from worker."""
-        # Prepare results. This handler now runs only on genuine completion
-        # (the worker emits `error` instead of `finished` on failure), so there
-        # is no need for a hardcoded success flag.
+    def _on_import_finished(self, summary):
+        """Handle import completion from worker.
+
+        Counts come from the worker's ``ImportSummary`` (what actually landed on
+        disk), not the queued ``file_count``. The ``summary`` sub-dict carries the
+        per-item outcomes and warnings for the completion dialog (consumed by the
+        ticket-3 UI); the flat ``files_imported`` key keeps the current dialog
+        working in the meantime.
+        """
         results = {
-            "files_imported": self.file_count,
+            "files_imported": summary.imported,
             "subject": self.current_subject,
+            "summary": summary.to_dict(),
         }
 
         self._model.complete_import(results)
@@ -292,7 +297,9 @@ class ImportFilesController(QObject):
             self._worker = None
 
         # The view renders the completion dialog (from import_completed) and then
-        # clears the status bar on dialog_dismissed.
+        # clears the status bar on dialog_dismissed. The per-state dialog_dismissed
+        # policy (keeping an amber partial-success summary visible) arrives with
+        # the ticket-3 UI.
         self.dialog_dismissed.emit()
 
     def _on_import_error(self, message: str):
@@ -301,6 +308,11 @@ class ImportFilesController(QObject):
         if self._worker:
             self._worker.deleteLater()
             self._worker = None
+
+        # Reset the session out of IMPORTING so a subsequent import is allowed;
+        # without this the model stays IMPORTING and start_import refuses every
+        # retry ("Cannot start import").
+        self._model.fail_import(message)
 
         # Notify the view, which shows the status-bar error and the modal.
         # Deliberately do NOT emit dialog_dismissed here so the error stays in
