@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Multi-file batch metadata editing on the Import Files tab (UR-GUI-010, REQ-GUI-080–087). The file queue is now multi-selectable (ctrl/shift-click, Ctrl+A); with two or more files selected the metadata form switches to live batch mode where the Modality, Session, and Task dropdowns show the value the selected files share, or a "(multiple values)" placeholder where they differ, and changing one applies it to every selected file at once. Acquisition numbers are auto-reassigned across the selected files so they stay a clean sequence within their (session, modality, task) group — files you did not select keep their acquisition unchanged. Single-file edits are now consistent with this: moving one file to a different session/modality/task recomputes its acquisition for the new group (a file moved out on its own becomes acq-01) and the Acquisition field updates live as you change the dropdowns — no need to switch files and back — while an edit that stays in the same group keeps the entered value (UR-GUI-010, REQ-GUI-088; extends single-file import, UR-GUI-002). The Remove button now deletes all selected files. The per-file line-edits (Contrast Agent, Acquisition, Reconstruction) stay disabled while multiple files are selected. Single-file editing is unchanged.
 - Continuous integration workflow running the test suite on Python 3.11–3.13.
 - `make test` and `make lint` targets.
 - This CHANGELOG.

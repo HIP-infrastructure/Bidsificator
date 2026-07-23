@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
 from ...forms.ImportFilesTab_ui import Ui_ImportFilesTab
+from ...models.ImportFileModel import MIXED
 from ..import_completion import (
     CompletionState,
     ImportCompletionDialog,
@@ -39,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 class ImportFilesTab(QWidget, Ui_ImportFilesTab):
     """Import Files tab: metadata form, file list, subject/modality/session, import."""
+
+    #: Shown in a dropdown (index -1) when the batch-selected files disagree.
+    _MULTIPLE_PLACEHOLDER = "(multiple values)"
+    #: The Session combobox's normal placeholder (restored when leaving batch mode).
+    _SESSION_PLACEHOLDER = "Type session name (e.g., baseline, month6, 01)"
 
     def __init__(
         self,
@@ -59,6 +65,14 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         # set_import_form_enabled() reads _import_files_controller.file_count.
         self._import_files_controller = main_controller.import_files_controller
         self._reverting_subject = False
+
+        # Multi-file batch-edit state (UR-GUI-010). Set BEFORE setup_import_files_tab()
+        # because set_import_form_enabled() reads _batch_mode.
+        self._batch_mode = False           # ≥2 files selected -> live batch editing
+        self._batch_indices: list[int] = []  # the currently selected rows
+        self._suppress_batch_apply = False  # true while programmatically repopulating
+        self._session_edited = False        # user typed in the (editable) session combo
+        self._loading_form = False          # true while a file is loaded into the form
 
         # Set up the tab. populate_modality_dropdown runs BEFORE the
         # ModalityComboBox.currentIndexChanged wiring so filling it does not
@@ -86,8 +100,28 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
         self.AddFileButton.clicked.connect(self.add_multiple_files)
         self.RemoveFileButton.clicked.connect(self.remove_file_from_list)
-        self.ImportFileListWidget.itemClicked.connect(self.on_import_file_selected)
+        # Selection is driven by itemSelectionChanged alone. itemClicked was
+        # redundant (it fired the handler twice and could fire without a selection
+        # change), which matters now that the handler switches batch mode.
         self.ImportFileListWidget.itemSelectionChanged.connect(self.on_import_file_selected)
+        # Batch-apply wiring (UR-GUI-010): `activated` fires only on a user pick, not
+        # on the programmatic repopulation that entering batch mode performs, so these
+        # never self-fire. The editable Session combo also needs a typed-commit path
+        # (editingFinished), guarded by a user-edited flag so a mere focus-out over a
+        # "(multiple values)" placeholder can't wipe every selected file's session.
+        self.ModalityComboBox.activated.connect(self._on_batch_modality)
+        self.TaskComboBox.activated.connect(self._on_batch_task)
+        self.SessionComboBox.activated.connect(self._on_batch_session_activated)
+        self.SessionComboBox.lineEdit().textEdited.connect(self._on_session_text_edited)
+        self.SessionComboBox.lineEdit().editingFinished.connect(self._on_batch_session_commit)
+        # In single-file mode, keep the (read-only-in-practice) Acquisition field
+        # live as the user changes the group dropdowns: moving the file to another
+        # (session, modality, task) group updates its shown acquisition immediately,
+        # instead of only after switching files. Guarded against batch mode and
+        # programmatic form population inside the slot.
+        self.ModalityComboBox.currentIndexChanged.connect(self._refresh_single_acquisition_display)
+        self.TaskComboBox.currentTextChanged.connect(self._refresh_single_acquisition_display)
+        self.SessionComboBox.currentTextChanged.connect(self._refresh_single_acquisition_display)
         self.ClinicalElecPushButton.clicked.connect(self.browse_clinical_electrode_file)
         self.ClinicalElecLineEdit.setReadOnly(True)  # Make read-only like BrowseLineEdit
         self.StartImportPushButton.clicked.connect(self.start_file_import)
@@ -116,7 +150,9 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
 
     def setup_import_files_tab(self):
         """Initialize the Import Files tab"""
-        self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.SingleSelection)
+        # ExtendedSelection: ctrl/shift-click and Ctrl+A select multiple files for
+        # live batch metadata editing (UR-GUI-010). 0–1 selected behaves as before.
+        self.ImportFileListWidget.setSelectionMode(self.ImportFileListWidget.SelectionMode.ExtendedSelection)
         # Initially disable form elements since no files are loaded
         self.set_import_form_enabled(False)
 
@@ -180,6 +216,13 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
 
     def save_current_form_to_data(self):
         """Save current form fields to the currently selected file in the model."""
+        # In batch mode the form shows shared values / "(multiple values)"
+        # placeholders and edits are applied live to every selected file; saving
+        # the form onto one file would write a placeholder (e.g. ses-(multiple
+        # values)) onto it. Every save path (form switch, Start Import) routes
+        # through here, so one guard covers them all (REQ-GUI-084).
+        if self._batch_mode:
+            return
         form_data = {
             "modality": self.ModalityComboBox.currentText(),
             "session": self.SessionComboBox.currentText(),
@@ -211,16 +254,32 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         self._update_form_from_data(model.get_form_data_for_selected_file())
 
     def on_import_file_selected(self):
-        """Update form fields when a file is selected in the list (user-driven)."""
-        # Save current form data before switching — only safe for user selection
-        # when the form matches the model's current selection.
-        self.save_current_form_to_data()
+        """React to a selection change: batch mode for ≥2 files, single-file form otherwise."""
+        selected_rows = self._selected_rows()
+
+        # ≥2 selected: enter/refresh batch mode. No per-file save happens inside
+        # batch — edits are applied live to every selected file (UR-GUI-010).
+        if len(selected_rows) >= 2:
+            # Coming from single selection, persist the pending single-file form
+            # first: it holds real values (not placeholders), and entering batch
+            # otherwise drops an edit made just before multi-selecting. Batch mode
+            # itself suppresses saves, so this only runs on the single→multi edge.
+            if not self._batch_mode:
+                self.save_current_form_to_data()
+            self._enter_batch_mode(selected_rows)
+            return
+
+        # 0–1 selected. If we were in batch mode (e.g. ctrl-deselecting from 5 files
+        # down to 1 — which arrives here with len==1, so a naive ">1" guard misses
+        # it), leave batch mode and load the single file WITHOUT saving the shared
+        # placeholder form onto it.
+        was_batch = self._batch_mode
+        if was_batch:
+            self._exit_batch_mode()
 
         model = self._import_files_controller.model
 
-        # Use current row if no selection (e.g., when called manually)
-        selected_items = self.ImportFileListWidget.selectedItems()
-        if not selected_items:
+        if not selected_rows:
             current_row = self.ImportFileListWidget.currentRow()
             if 0 <= current_row < self._import_files_controller.file_count:
                 index = current_row
@@ -232,23 +291,160 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
                     self.clear_import_form_fields()
                 return
         else:
-            index = self.ImportFileListWidget.row(selected_items[0])
+            index = selected_rows[0]
 
-        self._load_import_file_into_form(index)
+        if was_batch:
+            # Coming out of batch: load fresh, never save the placeholder form.
+            self._load_import_file_into_form(index)
+        else:
+            # Normal single-select: persist the current form, then load the new file.
+            self.save_current_form_to_data()
+            self._load_import_file_into_form(index)
+
+    def _selected_rows(self) -> list[int]:
+        """Currently selected file rows, ascending."""
+        return sorted(
+            self.ImportFileListWidget.row(item)
+            for item in self.ImportFileListWidget.selectedItems()
+        )
+
+    # --------------------------------------------------------------------- #
+    # batch (multi-select) editing — UR-GUI-010
+    # --------------------------------------------------------------------- #
+
+    def _enter_batch_mode(self, indices: list[int]):
+        """Switch the form to live batch editing for the selected files."""
+        self._batch_mode = True
+        self._batch_indices = list(indices)
+        # Anchor the model at the first row (used by remove/import/add helpers).
+        # Set on the model directly so no form_data_updated signal fires.
+        self._import_files_controller.model.selected_file_index = indices[0]
+        self.set_import_form_enabled(True)  # enables dropdowns; leaves line-edits off
+        self.BrowseLineEdit.setText(f"{len(indices)} files selected")
+        self._populate_batch_form()
+
+    def _exit_batch_mode(self):
+        """Leave batch mode (idempotent). Callers load the single file separately."""
+        self._batch_mode = False
+        self._batch_indices = []
+        self._session_edited = False
+        # Restore the Session combo's normal placeholder (batch mixed replaced it).
+        self.SessionComboBox.setPlaceholderText(self._SESSION_PLACEHOLDER)
+
+    def _populate_batch_form(self):
+        """Fill the three dropdowns with each field's shared value, or a placeholder.
+
+        Runs under ``_suppress_batch_apply`` so the programmatic writes don't
+        round-trip back through the apply slots.
+        """
+        model = self._import_files_controller.model.file_model
+        indices = self._batch_indices
+        self._suppress_batch_apply = True
+        try:
+            modality = model.common_value_for(indices, "modality")
+            self._set_shared_combo(self.ModalityComboBox, modality)
+
+            task = model.common_value_for(indices, "task")
+            self._set_shared_combo(self.TaskComboBox, task)
+
+            session = model.common_value_for(indices, "session")
+            if session is MIXED:
+                self.SessionComboBox.setCurrentIndex(-1)
+                self.SessionComboBox.setEditText("")
+                self.SessionComboBox.setPlaceholderText(self._MULTIPLE_PLACEHOLDER)
+            else:
+                self.SessionComboBox.setPlaceholderText(self._SESSION_PLACEHOLDER)
+                self._set_session_combobox_text(f"ses-{session}" if session else "")
+
+            self._session_edited = False
+            # Field visibility follows the (possibly mixed) modality.
+            self.update_modality_UI()
+        finally:
+            self._suppress_batch_apply = False
+
+    def _set_shared_combo(self, combo, value):
+        """Show a shared value in a non-editable combo, or the mixed placeholder."""
+        if value is MIXED:
+            combo.setCurrentIndex(-1)
+            combo.setPlaceholderText(self._MULTIPLE_PLACEHOLDER)
+        else:
+            self.set_comboBox_text(combo, value)
+
+    def _apply_batch_field(self, field: str, value: str):
+        """Write one field to every selected file (live batch edit)."""
+        if self._suppress_batch_apply or not self._batch_mode or not self._batch_indices:
+            return
+        self._import_files_controller.update_files_from_form(self._batch_indices, {field: value})
+        # Acquisition may have been silently reassigned and a now-uniform modality
+        # changes field visibility, so re-derive the shared form. No list rebuild
+        # happens (the controller withholds file_list_changed), so the selection
+        # survives (REQ-GUI-086).
+        self._populate_batch_form()
+
+    def _on_batch_modality(self, *args):
+        self._apply_batch_field("modality", self.ModalityComboBox.currentText())
+
+    def _on_batch_task(self, *args):
+        text = self.TaskComboBox.currentText()
+        if "Other" in text:
+            return  # handled by update_task_combobox_UI (dialog), which applies on success
+        self._apply_batch_field("task", text)
+
+    def _on_batch_session_activated(self, *args):
+        # Picking a session from the dropdown is an explicit choice — apply it.
+        self._apply_batch_field("session", self.SessionComboBox.currentText())
+
+    def _on_session_text_edited(self, _text: str):
+        # Fired only on user typing (not programmatic repopulation), so it marks the
+        # editable session combo dirty — a bare focus-out over the placeholder then
+        # won't wipe every file's session.
+        if self._batch_mode:
+            self._session_edited = True
+
+    def _on_batch_session_commit(self):
+        if not self._batch_mode or not self._session_edited:
+            return
+        self._session_edited = False
+        self._apply_batch_field("session", self.SessionComboBox.currentText())
+
+    def _refresh_single_acquisition_display(self, *args):
+        """Keep the Acquisition field in sync as the single-file group dropdowns change.
+
+        Shows what the selected file's acquisition would become in the group the
+        form currently describes (via the model's read-only preview). Batch mode
+        handles its own display, and this must not fire while a file is being
+        loaded into the form (the load sets the field itself).
+        """
+        if self._batch_mode or self._loading_form:
+            return
+        model = self._import_files_controller.model
+        index = model.selected_file_index
+        if index < 0:
+            return
+        acquisition = model.file_model.preview_acquisition(
+            index,
+            self.SessionComboBox.currentText(),
+            self.ModalityComboBox.currentText(),
+            self.TaskComboBox.currentText(),
+        )
+        self.AcquisitionLineEdit.setText(acquisition)
 
     def remove_file_from_list(self):
-        """Remove the selected file from the import list via the controller."""
-        selected_items = self.ImportFileListWidget.selectedItems()
-        if not selected_items:
+        """Remove all selected files from the import list (batch-capable)."""
+        selected_rows = self._selected_rows()
+        if not selected_rows:
             QMessageBox.warning(self, "No Selection", "Please select a file to remove")
             return
 
-        index = self.ImportFileListWidget.row(selected_items[0])
-        # Point the model at the clicked row, then let the controller remove it. The
-        # controller re-indexes the selection and emits file_list_changed, which
-        # refresh_import_file_list turns into the rebuilt widget + reloaded form.
-        self._import_files_controller.model.selected_file_index = index
-        self._import_files_controller.remove_selected_file()
+        # Remove in descending order so each removal leaves the lower indices valid.
+        # Drive the model directly and emit one file_list_changed at the end;
+        # refresh_import_file_list then rebuilds the widget, reloads the form, and
+        # resets batch mode. (Single-file removal is just the one-row case.)
+        model = self._import_files_controller.model
+        for row in sorted(selected_rows, reverse=True):
+            model.selected_file_index = row
+            model.remove_selected_file()
+        self._import_files_controller.file_list_changed.emit()
 
     def clear_import_form_fields(self):
         """Clear all import form fields"""
@@ -262,9 +458,14 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         self.ModalityComboBox.setEnabled(enabled)
         self.TaskComboBox.setEnabled(enabled)
         self.SessionComboBox.setEnabled(enabled)
-        self.ContrastAgentLineEdit.setEnabled(enabled)
-        self.AcquisitionLineEdit.setEnabled(enabled)
-        self.ReconstructionLineEdit.setEnabled(enabled)
+        # The per-file line-edits (Contrast Agent / Acquisition / Reconstruction)
+        # are out of batch scope, so they stay disabled while ≥2 files are selected
+        # (UR-GUI-010, REQ-GUI-082). This is the single place enablement is decided,
+        # so _update_form_from_data's set_import_form_enabled(True) also honours it.
+        per_file_enabled = enabled and not getattr(self, "_batch_mode", False)
+        self.ContrastAgentLineEdit.setEnabled(per_file_enabled)
+        self.AcquisitionLineEdit.setEnabled(per_file_enabled)
+        self.ReconstructionLineEdit.setEnabled(per_file_enabled)
 
         # Remove/Import buttons only make sense when files are present. Guard the
         # controller lookup: this runs during setup_import_files_tab(), which is
@@ -436,7 +637,23 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
             self.ReconstructionLabel.hide()
             self.ReconstructionLineEdit.hide()
         else:
-            logger.warning("[__UpdateModalityUI] Modality not recognized")
+            # No concrete modality: either a batch selection whose files disagree
+            # (combo sits at index -1 / "(multiple values)") or an unrecognized
+            # modality. Show the shared dropdowns and hide the anat-only fields
+            # rather than leaving a stale layout (REQ-GUI-085). Only a genuinely
+            # unrecognized *non-empty* modality is worth a warning.
+            self.SessionLabel.show()
+            self.SessionComboBox.show()
+            self.TaskLabel.show()
+            self.TaskComboBox.show()
+            self.ContrastAgentLabel.hide()
+            self.ContrastAgentLineEdit.hide()
+            self.AcquisitionLabel.hide()
+            self.AcquisitionLineEdit.hide()
+            self.ReconstructionLabel.hide()
+            self.ReconstructionLineEdit.hide()
+            if self.ModalityComboBox.currentText():
+                logger.warning("[__UpdateModalityUI] Modality not recognized")
 
     def update_task_combobox_UI(self):
         if "Other" in self.TaskComboBox.currentText():
@@ -449,6 +666,12 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
                 self.TaskComboBox.insertItem(self.TaskComboBox.count()-1, task_name)
                 self.TaskComboBox.setCurrentIndex(self.TaskComboBox.count()-2)
                 self.TaskComboBox.currentTextChanged.connect(self.update_task_combobox_UI)
+                # In batch mode the "Other" selection is set programmatically here
+                # (setCurrentIndex emits no `activated`), so apply the custom task to
+                # the selected files explicitly. A cancelled/empty "Other" returned
+                # above, so nothing is applied then (REQ-GUI-085).
+                if self._batch_mode:
+                    self._apply_batch_field("task", task_name)
 
     # --------------------------------------------------------------------- #
     # add / import files
@@ -490,7 +713,21 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
             QMessageBox.critical(self, "Error", f"Failed to add files: {str(e)}")
 
     def _get_current_form_values(self):
-        """Get current form values for import."""
+        """Get current form values for import (defaults for newly added files)."""
+        # In batch mode the form shows shared values / placeholders, not one file's
+        # data, so read the anchor file's stored values instead of the widgets —
+        # otherwise a "(multiple values)" placeholder would leak in as a session/task
+        # default for the new files (REQ-GUI-084).
+        if self._batch_mode:
+            anchor = self._import_files_controller.model.get_form_data_for_selected_file() or {}
+            return {
+                'current_subject': self.SubjectComboBox.currentText(),
+                'session': anchor.get('session', ''),
+                'task': anchor.get('task', ''),
+                'contrast_agent': anchor.get('contrast_agent', ''),
+                'acquisition': anchor.get('acquisition', ''),
+                'reconstruction': anchor.get('reconstruction', ''),
+            }
         return {
             'current_subject': self.SubjectComboBox.currentText(),
             'session': self.SessionComboBox.currentText(),
@@ -507,6 +744,10 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         show the previously selected file (e.g. acq-02), and writing that back would
         corrupt another file's acquisition. We only read from the model here.
         """
+        # A rebuild clears the list and reselects a single row under blockSignals,
+        # so itemSelectionChanged never fires to clear batch mode. Reset it here so
+        # a later batch-apply can't run against a stale selection (REQ-GUI-084).
+        self._exit_batch_mode()
         self.ImportFileListWidget.blockSignals(True)
         try:
             self.ImportFileListWidget.clear()
@@ -622,14 +863,21 @@ class ImportFilesTab(QWidget, Ui_ImportFilesTab):
         """
         if not form_data:
             return
-        self.set_import_form_enabled(True)
-        self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
-        self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
-        self._set_session_combobox_text(form_data.get("session", ""))
-        self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
-        self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
-        self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
-        self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
+        # Populating the combos fires their change signals; guard so the live
+        # single-file acquisition preview doesn't recompute against a half-written
+        # form (this method sets the Acquisition field itself, last).
+        self._loading_form = True
+        try:
+            self.set_import_form_enabled(True)
+            self.BrowseLineEdit.setText(form_data.get("file_path", "No file selected"))
+            self.set_comboBox_text(self.ModalityComboBox, form_data.get("modality", ""))
+            self._set_session_combobox_text(form_data.get("session", ""))
+            self.set_comboBox_text(self.TaskComboBox, form_data.get("task", ""))
+            self.ContrastAgentLineEdit.setText(form_data.get("contrast_agent", ""))
+            self.AcquisitionLineEdit.setText(form_data.get("acquisition", ""))
+            self.ReconstructionLineEdit.setText(form_data.get("reconstruction", ""))
+        finally:
+            self._loading_form = False
 
     def set_comboBox_text(self, comboBox, text):
         index = comboBox.findText(text)
