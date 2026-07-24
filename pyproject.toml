@@ -1,6 +1,6 @@
 [project]
 name = "bidsificator"
-version = "1.13.0"
+version = "1.14.0"
 description = "A PyQt6 application for managing BIDS datasets"
 authors = [{ name = "Florian Sipp", email = "florian.sipp@chuv.ch" }]
 license = "Apache-2.0"
