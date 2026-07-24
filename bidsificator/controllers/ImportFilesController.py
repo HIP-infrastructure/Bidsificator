@@ -154,6 +154,24 @@ class ImportFilesController(QObject):
         """
         return self._model.update_selected_file_from_form(form_data)
 
+    def update_files_from_form(self, indices: list[int], fields: dict[str, str]) -> bool:
+        """Batch-apply ``fields`` to the files at ``indices`` (multi-select edit).
+
+        Delegates to the model, which writes only the given fields and reassigns
+        acquisition for files whose group key changed. Deliberately does **not**
+        emit ``file_list_changed``: the list shows file names, which a metadata
+        edit never changes, so a rebuild would only collapse the user's
+        multi-selection. The view refreshes its own batch form after this returns.
+
+        Args:
+            indices: File indices to update.
+            fields: Form field values to apply (subset of the form keys).
+
+        Returns:
+            True if at least one file was updated.
+        """
+        return self._model.update_files_from_form(indices, fields)
+
     def needs_subject_change_confirmation(self, new_subject: str) -> bool:
         """
         Whether switching to ``new_subject`` should prompt the user first.

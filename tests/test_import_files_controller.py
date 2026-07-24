@@ -227,3 +227,25 @@ def test_on_import_error_unsticks_importing_state(qapp):
     # for the stuck-"Cannot start import" bug).
     assert ctrl.model.state is ImportSessionState.ERROR
     assert failures == [("subprocess died",)]
+
+
+# --------------------------------------------------------------------------- #
+# batch metadata editing (UR-GUI-010)                                         #
+# --------------------------------------------------------------------------- #
+
+def test_update_files_from_form_does_not_emit_file_list_changed(qapp, tmp_path):
+    # A batch metadata edit must not rebuild the list — the list shows file
+    # names (unchanged by a metadata edit), and a rebuild would collapse the
+    # user's multi-selection (REQ-GUI-086).
+    ctrl = _controller()
+    a, b = tmp_path / "a.trc", tmp_path / "b.trc"
+    a.write_bytes(b"")
+    b.write_bytes(b"")
+    ctrl.add_files_from_paths([str(a), str(b)], {"task": "Rest"})
+
+    changed = _capture(ctrl.file_list_changed)  # start listening AFTER the add
+    ok = ctrl.update_files_from_form([0, 1], {"task": "Seizure"})
+
+    assert ok is True
+    assert changed == []  # no rebuild signal
+    assert [f.task for f in ctrl.model.file_model.files] == ["Seizure", "Seizure"]

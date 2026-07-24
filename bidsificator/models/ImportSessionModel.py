@@ -314,6 +314,10 @@ class ImportSessionModel:
         if not file_data:
             return False
 
+        # Remember the acquisition group before the edit so we can tell if this
+        # file is moving to a different (session, modality, task) group.
+        old_key = (file_data.session, file_data.modality, file_data.task)
+
         # Update the file data
         file_data.modality = form_data.get("modality", file_data.modality)
         file_data.task = form_data.get("task", file_data.task)
@@ -327,7 +331,55 @@ class ImportSessionModel:
             session = session[4:]
         file_data.session = session
 
-        return self.update_selected_file(file_data)
+        ok = self.update_selected_file(file_data)
+
+        # If this single-file edit moved the file to a different group, its old
+        # acquisition (carried over in the form) no longer reflects its position
+        # there — recompute it so a file moved out on its own becomes acq-01, and
+        # several files moved one-by-one pack into the new group in order. Matches
+        # the fresh-add numbering and the batch path. A same-group edit keeps the
+        # acquisition as entered (manual within-group values are preserved).
+        new_key = (file_data.session, file_data.modality, file_data.task)
+        if ok and new_key != old_key:
+            self._file_model.reassign_acquisitions([self._selected_file_index])
+
+        return ok
+
+    def update_files_from_form(self, indices: list[int], form_data: dict[str, str]) -> bool:
+        """Batch-apply ``form_data`` to every file at ``indices`` (multi-select edit).
+
+        Only keys present in ``form_data`` are written (so a batch modality change
+        leaves each file's own task alone). After applying, files whose
+        ``(session, modality, task)`` group key actually changed have their
+        acquisition reassigned; files whose group key is unchanged, and every file
+        not in ``indices``, are left untouched — no whole-list renumber.
+
+        Args:
+            indices: File indices to update.
+            form_data: Form field values to apply (subset of the form keys).
+
+        Returns:
+            True if at least one file was updated.
+        """
+        if not indices or not form_data:
+            return False
+
+        updated = self._file_model.update_files_fields(indices, form_data)
+        if not updated:
+            return False
+
+        # Any change to a group-key field (session/modality/task) can affect
+        # acquisition uniqueness, so renumber ALL edited files together within their
+        # resulting groups. Renumbering only the files whose key *changed* leaves an
+        # unmoved selected file sitting on a stale acquisition while the movers stack
+        # after it (the "2 3 4 instead of 1 2 3" bug). Renumbering the whole edited
+        # set packs them sequentially after any UNSELECTED files in the group, so it
+        # stays idempotent when nothing really moved and never touches files the user
+        # did not select.
+        group_fields = {"session", "modality", "task"}
+        if group_fields.intersection(form_data):
+            self._file_model.reassign_acquisitions(updated)
+        return True
 
     # Backward compatibility methods
 

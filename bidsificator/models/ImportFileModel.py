@@ -5,6 +5,24 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class _Mixed:
+    """Sentinel returned by ``common_value_for`` when the selected files disagree.
+
+    A distinct object (not ``None``/``""``) so it can never collide with a real
+    field value such as an empty session or a free-typed session name. The
+    ``(multiple values)`` *display* string is the view's concern, not the model's.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "<MIXED>"
+
+
+#: Sentinel: the batch-selected files hold differing values for a field.
+MIXED = _Mixed()
+
+
 @dataclass
 class ImportFileData:
     """Data structure for a single import file."""
@@ -201,6 +219,132 @@ class ImportFileModel:
         self._current_subject = new_subject
         for file_data in self._files:
             file_data.intended_subject = new_subject
+
+    def update_files_fields(self, indices: list[int], fields: dict[str, str]) -> list[int]:
+        """Apply only the given field keys to the files at ``indices`` (batch edit).
+
+        ``fields`` maps :class:`ImportFileData` attribute names to new values;
+        keys absent from ``fields`` are left untouched on each file, so setting
+        the modality of ten files does not wipe their individual tasks. Unknown
+        keys are ignored. The session value has any ``ses-`` prefix stripped
+        (stored bare), matching the single-file path in ``ImportSessionModel``.
+
+        Args:
+            indices: File indices to update (invalid indices skipped).
+            fields: Attribute-name -> new value.
+
+        Returns:
+            The indices actually updated (valid + at least attempted).
+        """
+        updated: list[int] = []
+        for index in indices:
+            file_data = self.get_file(index)
+            if file_data is None:
+                continue
+            for key, value in fields.items():
+                if not hasattr(file_data, key):
+                    continue
+                if key == "session" and isinstance(value, str) and value.startswith("ses-"):
+                    value = value[4:]
+                setattr(file_data, key, value)
+            updated.append(index)
+        return updated
+
+    def common_value_for(self, indices: list[int], field: str) -> Any:
+        """Return the value all files at ``indices`` share for ``field``, else ``MIXED``.
+
+        Used to render the batch form: a shared value is shown directly; ``MIXED``
+        tells the view to show a "(multiple values)" placeholder. Session is
+        returned bare (no ``ses-`` prefix); the view prefixes it for display.
+
+        Args:
+            indices: File indices to compare.
+            field: :class:`ImportFileData` attribute name.
+
+        Returns:
+            The shared value, or :data:`MIXED` when the files disagree (or none
+            are valid).
+        """
+        values = set()
+        for index in indices:
+            file_data = self.get_file(index)
+            if file_data is None or not hasattr(file_data, field):
+                continue
+            values.add(getattr(file_data, field))
+        if len(values) == 1:
+            return values.pop()
+        return MIXED
+
+    def reassign_acquisitions(self, indices: list[int]) -> None:
+        """Recompute acquisition numbers for the files at ``indices`` only.
+
+        Each listed file is treated as freshly (re)added to its current
+        ``(session, modality, task)`` group: its acquisition is blanked, then set
+        to the next free number in that group computed against *every other file*
+        via :meth:`ImportService.get_next_acquisition_number` (the same helper the
+        add path uses). Files **not** listed keep their acquisition unchanged, so a
+        batch edit never renumbers files the user did not touch.
+
+        All listed files are blanked *before* any are assigned, so several files
+        moved into the same group get clean sequential numbers (``01, 02, …``)
+        rather than continuing past their stale values.
+
+        Args:
+            indices: File indices whose acquisition should be recomputed
+                (typically the edited files whose group key changed).
+        """
+        # Local import mirrors ImportSessionModel.add_files; avoids a module-load
+        # cycle (ImportService consumes file dicts, not this model).
+        from ..services.ImportService import ImportService
+
+        ordered = sorted({i for i in indices if self.get_file(i) is not None})
+        if not ordered:
+            return
+
+        # Blank first so co-moved files don't inflate each other's group max.
+        for index in ordered:
+            self._files[index].acquisition = ""
+
+        # Then assign in list order; each file sees only committed numbers
+        # (earlier reassigned files + untouched files), never a stale one.
+        for index in ordered:
+            file_data = self._files[index]
+            others = [f.to_dict() for j, f in enumerate(self._files) if j != index]
+            file_data.acquisition = ImportService.get_next_acquisition_number(
+                others, file_data.session, file_data.modality, file_data.task
+            )
+
+    def preview_acquisition(self, index: int, session: str, modality: str, task: str) -> str:
+        """The acquisition file ``index`` would get in group ``(session, modality, task)``.
+
+        Read-only (nothing is mutated) — used to keep the single-file form's
+        Acquisition field live as the user changes the group dropdowns. When the
+        target group matches the file's current group the file's own acquisition is
+        returned (so a value already shown / manually entered is left alone); when
+        it differs, the next free number in the target group is returned, computed
+        against the other files exactly as the save-time reassignment does.
+
+        Args:
+            index: File whose acquisition to preview.
+            session: Target session (a leading ``ses-`` is stripped).
+            modality: Target display modality.
+            task: Target task.
+
+        Returns:
+            The acquisition string, or ``""`` if the index is invalid.
+        """
+        file_data = self.get_file(index)
+        if file_data is None:
+            return ""
+        if session.startswith("ses-"):
+            session = session[4:]
+        if (session, modality, task) == (file_data.session, file_data.modality, file_data.task):
+            return file_data.acquisition
+
+        from ..services.ImportService import ImportService
+
+        others = [f.to_dict() for j, f in enumerate(self._files) if j != index]
+        return ImportService.get_next_acquisition_number(others, session, modality, task)
 
     def clear(self):
         """Clear all files from the model."""
