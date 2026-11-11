@@ -14,6 +14,7 @@ from typing import Any
 
 from bidsificator.core.bids_constants import get_default_suffix_for_datatype
 from bidsificator.core.file_analysis import FileAnalysis
+from bidsificator.core.file_extension import get_extension, get_stem
 from bidsificator.core.subject_component import SubjectComponent
 
 
@@ -51,7 +52,7 @@ class SubjectFileWriter(SubjectComponent):
         This should ideally use the schema's file registry,
         but provides a simple fallback for common cases
         """
-        ext = file_path.suffix.lower()
+        ext = get_extension(file_path).lower()
 
         # Try to use schema's file registry if available
         if hasattr(self.schema, 'file_registry'):
@@ -64,7 +65,7 @@ class SubjectFileWriter(SubjectComponent):
             return 'ieeg'  # Default for electrophysiology
         elif ext in ['.nii', '.nii.gz']:
             # Try to detect from filename
-            name_lower = file_path.stem.lower()
+            name_lower = get_stem(file_path).lower()
             if any(x in name_lower for x in ['bold', 'task']):
                 return 'func'
             elif 'dwi' in name_lower:
@@ -139,8 +140,11 @@ class SubjectFileWriter(SubjectComponent):
         # Validate entities against schema (suffix-specific validation)
         self._validate_entities_for_suffix(entities, final_datatype, suffix)
 
-        # Build BIDS-compliant path
-        target_path = self._build_target_path(entities, final_datatype, suffix, final_source.suffix)
+        # Build BIDS-compliant path. The whole extension is kept ('.nii.gz',
+        # not the '.gz' that Path.suffix gives).
+        target_path = self._build_target_path(
+            entities, final_datatype, suffix, get_extension(final_source)
+        )
 
         # Copy/move file to target location
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -316,8 +320,8 @@ class SubjectFileWriter(SubjectComponent):
             # Extract converter metadata
             conv_metadata = converter.extract_metadata(source_path)
 
-            # Create a persistent copy
-            final_path = Path(tempfile.mktemp(suffix=converted_path.suffix))
+            # Create a persistent copy, keeping the whole extension ('.nii.gz')
+            final_path = Path(tempfile.mktemp(suffix=get_extension(converted_path)))
             shutil.copy2(converted_path, final_path)
 
             return final_path, conv_metadata
@@ -358,7 +362,7 @@ class SubjectFileWriter(SubjectComponent):
 
     def _detect_suffix(self, file_path: Path, datatype: str) -> str:
         """Auto-detect BIDS suffix from filename or datatype"""
-        filename_lower = file_path.stem.lower()
+        filename_lower = get_stem(file_path).lower()
         dt = self.schema.get_datatype(datatype)
 
         # Try to find suffix in filename
