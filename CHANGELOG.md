@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The lookup-table example template now loads as generated on the Import Subjects tab (UR-GUI-003, REQ-GUI-021, REQ-GUI-022). "Create template" with no subjects parsed writes `#` comment lines and a blank separator, and the parser failed on them with "Error reading CSV file: 'NoneType' object has no attribute 'strip'", so the template had to be edited by hand before it could be loaded. `SubjectLookupService.parse_lookup_table` now skips blank lines and lines whose first non-blank character is `#`, in any lookup CSV (templates saved by earlier versions included); comment lines no longer count toward the `;`/`,` delimiter detection, and the line numbers in error messages are the line numbers in the file. A row with fewer columns than the header is now reported for its own line ("Line N: Missing CenterID or SubjectID for ...") instead of aborting the whole file with the same `'NoneType'` error. A FolderID that starts with `#` can no longer be mapped.
+- Adding or removing a column on the Participants table emits `PatientTableController.keys_updated` once instead of twice, so the table is redrawn one time fewer per change. `add_key_after`, `add_key_before` and `remove_key` emitted the signal themselves right after the internal sync had already emitted it.
 
 ## [1.14.0] — 2026-07-24
 

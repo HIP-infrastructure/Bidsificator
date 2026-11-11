@@ -301,10 +301,10 @@ class PatientTableController(QObject):
             # Generate/update the participants.tsv file
             self._bids_folder.generate_participants_tsv()
 
-            # Update internal data from the current BidsFolder
+            # Update internal data from the current BidsFolder; the sync emits
+            # subjects_loaded and keys_updated, so keys_updated is not emitted again here.
             self._sync_data_from_bids_folder()
 
-            self.keys_updated.emit()
             self.data_changed.emit()
 
             return True
@@ -358,10 +358,10 @@ class PatientTableController(QObject):
             # Generate/update the participants.tsv file
             self._bids_folder.generate_participants_tsv()
 
-            # Update internal data from the current BidsFolder
+            # Update internal data from the current BidsFolder; the sync emits
+            # subjects_loaded and keys_updated, so keys_updated is not emitted again here.
             self._sync_data_from_bids_folder()
 
-            self.keys_updated.emit()
             self.data_changed.emit()
 
             return True
