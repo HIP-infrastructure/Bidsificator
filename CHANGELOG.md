@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Errors that the application used to swallow silently are now written to the log with their traceback (silent-`except` audit). This covers the validator's schema helpers and selector evaluation, dataset loading (`DatasetModel`), the TRC and DICOM converters' file probes and optional metadata, the options save, the `events.json` column fallback, and every handler that already showed a message to the user but dropped the traceback. Broad `except Exception` clauses are narrowed where the expected error is known (an unreadable `dataset_description.json`, a file that is not DICOM, an unreadable `events.tsv`). A failure that repeats for every file of a validation run, or every time the same TRC file is probed, is logged once with its traceback and then at DEBUG. What the user sees is unchanged except for the fixes below.
+
+### Removed
+- `DatasetModel.update_participants_file()` and `PatientTableController.save_to_participants_file()`: neither had a caller.
+
+### Fixed
+- Deleting a subject whose folder cannot be removed (for example a permission error or a file open in another program) no longer drops the subject from the application while its folder stays on disk: the folder is removed first, and the subject is forgotten only when that succeeded. A subject whose folder was already removed outside the application can now be deleted in one step. "Remove Selected Subject" on the Participants table now shows a warning when the deletion fails; it used to fail without any message.
+- A validation check that crashes no longer reads as "no problem found". When the associated-files check or the `SliceTiming` check fails with an internal error, the validation report now carries a warning for the file, under the rule `validator-internal-error (associated files)` or `validator-internal-error (SliceTiming)`, with the error text, and the log holds the traceback. The entry is a warning, so it does not by itself mark the dataset as invalid. A silent pass of this kind hid a broken associated-files check until PR #38.
+
 ## [1.14.0] — 2026-07-24
 
 ### Added

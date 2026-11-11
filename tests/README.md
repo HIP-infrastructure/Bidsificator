@@ -24,6 +24,10 @@ make test
 - **`test_contact_labeling.py`** — SEEG contact-labeling parser and application.
 - **`test_acquisition_numbering.py`** — acquisition entity numbering.
 - **`test_validation.py`** — the schema-driven `ValidationService`.
+- **`test_error_reporting.py`** — regression tests of the silent-`except` audit:
+  each forces a failure a handler used to swallow and asserts the log record,
+  the fallback value, and (for a failed subject delete or a crashed validation
+  check) what the user is told.
 - **`test_trc_to_edf_pyeeg.py`** — the PyEEGFormat-based TRC→EDF converter
   (mocked PyEEGFormat wrapper).
 - **`test_session_form_roundtrip.py`** — GUI session-form round-trip regression

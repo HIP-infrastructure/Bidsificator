@@ -1,11 +1,15 @@
 """Controller for dataset creation, loading, and management operations."""
 
 
+import logging
+
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
 from ..models.DatasetModel import DatasetModel
 from ..services.ValidationServiceSchema import ValidationService
+
+logger = logging.getLogger(__name__)
 
 
 class DatasetController(QObject):
@@ -196,6 +200,7 @@ class DatasetController(QObject):
             return validation_result.is_valid, validation_result.message
 
         except Exception as e:
+            logger.exception("Validation failed with an unexpected error")
             self.operation_failed.emit(
                 "Validation Error", f"An error occurred during validation: {str(e)}"
             )
