@@ -509,8 +509,9 @@ class SubjectSidecarGenerator(SubjectComponent):
         try:
             events_df = pd.read_csv(events_tsv_path, sep='\t')
             column_names = events_df.columns.tolist()
-        except Exception:
+        except (OSError, ValueError):
             # Fallback to default columns if TSV can't be read
+            logger.warning("Could not read %s; describing the default event columns", events_tsv_path, exc_info=True)
             column_names = ['onset', 'duration', 'trial_type', 'response_time', 'value']
 
         # Create events.json metadata

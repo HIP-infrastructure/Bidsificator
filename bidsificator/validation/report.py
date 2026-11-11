@@ -10,6 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+# Rule-name prefix of the report entry added when a validation check itself
+# crashed: the check did not run, so its silence must not read as "no problem
+# found". The check is named in parentheses, e.g. "validator-internal-error
+# (SliceTiming)", because the report groups entries by rule.
+INTERNAL_ERROR_RULE = "validator-internal-error"
+
 
 @dataclass
 class ValidationError:

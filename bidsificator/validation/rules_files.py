@@ -8,17 +8,21 @@ metadata checks (dataset_description.json and per-file JSON sidecars).
 Extracted from the ValidationService god class.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from bidsificator.core.bids_constants import ENTITY_ORDER
 from bidsificator.core.file_extension import get_extension, get_stem, replace_extension
+from bidsificator.validation._failures import FailureLog, describe
 from bidsificator.validation._parsing import (
     extract_suffix_from_filename,
     parse_entities_from_filename,
     parse_filename,
 )
-from bidsificator.validation.report import ValidationError, ValidationResult
+from bidsificator.validation.report import INTERNAL_ERROR_RULE, ValidationError, ValidationResult
+
+logger = logging.getLogger(__name__)
 
 
 class FileRuleValidator:
@@ -30,6 +34,7 @@ class FileRuleValidator:
         self.schema_helper = schema_helper
         # File checks descend into metadata checks in two places.
         self.metadata = metadata_validator
+        self._failures = FailureLog(logger)
 
     def validate_dataset_root(self, dataset_path: Path) -> tuple[list[ValidationError],
                                                                 list[ValidationError],
@@ -117,6 +122,7 @@ class FileRuleValidator:
                                 ))
 
         except Exception as e:
+            logger.exception("Failed to read %s", tsv_path)
             errors.append(ValidationError(
                 str(tsv_path),
                 f"Error reading participants.tsv: {e}",
@@ -243,8 +249,11 @@ class FileRuleValidator:
                         info.append(result)
 
             # Check for required associated files based on schema associations
-            assoc_errors = self._check_schema_associations(file_path, datatype)
-            errors.extend(assoc_errors)
+            for result in self._check_schema_associations(file_path, datatype):
+                if result.severity == "warning":
+                    warnings.append(result)
+                else:
+                    errors.append(result)
 
         return errors, warnings, info
 
@@ -412,6 +421,9 @@ class FileRuleValidator:
 
             return None
         except Exception:
+            self._failures.exception(
+                "file-rule", "Could not look up the schema file rule for %s/%s", datatype, suffix
+            )
             return None
 
     def _check_entity_order(self, filename: str, entities: dict[str, str]) -> list[ValidationError]:
@@ -496,6 +508,7 @@ class FileRuleValidator:
             return required_files
         except Exception:
             # Fallback to known required file
+            logger.exception("Could not read the required files from the schema; using the built-in list")
             return ["dataset_description.json"]
 
     def _get_recommended_file_groups_from_schema(self) -> list[tuple]:
@@ -526,6 +539,7 @@ class FileRuleValidator:
             return recommended_groups
         except Exception:
             # Fallback to known recommended files
+            logger.exception("Could not read the recommended files from the schema; using the built-in list")
             return [("README", "README.md"), ("participants.tsv",), ("CHANGES", "CHANGES.md")]
 
     def _get_allowed_root_items_from_schema(self) -> set:
@@ -565,6 +579,7 @@ class FileRuleValidator:
             return allowed
         except Exception:
             # Fallback to known allowed items
+            logger.exception("Could not read the allowed root items from the schema; using the built-in list")
             return {
                 'sourcedata', 'derivatives', 'code', '.git', '.github',
                 '.datalad', '.bidsignore', 'stimuli', 'phenotype',
@@ -612,9 +627,17 @@ class FileRuleValidator:
                                 f"missing-{assoc_name}"
                             ))
 
-        except Exception:
-            # If schema parsing fails, don't add any hardcoded rules
-            pass
+        except Exception as e:
+            # No hardcoded rules as a fallback, but the report must say the check
+            # did not run: a silent pass here hid a broken check once (PR #38).
+            self._failures.exception("associations", "Associated-file check failed for %s", data_file_path)
+            errors.append(ValidationError(
+                str(data_file_path),
+                "Internal error in Bidsificator: the check for required associated files could not run "
+                f"for this file ({describe(e)}).",
+                "warning",
+                f"{INTERNAL_ERROR_RULE} (associated files)"
+            ))
 
         return errors
 

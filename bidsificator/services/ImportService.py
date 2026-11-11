@@ -188,6 +188,7 @@ class ImportService:
                     failed_files.append(f"{os.path.basename(file_path)}: File already exists in list")
 
             except Exception as e:
+                logger.exception("Failed to prepare %s for import", file_path)
                 failed_files.append(f"{os.path.basename(file_path)}: {str(e)}")
 
         return successful_files, failed_files

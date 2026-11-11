@@ -113,6 +113,7 @@ class ImportSubjectsController(QObject):
             return True
 
         except Exception as e:
+            logger.exception("Failed to parse subjects")
             error_message = f"Failed to parse subjects: {str(e)}"
             self.operation_failed.emit("Parse Failed", error_message)
             self.import_failed.emit(error_message)
@@ -251,6 +252,7 @@ class ImportSubjectsController(QObject):
                         return False
 
         except Exception as e:
+            logger.exception("Failed to check for existing subjects")
             self.operation_failed.emit(
                 "Error Checking Conflicts",
                 f"Failed to check for existing subjects: {str(e)}",

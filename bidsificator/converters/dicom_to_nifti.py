@@ -11,6 +11,7 @@ from typing import Any
 
 import dicom2nifti
 import pydicom
+from pydicom.errors import InvalidDicomError
 
 from .base import FormatConverter
 
@@ -54,14 +55,20 @@ class DicomToNiftiConverter(FormatConverter):
                             try:
                                 pydicom.dcmread(file, stop_before_pixels=True)
                                 return True
+                            except (InvalidDicomError, OSError):
+                                continue  # not a DICOM file: keep probing
                             except Exception:
+                                logger.warning("Unexpected error while reading %s as DICOM", file, exc_info=True)
                                 continue
                 else:
                     # Try to read first DICOM file
                     pydicom.dcmread(dicom_files[0], stop_before_pixels=True)
                     return True
             return False
+        except (InvalidDicomError, OSError):
+            return False  # not DICOM data
         except Exception:
+            logger.exception("Unexpected error while checking %s for DICOM data", source_path)
             return False
 
     def convert(self, source_path: Path, output_dir: Path = None) -> Path:
@@ -118,7 +125,10 @@ class DicomToNiftiConverter(FormatConverter):
                             try:
                                 dcm = pydicom.dcmread(file)
                                 break
+                            except (InvalidDicomError, OSError):
+                                continue  # not a DICOM file: keep probing
                             except Exception:
+                                logger.warning("Unexpected error while reading %s as DICOM", file, exc_info=True)
                                 continue
                     else:
                         return metadata

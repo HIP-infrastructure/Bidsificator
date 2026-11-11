@@ -184,11 +184,13 @@ Please specify the license under which this data is shared.
     def delete_bids_subject(self, subject_id: str):
         for subject in self.__bids_subjects:
             if subject.get_subject_id() == subject_id:
-                #Remove subject from list
-                self.__bids_subjects.remove(subject)
-                #Remove subject folder from disk
+                # Remove the folder first: if that fails, the subject is still on
+                # disk and must stay known in memory. A folder that is already
+                # gone (removed outside the application) counts as removed.
                 subject_to_delete = self.__path / f"sub-{subject_id}"
-                shutil.rmtree(subject_to_delete)
+                if subject_to_delete.exists():
+                    shutil.rmtree(subject_to_delete)
+                self.__bids_subjects.remove(subject)
                 return
 
     def get_bids_subject(self, subject_id: str) -> BidsSubject | None:

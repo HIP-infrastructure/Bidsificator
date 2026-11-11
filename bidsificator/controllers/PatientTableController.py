@@ -165,6 +165,7 @@ class PatientTableController(QObject):
         except ValueError as e:
             return False, str(e)
         except Exception as e:
+            logger.exception("Failed to create subject '%s'", subject_id)
             return False, f"Failed to create subject: {str(e)}"
 
     def delete_subject(self, subject_id: str) -> bool:
@@ -196,6 +197,7 @@ class PatientTableController(QObject):
             return True
 
         except Exception:
+            logger.exception("Failed to delete subject '%s'", subject_id)
             return False
 
     def update_subject_field(self, subject_id: str, field_name: str, new_value: str) -> bool:
@@ -456,22 +458,4 @@ class PatientTableController(QObject):
             return False
 
         return self.load_subjects(dataset_path)
-
-    def save_to_participants_file(self) -> bool:
-        """
-        Save current subjects data to participants.tsv file.
-
-        Returns:
-            True if saved successfully
-        """
-        if not self._bids_folder:
-            return False
-
-        try:
-            # Use BidsFolder to regenerate participants.tsv
-            self._bids_folder.generate_participants_tsv()
-            return True
-
-        except Exception:
-            return False
 
