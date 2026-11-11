@@ -1,8 +1,11 @@
 """Service for handling CSV lookup table functionality for subject name mapping."""
 
 import csv
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class SubjectLookupService:
@@ -150,6 +153,7 @@ class SubjectLookupService:
                     used_names.add(formatted_name)
 
         except Exception as e:
+            logger.exception("Failed to read lookup table %s", csv_path)
             errors.append(f"Error reading CSV file: {str(e)}")
 
         return mapping, errors
@@ -228,6 +232,7 @@ class SubjectLookupService:
                     return False, errors
 
         except Exception as e:
+            logger.exception("Failed to check the format of lookup table %s", csv_path)
             errors.append(f"Error reading file: {str(e)}")
             return False, errors
 
@@ -312,6 +317,7 @@ class SubjectLookupService:
         except OSError as e:
             return False, f"File system error: {str(e)}"
         except Exception as e:
+            logger.exception("Failed to write lookup table template %s", file_path)
             return False, f"Unexpected error: {str(e)}"
 
     @staticmethod

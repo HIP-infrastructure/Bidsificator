@@ -165,7 +165,13 @@ class PatientTableWidget(QTableWidget):
         if self._selected_item and self._controller:
             row_to_delete = self._selected_item.row()
             subject_id = self.item(row_to_delete, 0).text()
-            self._controller.delete_subject(subject_id)
+            if not self._controller.delete_subject(subject_id):
+                QMessageBox.warning(
+                    self,
+                    "Delete Failed",
+                    f"Deleting subject '{subject_id}' failed. Check that its folder and participants.tsv "
+                    "are not open in another program and that you may modify them.",
+                )
 
     def _on_item_changed(self, item):
         """Handle item change using controller."""

@@ -1,9 +1,12 @@
 """Model for managing BIDS dataset operations and metadata."""
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -119,6 +122,7 @@ class DatasetModel:
             return self.load_dataset(unique_path)
 
         except Exception as e:
+            logger.exception("Failed to create dataset '%s' in %s", dataset_name, dataset_path)
             return False, f"Failed to create dataset: {str(e)}"
 
     def _validate_bids_structure(self, dataset_path: str) -> dict[str, Any]:
@@ -183,6 +187,7 @@ class DatasetModel:
                 validation_result['is_valid'] = False
 
         except Exception as e:
+            logger.exception("Failed to scan %s", dataset_path)
             validation_result['issues'].append(f"Error scanning directory: {str(e)}")
 
         return validation_result
@@ -220,12 +225,18 @@ class DatasetModel:
             if os.path.exists(desc_path):
                 try:
                     with open(desc_path) as f:
-                        dataset_info.description = json.load(f)
-                    # Update name from description if available
-                    if 'Name' in dataset_info.description:
-                        dataset_info.name = dataset_info.description['Name']
-                except Exception:
-                    pass  # Continue with default name if description can't be loaded
+                        description = json.load(f)
+                except (OSError, ValueError, RecursionError):
+                    # Continue with the default name if the description can't be loaded
+                    logger.warning("Could not read %s; keeping the folder name", desc_path, exc_info=True)
+                else:
+                    if isinstance(description, dict):
+                        dataset_info.description = description
+                        # Update name from description if available
+                        if 'Name' in description:
+                            dataset_info.name = description['Name']
+                    else:
+                        logger.warning("%s does not hold a JSON object; keeping the folder name", desc_path)
 
             # Load subjects
             self._load_subjects(dataset_path)
@@ -237,6 +248,7 @@ class DatasetModel:
             return True, ""
 
         except Exception as e:
+            logger.exception("Failed to load dataset %s", dataset_path)
             return False, f"Failed to load dataset: {str(e)}"
 
     def _load_subjects(self, dataset_path: str):
@@ -253,7 +265,8 @@ class DatasetModel:
 
             # If BidsFolder found no subjects, fall back to directory scanning
             if not self._subjects:
-                raise RuntimeError("No subjects found in BidsFolder, falling back to directory scan")
+                self._scan_subject_directories(dataset_path)
+                return
 
             # Load sessions for each subject
             self._sessions = {}
@@ -269,28 +282,33 @@ class DatasetModel:
                     self._sessions[subject_id] = []
 
         except Exception:
-            # Fallback: scan directory directly
-            self._subjects = []
-            self._sessions = {}
+            logger.exception("Could not load subjects of %s through BidsFolder; scanning its directories", dataset_path)
+            self._scan_subject_directories(dataset_path)
 
-            try:
-                items = os.listdir(dataset_path)
-                for item in items:
-                    item_path = os.path.join(dataset_path, item)
-                    if (os.path.isdir(item_path) and
-                        item.startswith("sub-") and
-                        not item.startswith(".")):
-                        # Strip 'sub-' prefix to be consistent with main code path
-                        subject_id = item[4:] if item.startswith("sub-") else item
-                        self._subjects.append(subject_id)
+    def _scan_subject_directories(self, dataset_path: str):
+        """Fallback for `_load_subjects`: list the `sub-*` directories directly."""
+        self._subjects = []
+        self._sessions = {}
 
-                        # Load sessions
-                        sessions = [f for f in os.listdir(item_path)
-                                   if os.path.isdir(os.path.join(item_path, f))
-                                   and f.startswith("ses-") and not f.startswith(".")]
-                        self._sessions[subject_id] = sessions
-            except Exception:
-                pass  # Continue with empty lists
+        try:
+            items = os.listdir(dataset_path)
+            for item in items:
+                item_path = os.path.join(dataset_path, item)
+                if (os.path.isdir(item_path) and
+                    item.startswith("sub-") and
+                    not item.startswith(".")):
+                    # Strip 'sub-' prefix to be consistent with main code path
+                    subject_id = item[4:] if item.startswith("sub-") else item
+                    self._subjects.append(subject_id)
+
+                    # Load sessions
+                    sessions = [f for f in os.listdir(item_path)
+                               if os.path.isdir(os.path.join(item_path, f))
+                               and f.startswith("ses-") and not f.startswith(".")]
+                    self._sessions[subject_id] = sessions
+        except OSError:
+            # Continue with what was listed so far
+            logger.warning("Could not scan %s for subject directories", dataset_path, exc_info=True)
 
     def get_sessions_for_subject(self, subject_id: str) -> list[str]:
         """
@@ -344,6 +362,7 @@ class DatasetModel:
             return True, ""
 
         except Exception as e:
+            logger.exception("Failed to add subject '%s'", subject_id)
             return False, f"Failed to add subject: {str(e)}"
 
     def validate_dataset(self, subject_id: str | None = None) -> tuple[bool, str]:
@@ -390,6 +409,7 @@ class DatasetModel:
             except PermissionError:
                 failed.append((file_path, "Permission denied"))
             except Exception as e:
+                logger.exception("Failed to delete %s", file_path)
                 failed.append((file_path, str(e)))
 
         return deleted, failed
@@ -439,24 +459,4 @@ class DatasetModel:
             Dataset path or None if no dataset loaded
         """
         return self._current_dataset.path if self._is_loaded else None
-
-    def update_participants_file(self) -> bool:
-        """
-        Update the participants.tsv file with current subjects.
-
-        Returns:
-            True if updated successfully
-        """
-        if not self._is_loaded:
-            return False
-
-        try:
-            from ..core.BidsFolder import BidsFolder
-
-            bids_folder = BidsFolder(self._current_dataset.path)
-            bids_folder.generate_participants_tsv()
-            return True
-
-        except Exception:
-            return False
 

@@ -1,9 +1,13 @@
 """Controller for managing options/configuration business logic."""
 
 
+import logging
+
 from ..core.BidsUtilityFunctions import BidsUtilityFunctions
 from ..core.OptionFile import OptionFile
 from ..core.validators import FileExtensionValidator, SubjectPatternValidator
+
+logger = logging.getLogger(__name__)
 
 
 class OptionController:
@@ -277,6 +281,7 @@ class OptionController:
             self.model.save()
             return True
         except Exception:
+            logger.exception("Failed to save configuration to %s", self.config_path)
             return False
 
     def reload_configuration(self):

@@ -7,12 +7,16 @@ Extracted from the ValidationService god class; it holds only the schema manager
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
+from bidsificator.validation._failures import FailureLog, describe
 from bidsificator.validation._parsing import extract_suffix_from_filename
-from bidsificator.validation.report import ValidationError
+from bidsificator.validation.report import INTERNAL_ERROR_RULE, ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataRuleValidator:
@@ -20,6 +24,7 @@ class MetadataRuleValidator:
 
     def __init__(self, schema):
         self.schema = schema
+        self._failures = FailureLog(logger)
 
     def validate_dataset_description(self, desc_path: Path) -> tuple[list[ValidationError], list[ValidationError]]:
         """Validate dataset_description.json content"""
@@ -74,6 +79,7 @@ class MetadataRuleValidator:
                 "invalid-json"
             ))
         except Exception as e:
+            logger.exception("Failed to read %s", desc_path)
             errors.append(ValidationError(
                 str(desc_path),
                 f"Error reading file: {e}",
@@ -148,6 +154,7 @@ class MetadataRuleValidator:
                 "invalid-sidecar-json"
             ))
         except Exception as e:
+            logger.exception("Failed to read sidecar %s", json_path)
             errors.append(ValidationError(
                 str(json_path),
                 f"Error reading sidecar: {e}",
@@ -204,6 +211,9 @@ class MetadataRuleValidator:
 
         except Exception:
             # Fallback to basic requirements
+            self._failures.exception(
+                "requirements", "Could not resolve the metadata requirements for %s/%s", datatype, suffix
+            )
             return [], []
 
     def _matches_sidecar_selectors(
@@ -221,6 +231,10 @@ class MetadataRuleValidator:
                     return False
             except Exception:
                 # Conservative fallback - if evaluation fails, assume no match
+                self._failures.warning(
+                    f"selector:{selector}",
+                    "Could not evaluate schema selector %r; treating it as not matching", selector
+                )
                 return False
         return True
 
@@ -436,6 +450,7 @@ class MetadataRuleValidator:
             return False
         except Exception:
             # Fallback - if we can't access schema mappings
+            self._failures.exception("modality-mappings", "Could not read the schema's modality mappings")
             return False
 
     def _get_field_description(self, field_name: str) -> str | None:
@@ -452,6 +467,9 @@ class MetadataRuleValidator:
 
             return None
         except Exception:
+            self._failures.exception(
+                "field-description", "Could not read the schema description of field %s", field_name
+            )
             return None
 
     def _validate_slicetiming_elements(
@@ -507,11 +525,17 @@ class MetadataRuleValidator:
 
             except ImportError:
                 # nibabel not available - skip this validation
-                pass
+                logger.warning("nibabel is not installed; SliceTiming length not checked for %s", nii_path)
             except Exception:
                 # Error reading NIfTI file - skip this validation
-                pass
+                logger.warning("Could not read %s; SliceTiming length not checked", nii_path, exc_info=True)
 
-        except Exception:
-            # Error in SliceTiming validation - skip
-            pass
+        except Exception as e:
+            # The check itself failed: say so in the report instead of passing silently
+            self._failures.exception("slicetiming", "SliceTiming check failed for %s", json_path)
+            errors.append(ValidationError(
+                str(json_path),
+                f"Internal error in Bidsificator: the SliceTiming check could not run for this file ({describe(e)}).",
+                "warning",
+                f"{INTERNAL_ERROR_RULE} (SliceTiming)"
+            ))

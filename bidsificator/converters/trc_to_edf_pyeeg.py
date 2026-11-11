@@ -21,6 +21,9 @@ class TrcToEdfConverterPyEEG(FormatConverter):
         super().__init__()
         self.wrapper = self._import_platform_wrapper()
         self._priority = 10
+        # Files already reported as unopenable: can_convert() is asked several
+        # times per file, and one traceback in the log is enough.
+        self._unopenable_logged: set[Path] = set()
 
     @property
     def source_extensions(self) -> list[str]:
@@ -86,6 +89,9 @@ class TrcToEdfConverterPyEEG(FormatConverter):
             _ = file_obj.get_sampling_frequency()
             return True
         except Exception:
+            if source_path not in self._unopenable_logged:
+                self._unopenable_logged.add(source_path)
+                logger.warning("%s cannot be opened as a Micromed TRC file", source_path, exc_info=True)
             return False
 
     def convert(self, source_path: Path, output_dir: Path = None) -> Path:
@@ -203,6 +209,7 @@ class TrcToEdfConverterPyEEG(FormatConverter):
                 return filters if filters else None
 
         except Exception:
+            logger.warning("could not extract hardware filters", exc_info=True)
             return None
 
     def _extract_reference_info(self, file_obj) -> str | None:
@@ -228,7 +235,7 @@ class TrcToEdfConverterPyEEG(FormatConverter):
                     return "mixed"
 
         except Exception:
-            pass
+            logger.warning("could not extract reference information", exc_info=True)
 
         return None
 
