@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from bidsificator.core.bids_constants import ENTITY_ORDER
+from bidsificator.core.file_extension import get_extension, get_stem, replace_extension
 from bidsificator.validation._parsing import (
     extract_suffix_from_filename,
     parse_entities_from_filename,
@@ -210,17 +211,18 @@ class FileRuleValidator:
             errors.extend(filename_result.errors)
             warnings.extend(filename_result.warnings)
 
-            # Check extension
-            if expected_extensions and file_path.suffix not in expected_extensions:
+            # Check extension (the whole one: '.nii.gz', not '.gz')
+            extension = get_extension(file_path)
+            if expected_extensions and extension not in expected_extensions:
                 warnings.append(ValidationError(
                     str(file_path),
-                    f"Unexpected extension {file_path.suffix} for datatype {datatype}",
+                    f"Unexpected extension {extension} for datatype {datatype}",
                     "warning",
                     "unexpected-extension"
                 ))
 
             # Check for JSON sidecar
-            json_sidecar = file_path.with_suffix('.json')
+            json_sidecar = replace_extension(file_path, '.json')
             if not json_sidecar.exists():
                 warnings.append(ValidationError(
                     str(file_path),
@@ -263,8 +265,7 @@ class FileRuleValidator:
         warnings = []
         info = []
 
-        path = Path(filename)
-        name = path.stem  # Remove extension
+        name = get_stem(filename)  # Remove extension ('.nii.gz' as a whole)
 
         # Parse filename into components
         entities, suffix = parse_filename(name)
@@ -635,7 +636,7 @@ class FileRuleValidator:
 
     def _build_associated_file_path(self, data_file_path: Path, target_suffix: str, target_extension: str) -> Path:
         """Build the path for an associated file"""
-        filename = data_file_path.stem  # Remove extension
+        filename = get_stem(data_file_path)  # Remove extension ('.nii.gz' as a whole)
 
         # Replace the suffix part
         parts = filename.split('_')
