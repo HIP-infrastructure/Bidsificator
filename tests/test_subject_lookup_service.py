@@ -262,3 +262,61 @@ def test_create_template_file_end_to_end(tmp_path):
     assert msg == ""
     content = Path(target).read_text(encoding="utf-8")
     assert content.startswith("FolderID;CenterID;SubjectID")
+
+
+# --------------------------------------------------------------------------- #
+# comment lines, blank lines and short rows
+# --------------------------------------------------------------------------- #
+
+def test_generated_example_template_loads_unedited(tmp_path):
+    # The example template (no subjects parsed) carries '#' comment lines and a
+    # blank separator; the parser must accept the file exactly as generated.
+    target = str(tmp_path / "template.csv")
+    assert SubjectLookupService.create_template_file(target) == (True, "")
+
+    mapping, errors = SubjectLookupService.parse_lookup_table(target)
+
+    assert errors == []
+    assert mapping["PAT_001"] == "0010123"
+    assert mapping["PAT_002"] == "0130456"
+    assert mapping["PAT_003"] == "2390789"
+    assert mapping["PAT_004"] == "CHUV001"
+    assert mapping["PAT_005"] == "patient123"
+    assert mapping["PAT_006"] == "JohnDoe"
+    assert len(set(mapping.values())) == 6
+
+
+def test_comment_and_blank_lines_are_skipped(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "FolderID;CenterID;SubjectID\n# a note\n\n   \n  # indented note\nP1;1;2\n",
+    )
+    mapping, errors = SubjectLookupService.parse_lookup_table(path)
+    assert errors == []
+    assert mapping["P1"] == "0010002"
+    assert not any(key.lstrip().startswith("#") for key in mapping)
+
+
+def test_error_line_number_counts_skipped_lines(tmp_path):
+    # The reported number is the line in the file, comment and blank lines included.
+    path = _write_csv(tmp_path, "FolderID;CenterID;SubjectID\n# a note\n\nP1;1;2\nP2;abc;3\n")
+    mapping, errors = SubjectLookupService.parse_lookup_table(path)
+    assert len(errors) == 1
+    assert errors[0].startswith("Line 5: CenterID must be numeric")
+    assert mapping["P1"] == "0010002"
+
+
+def test_comment_line_does_not_change_detected_delimiter(tmp_path):
+    path = _write_csv(tmp_path, "FolderID;CenterID;SubjectID\n# one, two, three, four, five\nP1;1;2\n")
+    mapping, errors = SubjectLookupService.parse_lookup_table(path)
+    assert errors == []
+    assert mapping["P1"] == "0010002"
+
+
+def test_row_with_missing_columns_is_a_line_error(tmp_path):
+    # A row shorter than the header used to abort the whole file with
+    # "'NoneType' object has no attribute 'strip'".
+    path = _write_csv(tmp_path, "FolderID;CenterID;SubjectID\nP1;1\nP2;1;2\n")
+    mapping, errors = SubjectLookupService.parse_lookup_table(path)
+    assert errors == ["Line 2: Missing CenterID or SubjectID for P1"]
+    assert mapping["P2"] == "0010002"

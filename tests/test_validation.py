@@ -51,3 +51,75 @@ def test_adding_dataset_description_clears_that_error(tmp_path):
     assert not _missing_description_errors(after), (
         "adding dataset_description.json should clear the missing-required-file error"
     )
+
+
+# --------------------------------------------------------------------------- #
+# multi-part extensions (.nii.gz)
+# --------------------------------------------------------------------------- #
+
+def _dataset_with_t1w(root, extension):
+    """A minimal dataset holding one synthetic T1w volume and its (empty) JSON sidecar."""
+    import nibabel as nib
+    import numpy as np
+
+    root.mkdir()
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Test Dataset", "BIDSVersion": "1.10.1"})
+    )
+    anat = root / "sub-01" / "anat"
+    anat.mkdir(parents=True)
+    volume = nib.Nifti1Image(np.zeros((4, 4, 4), dtype=np.int16), np.eye(4))
+    nib.save(volume, str(anat / f"sub-01_T1w{extension}"))
+    (anat / "sub-01_T1w.json").write_text("{}")
+    return root
+
+
+def _issues(result, root):
+    """(severity, file name, rule) of every reported issue, the data file's extension masked."""
+    found = set()
+    for issue in result.errors + result.warnings:
+        name = issue.path.replace(str(root), "").rsplit("/", 1)[-1]
+        name = name.replace("sub-01_T1w.nii.gz", "sub-01_T1w<data>").replace("sub-01_T1w.nii", "sub-01_T1w<data>")
+        found.add((issue.severity, name, issue.rule))
+    return found
+
+
+def test_nii_gz_data_file_is_validated_like_nii(tmp_path):
+    service = ValidationService()
+    plain_root = _dataset_with_t1w(tmp_path / "plain", ".nii")
+    gz_root = _dataset_with_t1w(tmp_path / "compressed", ".nii.gz")
+
+    plain = service.validate_dataset(str(plain_root))
+    compressed = service.validate_dataset(str(gz_root))
+
+    rules = {issue.rule for issue in compressed.errors + compressed.warnings}
+    # '.gz' is not the extension, 'T1w.nii' is not the suffix, and the sidecar exists.
+    assert "unexpected-extension" not in rules
+    assert "no-validation-rule" not in rules
+    assert "missing-sidecar" not in rules
+    # The sidecar is found, so its content is checked: an empty T1w sidecar
+    # is reported for its missing recommended keys.
+    assert any(
+        issue.path.endswith("sub-01_T1w.json") and issue.rule.startswith("SIDECAR_KEY_RECOMMENDED")
+        for issue in compressed.warnings
+    )
+    assert _issues(compressed, gz_root) == _issues(plain, plain_root)
+
+
+def test_validate_filename_reads_suffix_before_multi_part_extension():
+    result = ValidationService().validate_filename("sub-01_T1w.nii.gz", "anat")
+    assert [issue.rule for issue in result.errors] == []
+    assert "no-validation-rule" not in [issue.rule for issue in result.warnings]
+
+
+def test_parsing_helpers_strip_the_whole_extension():
+    from pathlib import Path
+
+    from bidsificator.validation._parsing import (
+        extract_suffix_from_filename,
+        parse_entities_from_filename,
+    )
+
+    assert extract_suffix_from_filename("sub-01_ses-pre_T1w.nii.gz") == "T1w"
+    assert extract_suffix_from_filename("sub-01_task-rest_ieeg.edf") == "ieeg"
+    assert parse_entities_from_filename(Path("sub-01_ses-pre_T1w.nii.gz")) == {"sub": "01", "ses": "pre"}

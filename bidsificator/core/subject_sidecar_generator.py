@@ -19,6 +19,7 @@ from bidsificator.core.bids_constants import (
     DEFAULT_CHANNEL_COUNTS,
     DEFAULT_METADATA_VALUES,
 )
+from bidsificator.core.file_extension import replace_extension
 from bidsificator.core.subject_component import SubjectComponent
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class SubjectSidecarGenerator(SubjectComponent):
 
         # Write JSON file if there's metadata to write
         if json_metadata:
-            json_path = data_path.with_suffix('.json')
+            json_path = replace_extension(data_path, '.json')
             with open(json_path, 'w') as f:
                 json.dump(json_metadata, f, indent=2, sort_keys=True)
 

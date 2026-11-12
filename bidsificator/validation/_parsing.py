@@ -7,6 +7,8 @@ here so the file-rules and metadata-rules modules share one implementation.
 
 from pathlib import Path
 
+from bidsificator.core.file_extension import get_stem
+
 
 def parse_filename(filename: str) -> tuple[dict[str, str], str | None]:
     """Parse a BIDS filename (no extension) into (entities, suffix)."""
@@ -29,14 +31,14 @@ def parse_filename(filename: str) -> tuple[dict[str, str], str | None]:
 
 def extract_suffix_from_filename(filename: str) -> str:
     """Extract the suffix (last part before extension) from a filename."""
-    name = Path(filename).stem
+    name = get_stem(filename)  # whole extension removed ('.nii.gz')
     parts = name.split('_')
     return parts[-1] if parts else ""
 
 
 def parse_entities_from_filename(file_path: Path) -> dict[str, str]:
     """Parse BIDS entities from a file path's name (excludes the suffix)."""
-    filename = file_path.stem  # Remove extension
+    filename = get_stem(file_path)  # Remove extension ('.nii.gz' as a whole)
     entities: dict[str, str] = {}
 
     parts = filename.split('_')

@@ -18,6 +18,11 @@ class SubjectLookupService:
 
         Expected format: FolderID;CenterID;SubjectID
 
+        Blank lines and lines whose first non-blank character is ``#`` are
+        comments and are skipped, so the example template written by
+        :meth:`generate_template_csv` loads as generated. Line numbers in the
+        error messages are line numbers in the file, skipped lines included.
+
         Args:
             csv_path: Path to CSV file
 
@@ -35,15 +40,29 @@ class SubjectLookupService:
 
         try:
             with open(csv_path, encoding='utf-8') as file:
-                # Try to detect delimiter
-                sample = file.read(1024)
+                # Try to detect delimiter (comment lines do not take part)
+                sample = "\n".join(
+                    line for line in file.read(1024).splitlines()
+                    if not SubjectLookupService._is_skipped_line(line)
+                )
                 file.seek(0)
 
                 delimiter = ';'  # Default
                 if sample.count(';') < sample.count(','):
                     delimiter = ','
 
-                reader = csv.DictReader(file, delimiter=delimiter)
+                # File line number of each line handed to the reader, so error
+                # messages still point at the right line when lines are skipped.
+                read_line_numbers: list[int] = []
+
+                def content_lines():
+                    for number, line in enumerate(file, start=1):
+                        if SubjectLookupService._is_skipped_line(line):
+                            continue
+                        read_line_numbers.append(number)
+                        yield line
+
+                reader = csv.DictReader(content_lines(), delimiter=delimiter)
 
                 # Validate headers
                 expected_headers = {'FolderID', 'CenterID', 'SubjectID'}
@@ -52,14 +71,15 @@ class SubjectLookupService:
                     return mapping, errors
 
                 used_names = set()
-                line_number = 1  # Header is line 0
 
                 for row in reader:
-                    line_number += 1
+                    line_number = read_line_numbers[-1]
 
-                    folder_id = row.get('FolderID', '').strip()
-                    center_id_str = row.get('CenterID', '').strip()
-                    subject_id_str = row.get('SubjectID', '').strip()
+                    # A row shorter than the header has None for the missing
+                    # columns: treat it as empty so it gets a per-line error.
+                    folder_id = (row.get('FolderID') or '').strip()
+                    center_id_str = (row.get('CenterID') or '').strip()
+                    subject_id_str = (row.get('SubjectID') or '').strip()
 
                     # Validate required fields
                     if not folder_id:
@@ -157,6 +177,12 @@ class SubjectLookupService:
             errors.append(f"Error reading CSV file: {str(e)}")
 
         return mapping, errors
+
+    @staticmethod
+    def _is_skipped_line(line: str) -> bool:
+        """True for a blank line or a ``#`` comment line of a lookup table."""
+        stripped = line.strip()
+        return not stripped or stripped.startswith('#')
 
     @staticmethod
     def format_subject_name(center_id: int, subject_id: int) -> str:

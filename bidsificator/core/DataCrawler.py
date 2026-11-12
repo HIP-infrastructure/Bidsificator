@@ -115,10 +115,12 @@ class DataCrawler:
                         found_files = []
                         dir_path = Path(expanded_dir)
                         if dir_path.exists():
-                            # Get all files in directory and filter by extension (case-insensitive)
+                            # Get all files in directory and filter by extension (case-insensitive).
+                            # Matched on the end of the name so a multi-part extension
+                            # ('.nii.gz') is found; Path.suffix would only give '.gz'.
                             ext_lower = file_extension.lower()
                             found_files = [str(p) for p in dir_path.iterdir()
-                                         if p.is_file() and p.suffix.lower() == ext_lower]
+                                         if p.is_file() and p.name.lower().endswith(ext_lower)]
                         if found_files:
                             if data_type not in subject_data["data"]:
                                 subject_data["data"][data_type] = {

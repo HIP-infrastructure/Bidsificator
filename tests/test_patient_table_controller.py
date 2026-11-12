@@ -75,12 +75,15 @@ def test_add_new_key_succeeds_and_emits_update(controller):
 
     assert controller.add_key_after(1, "handedness") is True
     assert failures == []
-    assert len(updates) >= 1  # keys_updated fires (via the internal sync + explicitly)
+    assert len(updates) == 1  # exactly once per added key: each emission redraws the table
     assert "handedness" in controller.get_subjects_keys_from_data()
 
 
 def test_add_key_before_delegates(controller):
+    updates = _capture(controller.keys_updated)
+
     assert controller.add_key_before(1, "weight") is True
+    assert len(updates) == 1
     assert "weight" in controller.get_subjects_keys_from_data()
 
 
@@ -101,7 +104,7 @@ def test_remove_real_key_succeeds(controller):
     updates = _capture(controller.keys_updated)
 
     assert controller.remove_key("age") is True
-    assert len(updates) >= 1
+    assert len(updates) == 1  # exactly once per removed key
     assert "age" not in controller.get_subjects_keys_from_data()
 
 
