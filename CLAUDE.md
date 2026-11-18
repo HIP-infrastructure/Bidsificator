@@ -43,7 +43,10 @@ PR with a user- or developer-visible effect adds its entry under `[Unreleased]`
 in the same PR** — in the matching subsection (Added / Changed / Deprecated /
 Removed / Fixed / Security), not as a later cleanup. On release, rename
 `[Unreleased]` to the version + date, open a fresh empty `[Unreleased]`, and add
-the version's compare link at the bottom of the file. Purely internal no-op
+the version's compare link at the bottom of the file. Bump the version in `pyproject.toml`
+and `bidsificator/_metadata.py`, and in `codemeta.json` update `version`,
+`dateModified` (the release date), `downloadUrl` and `releaseNotes` (both name the
+new tag): the EBRAINS Knowledge Graph reads that file from the repository. Purely internal no-op
 changes (typo fixes, comments, formatting) may skip it.
 
 ## Architecture

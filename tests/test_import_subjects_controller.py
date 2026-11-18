@@ -9,6 +9,7 @@ observable contract without a GUI.
 """
 
 import os
+import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -22,6 +23,9 @@ from PyQt6.QtWidgets import QApplication
 
 from bidsificator.controllers.FileEditorController import FileEditorController
 from bidsificator.controllers.ImportSubjectsController import ImportSubjectsController
+from bidsificator.core.BidsFolder import BidsFolder
+from bidsificator.models.SubjectDataModel import SubjectData
+from bidsificator.workers.BidsSubjectsProcess import check_subject_conflicts
 from bidsificator.workers.import_processor import (
     IMPORTED,
     SKIPPED,
@@ -198,3 +202,89 @@ def test_save_lookup_template_appends_csv_extension(qapp, tmp_path):
     ok, _message = ctrl.save_lookup_template(str(tmp_path / "noext"))
     assert ok is True
     assert (tmp_path / "noext.csv").exists()
+
+
+# --------------------------------------------------------------------------- #
+# conflict pre-check (REQ-GUI-026)                                            #
+# --------------------------------------------------------------------------- #
+
+def _dataset_with_subjects(path, *subject_ids):
+    """A real BIDS dataset on disk whose participants.tsv lists ``subject_ids``."""
+    bids_folder = BidsFolder(str(path))
+    for subject_id in subject_ids:
+        bids_folder.add_bids_subject(subject_id, {"age": 30, "sex": "F"})
+    bids_folder.generate_participants_tsv()
+    return path
+
+
+class _RecordingWorker:
+    """Stands in for ImportBidsSubjectsWorker so no import subprocess starts."""
+
+    started = []
+
+    def __init__(self, dataset_path, subjects_data, overwrite_existing, task):
+        self.subjects_data = subjects_data
+        self.overwrite_existing = overwrite_existing
+        self.update_progressbar_signal = self.import_finished = self.error = self
+
+    def connect(self, _slot):
+        pass
+
+    def start(self):
+        _RecordingWorker.started.append(self)
+
+    def isRunning(self):
+        return False
+
+
+def _controller_with_queued_subjects(monkeypatch, dataset_path, source_file, *subject_ids):
+    _RecordingWorker.started = []
+    controller_module = sys.modules[ImportSubjectsController.__module__]
+    monkeypatch.setattr(controller_module, "ImportBidsSubjectsWorker", _RecordingWorker)
+    ctrl = _controller(str(dataset_path))
+    for subject_id in subject_ids:
+        ctrl._model.add_subject(SubjectData(
+            subject_id, files=[{"file_path": str(source_file), "modality": "ieeg"}],
+        ))
+    return ctrl
+
+
+def test_check_subject_conflicts_finds_existing_subjects(tmp_path):
+    # Regression: the check built "sub-01" but compared it with the bare ids
+    # BidsFolder stores ("01"), so it always returned [] and the conflict
+    # dialog never appeared.
+    dataset = _dataset_with_subjects(tmp_path / "ds", "01")
+    queued = [{"subject_id": "01", "files": []}, {"subject_id": "02", "files": []}]
+
+    # Returned with the "sub-" prefix: the controller's skip filter and the
+    # dialog both use that form.
+    assert check_subject_conflicts(str(dataset), queued) == ["sub-01"]
+
+
+def test_start_import_into_existing_subject_asks_conflict_resolver(qapp, tmp_path, monkeypatch):
+    dataset = _dataset_with_subjects(tmp_path / "ds", "01")
+    source = tmp_path / "rec.edf"
+    source.write_bytes(b"")
+    ctrl = _controller_with_queued_subjects(monkeypatch, dataset, source, "01", "02")
+    asked = []
+
+    def cancel(existing):
+        asked.append(existing)
+        return "cancel"
+
+    assert ctrl.start_batch_import("rest", conflict_resolver=cancel) is False
+    assert asked == [["sub-01"]]
+    assert _RecordingWorker.started == []
+
+
+def test_start_import_skip_filters_existing_subject_out(qapp, tmp_path, monkeypatch):
+    dataset = _dataset_with_subjects(tmp_path / "ds", "01")
+    source = tmp_path / "rec.edf"
+    source.write_bytes(b"")
+    ctrl = _controller_with_queued_subjects(monkeypatch, dataset, source, "01", "02")
+
+    assert ctrl.start_batch_import("rest", conflict_resolver=lambda _existing: "skip") is True
+    (worker,) = _RecordingWorker.started
+    assert [s["subject_id"] for s in worker.subjects_data] == ["02"]
+    assert worker.overwrite_existing is False
+    assert ctrl._skipped_existing == ["sub-01"]

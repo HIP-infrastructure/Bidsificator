@@ -23,11 +23,13 @@ def check_subject_conflicts(dataset_path: str, subjects_list: list) -> list[str]
         subjects_list: List of subjects to import
 
     Returns:
-        List of subject IDs that already exist in the dataset
+        List of subject IDs ("sub-" prefixed) that already exist in the dataset
     """
     bids_folder = BidsFolder(dataset_path)
+    # BidsFolder stores bare ids, so prefix both sides before comparing (REQ-GUI-026).
+    existing_ids = {"sub-" + subject.get_subject_id() for subject in bids_folder.get_bids_subjects()}
     subject_ids = ["sub-" + subject['subject_id'] for subject in subjects_list]
-    return bids_folder.find_existing_subjects(subject_ids)
+    return [subject_id for subject_id in subject_ids if subject_id in existing_ids]
 
 
 def processBidsSubjects(
