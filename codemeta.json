@@ -1,0 +1,93 @@
+{
+  "@context": "https://w3id.org/codemeta/3.0",
+  "@type": "SoftwareSourceCode",
+  "name": "Bidsificator",
+  "description": "A PyQt6 application for creating and managing BIDS datasets from raw data (iEEG, EEG, MRI), with a REST API.",
+  "version": "1.15.0",
+  "dateModified": "2026-11-18",
+  "license": "https://spdx.org/licenses/Apache-2.0",
+  "author": [
+    {
+      "@type": "Person",
+      "@id": "https://orcid.org/0009-0006-2357-0083",
+      "givenName": "Florian",
+      "familyName": "Sipp",
+      "email": "florian.sipp@chuv.ch",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Centre Hospitalier Universitaire Vaudois (CHUV)"
+      }
+    }
+  ],
+  "maintainer": [
+    {
+      "@type": "Person",
+      "@id": "https://orcid.org/0009-0006-2357-0083",
+      "givenName": "Florian",
+      "familyName": "Sipp",
+      "email": "florian.sipp@chuv.ch",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Centre Hospitalier Universitaire Vaudois (CHUV)"
+      }
+    }
+  ],
+  "contributor": [
+    {
+      "@type": "Person",
+      "@id": "https://orcid.org/0000-0003-3456-2493",
+      "givenName": "Yaroslav",
+      "familyName": "Halchenko",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Dartmouth College"
+      }
+    }
+  ],
+  "funder": {
+    "@type": "Organization",
+    "name": "European Union, Horizon Europe (EBRAINS 2.0)"
+  },
+  "funding": "EBRAINS 2.0, Grant Agreement No. 101147319",
+  "codeRepository": "https://github.com/HIP-infrastructure/Bidsificator",
+  "downloadUrl": "https://github.com/HIP-infrastructure/Bidsificator/archive/refs/tags/v1.15.0.tar.gz",
+  "relatedLink": [
+    "https://github.com/HIP-infrastructure/Bidsificator#readme"
+  ],
+  "issueTracker": "https://github.com/HIP-infrastructure/Bidsificator/issues",
+  "continuousIntegration": "https://github.com/HIP-infrastructure/Bidsificator/actions",
+  "releaseNotes": "https://github.com/HIP-infrastructure/Bidsificator/releases/tag/v1.15.0",
+  "keywords": [
+    "BIDS",
+    "neuroimaging",
+    "iEEG",
+    "EEG",
+    "MRI",
+    "data-management"
+  ],
+  "programmingLanguage": [
+    "Python"
+  ],
+  "runtimePlatform": [
+    "Python >=3.11,<3.14"
+  ],
+  "operatingSystem": [
+    "Windows",
+    "macOS",
+    "Linux"
+  ],
+  "developmentStatus": "active",
+  "softwareRequirements": [
+    "PyQt6",
+    "numpy",
+    "pandas",
+    "dicom2nifti",
+    "bids_validator",
+    "Flask",
+    "flasgger",
+    "flask-cors",
+    "flask-httpauth",
+    "flask-caching",
+    "openpyxl"
+  ]
+}

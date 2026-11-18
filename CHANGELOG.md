@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-11-18
+
+### Added
+- `codemeta.json` at the repository root describes the software (authors, licence, funding, version, download link, dependencies) for the EBRAINS Knowledge Graph, which reads it from the repository. Its `version`, `dateModified`, `downloadUrl` and `releaseNotes` are updated at every release.
+
 ### Changed
 - Errors that the application used to swallow silently are now written to the log with their traceback (silent-`except` audit). This covers the validator's schema helpers and selector evaluation, dataset loading (`DatasetModel`), the TRC and DICOM converters' file probes and optional metadata, the options save, the `events.json` column fallback, and every handler that already showed a message to the user but dropped the traceback. Broad `except Exception` clauses are narrowed where the expected error is known (an unreadable `dataset_description.json`, a file that is not DICOM, an unreadable `events.tsv`). A failure that repeats for every file of a validation run, or every time the same TRC file is probed, is logged once with its traceback and then at DEBUG. What the user sees is unchanged except for the fixes below.
 
@@ -14,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DatasetModel.update_participants_file()` and `PatientTableController.save_to_participants_file()`: neither had a caller.
 
 ### Fixed
+- Importing subjects into a dataset that already contains some of them now opens the Overwrite / Skip / Cancel conflict dialog on the Import Subjects tab (UR-GUI-003, REQ-GUI-026). The conflict check compared `sub-`-prefixed ids with the bare ids the dataset stores, so it never found a conflict; existing subjects were skipped without asking and could not be overwritten from the tab.
 - Deleting a subject whose folder cannot be removed (for example a permission error or a file open in another program) no longer drops the subject from the application while its folder stays on disk: the folder is removed first, and the subject is forgotten only when that succeeded. A subject whose folder was already removed outside the application can now be deleted in one step. "Remove Selected Subject" on the Participants table now shows a warning when the deletion fails; it used to fail without any message.
 - A validation check that crashes no longer reads as "no problem found". When the associated-files check or the `SliceTiming` check fails with an internal error, the validation report now carries a warning for the file, under the rule `validator-internal-error (associated files)` or `validator-internal-error (SliceTiming)`, with the error text, and the log holds the traceback. The entry is a warning, so it does not by itself mark the dataset as invalid. A silent pass of this kind hid a broken associated-files check until PR #38.
 - The lookup-table example template now loads as generated on the Import Subjects tab (UR-GUI-003, REQ-GUI-021, REQ-GUI-022). "Create template" with no subjects parsed writes `#` comment lines and a blank separator, and the parser failed on them with "Error reading CSV file: 'NoneType' object has no attribute 'strip'", so the template had to be edited by hand before it could be loaded. `SubjectLookupService.parse_lookup_table` now skips blank lines and lines whose first non-blank character is `#`, in any lookup CSV (templates saved by earlier versions included); comment lines no longer count toward the `;`/`,` delimiter detection, and the line numbers in error messages are the line numbers in the file. A row with fewer columns than the header is now reported for its own line ("Line N: Missing CenterID or SubjectID for ...") instead of aborting the whole file with the same `'NoneType'` error. A FolderID that starts with `#` can no longer be mapped.
@@ -179,7 +185,8 @@ Note: v1.6 and v1.7 were never tagged — the jump from v1.5.x to v1.8.0 is
 historical and intentional.
 -->
 
-[Unreleased]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/HIP-infrastructure/Bidsificator/compare/v1.11.0...v1.12.0
